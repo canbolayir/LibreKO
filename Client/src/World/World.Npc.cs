@@ -371,8 +371,8 @@ public partial class World
 
     private void ShowNpcDialog()
     {
-        _npcPanel.Visible = true;
         _npcDialogShown = true;
+        _npcPanel.Visible = true;
     }
 
     private void CloseNpcDialog()
@@ -433,6 +433,6 @@ public partial class World
 
     private void OnNpcWindow(GameOpcodes op)
     {
-        CombatNotice("This NPC's service isn't available yet.");
+        ChatStatusNotice("This NPC's service isn't available yet.");
     }
 }

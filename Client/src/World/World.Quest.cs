@@ -46,7 +46,7 @@ public partial class World
     private readonly HashSet<int> _questTargetNpcs = new();
     private Label _questObjectiveTitle = null!;
     private Label _questRewardTitle = null!;
-    private HBoxContainer _questRewardBox = null!;
+    private VBoxContainer _questRewardBox = null!;
     private Control _questDetailBody = null!;
     private Label _questDetailEmpty = null!;
     private Button _questAbandonBtn = null!, _questTrackBtn = null!, _questCompleteBtn = null!;
@@ -207,7 +207,7 @@ public partial class World
 
         _questRewardTitle = UiTheme.SectionTitle("Rewards");
         detail.AddChild(_questRewardTitle);
-        _questRewardBox = new HBoxContainer();
+        _questRewardBox = new VBoxContainer();
         _questRewardBox.AddThemeConstantOverride("separation", 5);
         detail.AddChild(_questRewardBox);
 
@@ -526,8 +526,42 @@ public partial class World
             }));
 
         foreach (var c in _questRewardBox.GetChildren()) { _questRewardBox.RemoveChild(c); c.QueueFree(); }
-        foreach (var reward in QuestRewards(questId))
-            _questRewardBox.AddChild(QuestRewardTile(reward.ItemId, reward.Count));
+        _questRewardTitle.Text = "Rewards";
+        if (state == QuestStateCompleted && _receivedQuestRewards.TryGetValue(questId, out var receipt))
+        {
+            _questRewardTitle.Text = "Received rewards";
+            foreach (var reward in receipt.Granted)
+                _questRewardBox.AddChild(QuestRewardTile(reward.ItemId, reward.Count));
+        }
+        else if (_questViews.TryGetValue(questId, out var rewardsView))
+        {
+            foreach (var reward in rewardsView.Transfers.Where(t => !t.Take))
+                _questRewardBox.AddChild(QuestRewardTile(reward.DisplayItemId, reward.Count));
+            if (rewardsView.Options.Length > 0)
+            {
+                if (_pendingQuestRewards.TryGetValue(questId, out var selected) && rewardsView.Options.Contains(selected))
+                {
+                    _questRewardBox.AddChild(UiTheme.Text("Selected reward", 13, UiTheme.Gold));
+                    _questRewardBox.AddChild(UiTheme.Text("Pending confirmation at the quest NPC.", 12, UiTheme.TextLo));
+                    _questRewardBox.AddChild(QuestRewardTile(selected.DisplayItemId, selected.Count));
+                }
+                else
+                {
+                    _questRewardBox.AddChild(UiTheme.Text("Reward options", 13, UiTheme.Gold));
+                    var hint = UiTheme.Text(state == QuestStateCompleted
+                        ? "One option was awarded when this quest was turned in."
+                        : "Choose one when turning in this quest.", 12, UiTheme.TextLo);
+                    hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                    hint.CustomMinimumSize = new Vector2(1, 0);
+                    _questRewardBox.AddChild(hint);
+                    foreach (var option in rewardsView.Options)
+                        _questRewardBox.AddChild(QuestRewardTile(option.DisplayItemId, option.Count));
+                }
+            }
+        }
+        else
+            foreach (var reward in QuestRewards(questId))
+                _questRewardBox.AddChild(QuestRewardTile(reward.ItemId, reward.Count));
         _questRewardTitle.Visible = _questRewardBox.GetChildCount() > 0;
 
         _questTrackBtn.Text = _questTracked.Contains(questId) ? "Untrack" : "Track";
@@ -550,38 +584,12 @@ public partial class World
 
     private Control QuestRewardTile(int itemId, int count)
     {
-        var box = QuestItemHover(
-            new VBoxContainer { TooltipText = HasItemCard(itemId) ? "" : ItemData.DisplayName(itemId) }, itemId);
-        box.AddThemeConstantOverride("separation", 3);
-
-        var tile = new PanelContainer { CustomMinimumSize = new Vector2(52, 52) };
-        tile.AddThemeStyleboxOverride("panel", UiTheme.Slot());
-        var icon = ItemData.Icon(itemId);
-        if (icon != null)
-        {
-            var rect = new TextureRect
-            {
-                Texture = icon,
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-            };
-            tile.AddChild(rect);
-            UpgradeBadge.Show(tile, itemId);
-        }
-        else
-        {
-            var glyph = UiTheme.Text("?", 15, UiTheme.TextLo, HorizontalAlignment.Center);
-            glyph.VerticalAlignment = VerticalAlignment.Center;
-            tile.AddChild(glyph);
-        }
-        box.AddChild(tile);
-
-        var caption = UiTheme.Text($"{count:n0}", 10, UiTheme.TextHi, HorizontalAlignment.Center);
-        caption.CustomMinimumSize = new Vector2(52, 0);
-        caption.ClipText = true;
-        box.AddChild(caption);
-        return box;
+        var panel = UiTheme.Section();
+        var row = QuestItemRow(itemId, QuestRewardName(itemId), count.ToString("n0"), UiTheme.GoldBright);
+        row.SetMeta("quest_reward_item_id", itemId);
+        row.SetMeta("quest_reward_count", count);
+        panel.AddChild(row);
+        return panel;
     }
 
     private static Control QuestObjectiveRow(string text)

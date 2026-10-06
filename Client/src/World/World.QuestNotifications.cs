@@ -42,7 +42,7 @@ public partial class World
         var body = _questNotificationWindow.Body;
         foreach (var child in body.GetChildren()) { body.RemoveChild(child); child.QueueFree(); }
         if (paged) body.AddChild(QuestNotificationPager(view, self));
-        body.AddChild(UiTheme.Text(QuestNotificationCaption(view), 12, UiTheme.Gold));
+        body.AddChild(QuestStateCaption(QuestNotificationCaption(view), view.State));
         body.AddChild(QuestParagraph(view.Dialogue, UiTheme.TextHi));
         for (var index = 0; index < view.Topics.Length; index++)
         {

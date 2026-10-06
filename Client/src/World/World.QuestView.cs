@@ -1,4 +1,4 @@
-﻿using Godot;
+using Godot;
 using LibreKO.Domain;
 using LibreKO.Network;
 
@@ -8,6 +8,8 @@ public partial class World
 {
     private readonly Dictionary<int, QuestView> _questViews = new();
     private int _questRewardChoice = -1;
+    private readonly Dictionary<int, QuestTransfer> _pendingQuestRewards = new();
+    private readonly Dictionary<int, QuestReceipt> _receivedQuestRewards = new();
     private bool _questUiRefreshQueued;
 
     private void QueueQuestUiRefresh()
@@ -27,7 +29,12 @@ public partial class World
     private void OnQuestView(QuestView view)
     {
         _questViews[view.QuestId] = view;
-        _questRewardChoice = -1;
+        if (view.State is QuestViewState.Available or QuestViewState.Completed)
+            _pendingQuestRewards.Remove(view.QuestId);
+        if (view.State is QuestViewState.Available or QuestViewState.InProgress)
+            _receivedQuestRewards.Remove(view.QuestId);
+        if (_pendingQuestRewards.TryGetValue(view.QuestId, out var pending) && !view.Options.Contains(pending))
+            _pendingQuestRewards.Remove(view.QuestId);
         _questStrings[view.QuestId] = new QuestStrings(view.QuestId, view.Title, view.Journal);
         _questObjectives[view.QuestId] = view.Objectives;
         _questKills[view.QuestId] = view.Counts;
@@ -72,11 +79,14 @@ public partial class World
 
     private void ShowQuestView(QuestView view)
     {
+        _questRewardChoice = _pendingQuestRewards.TryGetValue(view.QuestId, out var pending)
+            ? Array.IndexOf(view.Options, pending) : -1;
         BeginNpcDialog(view.Title, "");
         _npcBody.GetParent<Control>().Visible = false;
         _npcQuestScroll.Visible = true;
         _npcQuestScroll.ScrollVertical = 0;
         foreach (var child in _npcQuestContent.GetChildren()) { _npcQuestContent.RemoveChild(child); child.QueueFree(); }
+        _npcQuestContent.AddChild(QuestStateCaption(view.StateLabel, view.State));
         _npcQuestContent.AddChild(QuestParagraph(
             view.Dialogue.Length > 0 ? view.Dialogue : view.Journal, UiTheme.TextHi));
 
@@ -114,8 +124,15 @@ public partial class World
         if (view.Objectives.Groups.Length == 0 && deliveries.Length == 0)
             QuestSection("Objectives").AddChild(QuestParagraph(view.StandingObjective, UiTheme.TextLo));
 
+        bool received = view.State == QuestViewState.Completed && _receivedQuestRewards.ContainsKey(view.QuestId);
         var payouts = view.Transfers.Where(t => !t.Take).ToArray();
-        if (payouts.Length > 0)
+        if (received)
+        {
+            var rewards = QuestSection("Received rewards");
+            foreach (var entry in _receivedQuestRewards[view.QuestId].Granted)
+                rewards.AddChild(QuestItemRow(entry.ItemId, QuestRewardName(entry.ItemId), entry.Count.ToString("n0"), UiTheme.GoldBright));
+        }
+        else if (payouts.Length > 0)
         {
             var rewards = QuestSection("Rewards");
             foreach (var transfer in payouts)
@@ -123,29 +140,44 @@ public partial class World
                     transfer.Kind is 4 or 5 ? "" : transfer.Count.ToString("n0"), UiTheme.GoldBright));
         }
         System.Action? onRewardChosen = null;
-        if (view.Options.Length > 0)
+        if (!received && view.Options.Length > 0)
         {
-            var choice = QuestSection("Choose one");
+            var choice = QuestSection(view.CanClaim ? "Choose one" : "Reward options");
+            if (!view.CanClaim)
+                choice.AddChild(UiTheme.Text(view.State == QuestViewState.Completed
+                    ? "One option was awarded when this quest was turned in."
+                    : "Choose one when turning in this quest.", 12, UiTheme.TextLo));
             var marks = new List<Label>();
+            var rows = new List<Control>();
             for (var index = 0; index < view.Options.Length; index++)
             {
                 var option = view.Options[index];
                 var row = QuestItemRow(option.DisplayItemId, QuestTransferName(option),
-                    $"{option.Count:n0}  ○", UiTheme.GoldBright);
+                    view.CanClaim ? $"{option.Count:n0}  ○" : option.Count.ToString("n0"), UiTheme.GoldBright);
+                if (view.CanClaim) row.SetMeta("quest_reward_selected", false);
+                rows.Add(row);
                 marks.Add(row.GetChild<Label>(row.GetChildCount() - 1));
-                choice.AddChild(QuestRewardOption(row, index, () => onRewardChosen?.Invoke()));
+                choice.AddChild(view.CanClaim ? QuestRewardOption(row, index, () =>
+                {
+                    _pendingQuestRewards[view.QuestId] = option;
+                    onRewardChosen?.Invoke();
+                }) : row);
             }
             void PaintChoice()
             {
                 for (var index = 0; index < marks.Count; index++)
                 {
                     var chosen = index == _questRewardChoice;
+                    rows[index].SetMeta("quest_reward_selected", chosen);
                     marks[index].Text = $"{view.Options[index].Count:n0}  {(chosen ? "●" : "○")}";
                     marks[index].AddThemeColorOverride("font_color", chosen ? UiTheme.Good : UiTheme.GoldBright);
                 }
             }
-            onRewardChosen = PaintChoice;
-            PaintChoice();
+            if (view.CanClaim)
+            {
+                onRewardChosen = PaintChoice;
+                PaintChoice();
+            }
         }
         if (view.Daily && view.State == QuestViewState.Completed && view.NextReset > 0)
             _npcQuestContent.AddChild(QuestParagraph($"Available again: {DateTimeOffset.FromUnixTimeSeconds(view.NextReset).ToLocalTime():g}", UiTheme.TextLo));
@@ -211,6 +243,13 @@ public partial class World
     }
 
     private const float QuestParagraphWidth = 400f;
+
+    private static Label QuestStateCaption(string text, QuestViewState state)
+    {
+        var label = UiTheme.Text(text, 13, UiTheme.Gold);
+        label.SetMeta("quest_status", (int)state);
+        return label;
+    }
 
     internal static string QuestObjectiveHeading(bool kills, bool deliveries) =>
         kills ? "Hunt" : deliveries ? "Collect" : "Objectives";
