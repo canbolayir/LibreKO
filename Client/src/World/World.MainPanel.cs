@@ -10,7 +10,8 @@ public partial class World
     private readonly Dictionary<string, HudWindow> _mainWindows = new();
     private bool _mainShown;
 
-    internal enum CharacterPage { Character, Clan, Friends }
+    internal enum CharacterPage { Character, Clan, Friends, Quest }
+    private CharacterPage _selectedCharacterPage;
 
 
     private readonly Dictionary<CharacterPage, Button> _characterPageTabs = new();
@@ -45,10 +46,12 @@ public partial class World
 
     private void ShowCharacterPage(CharacterPage page)
     {
+        _selectedCharacterPage = page;
         foreach (var (key, content) in _characterPages) content.Visible = key == page;
         foreach (var (key, button) in _characterPageTabs) button.ButtonPressed = key == page;
         if (page == CharacterPage.Friends) EnsureFriendsLoaded();
         if (page == CharacterPage.Clan) EnsureClanLoaded();
+        if (page == CharacterPage.Quest) Net.I.SendQuestLogRequest();
         if (_mainWindows.TryGetValue("Character", out HudWindow? window))
             Callable.From(window.ResetSize).CallDeferred();
     }
@@ -171,12 +174,12 @@ public partial class World
         SyncMainWindowState();
     }
 
-    private void ShowMainWindow(string key)
+    private void ShowMainWindow(string key, bool refresh = true)
     {
         if (!_mainWindows.TryGetValue(key, out HudWindow? window)) return;
         window.Visible = true;
         window.GetParent()?.MoveChild(window, window.GetParent().GetChildCount() - 1);
-        RefreshMainWindow(key);
+        if (refresh) RefreshMainWindow(key);
         SyncMainWindowState();
     }
 

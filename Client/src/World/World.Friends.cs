@@ -15,7 +15,7 @@ public partial class World
 
 
     private bool FriendsPageVisible =>
-        MainWindowOpen("Character") && _friendsContent is { Visible: true };
+        MainWindowOpen("Character") && _selectedCharacterPage == CharacterPage.Friends;
 
     private void FriendsInit()
     {

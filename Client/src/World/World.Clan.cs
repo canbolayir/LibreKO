@@ -65,7 +65,9 @@ public partial class World
 
     private MyClanInfo MyClan => Net.I.MyClan;
 
-    private bool ClanPageVisible => MainWindowOpen("Character") && _clanContent is { Visible: true };
+    private bool ClanPageVisible =>
+        (MainWindowOpen("Character") && _selectedCharacterPage == CharacterPage.Clan)
+        || _characterClanDetails is { Visible: true };
 
     private void ClanInit()
     {
@@ -551,6 +553,7 @@ public partial class World
 
     private void OnClanDonationList(List<(string Name, int Points)> list)
     {
+        _characterDonations = list.ToList();
         if (!MyClan.InClan || _clanTab != ClanTab.Points) return;
 
         foreach (var c in _clanList.GetChildren()) c.QueueFree();
@@ -614,7 +617,7 @@ public partial class World
         CloseClanCreate();
         if (ok)
         {
-            CombatNotice("You are now a leader of a clan. Congratulations!!!");
+            ChatStatusNotice("You are now a leader of a clan. Congratulations!!!");
             _clanLoaded = true;
             Net.I.SendClanMembersRequest();
             return;
@@ -657,15 +660,15 @@ public partial class World
         switch (sub)
         {
             case Net.KnJoin:
-                if (ok) { CombatNotice(ClanMsgJoined); _clanLoaded = true; Net.I.SendClanMembersRequest(); }
+                if (ok) { ChatStatusNotice(ClanMsgJoined); _clanLoaded = true; Net.I.SendClanMembersRequest(); }
                 else CombatNotice(ClanRefusal(code));
                 return;
             case Net.KnWithdraw:
-                CombatNotice(ok ? ClanMsgQuit : ClanMsgQuitFailed);
+                ChatStatusNotice(ok ? ClanMsgQuit : ClanMsgQuitFailed);
                 if (!ok) CombatNotice(code == 12 ? ClanMsgZone : ClanMsgQuitFailed);
                 return;
             case Net.KnDestroy:
-                if (ok) CombatNotice("The clan has been disbanded.");
+                if (ok) ChatStatusNotice("The clan has been disbanded.");
                 else CombatNotice(ClanRefusal(code));
                 return;
             case Net.KnRemove:
@@ -722,20 +725,20 @@ public partial class World
     private void OnClanHandover(bool ok, string oldChief, string newChief)
     {
         if (!ok) { CombatNotice(ClanMsgHandoverFailed); return; }
-        CombatNotice(string.Equals(oldChief, Net.I.LastEnter.Name, StringComparison.OrdinalIgnoreCase)
+        ChatStatusNotice(string.Equals(oldChief, Net.I.LastEnter.Name, StringComparison.OrdinalIgnoreCase)
             ? $"You have handed over leadership to {newChief}."
             : $"{oldChief}, the leader of {MyClan.Name}, passes leadership to {newChief}.");
         Net.I.SendClanMembersRequest();
     }
 
-    private void OnRemovedFromClan() => CombatNotice(ClanMsgBanned);
+    private void OnRemovedFromClan() => ChatStatusNotice(ClanMsgBanned);
 
     private void OnClanFame(int charId, int clanId, byte fame)
     {
         if (charId == _myId)
         {
             if (clanId == 0) return;
-            CombatNotice($"You are now {ClanRanks.Name(fame)} of the clan.");
+            ChatStatusNotice($"You are now {ClanRanks.Name(fame)} of the clan.");
             if (ClanPageVisible) Net.I.SendClanMembersRequest();
             return;
         }
@@ -754,7 +757,7 @@ public partial class World
 
     private void OnClanMemberPresence(string name, bool online)
     {
-        CombatNotice(online ? $"{name} is online." : $"{name} is offline.");
+        ChatStatusNotice(online ? $"{name} is online." : $"{name} is offline.");
         for (int i = 0; i < _clanMembers.Count; i++)
         {
             if (!string.Equals(_clanMembers[i].Name, name, StringComparison.OrdinalIgnoreCase)) continue;
