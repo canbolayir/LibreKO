@@ -195,7 +195,7 @@ public partial class Net
         _conn.Send(p);
     }
 
-    public void SendItemMove(byte direction, int itemId, byte sourcePos, byte destPos)
+    public void SendItemMove(byte direction, int itemId, byte sourcePos, byte destPos, int amount = 0)
     {
         var p = new Packet(GameOpcodes.GS_ITEM_MOVE);
         p.WriteByte(ItemMove.MoveRequest);
@@ -203,7 +203,8 @@ public partial class Net
         p.WriteInt(itemId);
         p.WriteByte(sourcePos);
         p.WriteByte(destPos);
-        _pendingItemMove = new PendingItemMove(direction, sourcePos, destPos);
+        if (amount > 0) p.WriteUShort((ushort)amount);
+        _pendingItemMove = new PendingItemMove(direction, sourcePos, destPos, amount);
         _conn.Send(p);
     }
 

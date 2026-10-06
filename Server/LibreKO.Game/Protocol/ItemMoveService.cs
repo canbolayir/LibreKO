@@ -76,6 +76,8 @@ public class ItemMoveService(
         var itemId = packet.ReadInt();
         var sourcePosition = packet.ReadByte();
         var destinationPosition = packet.ReadByte();
+        if (packet.RemainingBytes == 1) { await SendItemMoveResponseAsync(session, 0); return; }
+        int requestedAmount = packet.RemainingBytes >= 2 ? packet.ReadUShort() : 0;
         var resolvedSourcePosition = sourcePosition;
         var resolvedDestinationPosition = destinationPosition;
 
@@ -182,7 +184,24 @@ public class ItemMoveService(
         var sourceItemIdBeforeMove = sourceItem.ItemId;
         var destinationItemIdBeforeMove = destinationItem.ItemId;
 
-        if (ItemStackRule.Merges(direction, sourceItem, destinationItem, itemData))
+        if (requestedAmount > 0 && (requestedAmount > sourceItem.Count || sourceIndex == destinationIndex
+            || direction is not (ItemMoveDirection.InventoryToMagicBag or ItemMoveDirection.MagicBagToInventory or ItemMoveDirection.MagicBagToMagicBag)))
+        { await SendItemMoveResponseAsync(session, 0); return; }
+        if (requestedAmount > 0 && requestedAmount < sourceItem.Count)
+        {
+            var portion = new ItemSlot { ItemId = sourceItem.ItemId, Count = (ushort)requestedAmount, Flag = sourceItem.Flag, UniqueId = sourceItem.UniqueId };
+            if (itemData.Countable <= 0 || sourceItem.IsLinked || (!destinationItem.IsEmpty && !ItemStackRule.Merges(direction, portion, destinationItem, itemData)))
+            { await SendItemMoveResponseAsync(session, 0); return; }
+            if (destinationItem.IsEmpty)
+            {
+                destinationItem.ItemId = sourceItem.ItemId; destinationItem.Durability = sourceItem.Durability;
+                destinationItem.Flag = sourceItem.Flag; destinationItem.ExpiresAt = sourceItem.ExpiresAt; destinationItem.UniqueId = sourceItem.UniqueId;
+                destinationItem.Count = (ushort)requestedAmount;
+            }
+            else destinationItem.Count += (ushort)requestedAmount;
+            sourceItem.Count -= (ushort)requestedAmount;
+        }
+        else if (ItemStackRule.Merges(direction, sourceItem, destinationItem, itemData))
         {
             destinationItem.Count += sourceItem.Count;
             sourceItem.Clear();

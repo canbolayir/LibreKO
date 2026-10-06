@@ -43,6 +43,36 @@ public sealed class Inventory
         return -1;
     }
 
+    public int FirstStackOrFreeGridSlot(ItemSlot source, int countable)
+    {
+        source.Count = 1;
+        for (int abs = GridStart; abs < GridStart + GridCount && abs < Length; abs++)
+            if (ItemMove.Merges(ItemMove.MagicBagToInventory, source, _slots[abs], countable)) return abs;
+        return FirstFreeGridSlot();
+    }
+
+    public List<(int Slot, int Count)> PlanBagToGrid(int from, int preferred, int amount, int countable)
+    {
+        var plan = new List<(int Slot, int Count)>();
+        if (from < InventoryConstants.MagicBagStart || from >= Length || amount <= 0
+            || _slots[from].IsEmpty || amount > _slots[from].Count || countable <= 0) return plan;
+        var source = _slots[from];
+        source.Count = 1;
+        int remaining = amount;
+        for (int abs = GridStart; abs < GridStart + GridCount && abs < Length && remaining > 0; abs++)
+        {
+            if (!ItemMove.Merges(ItemMove.MagicBagToInventory, source, _slots[abs], countable)) continue;
+            int count = Math.Min(remaining, StackMax - _slots[abs].Count);
+            plan.Add((abs, count));
+            remaining -= count;
+        }
+        int empty = preferred >= GridStart && preferred < GridStart + GridCount && preferred < Length
+            && _slots[preferred].IsEmpty ? preferred : FirstFreeGridSlot();
+        if (remaining > 0 && empty >= 0) { plan.Add((empty, remaining)); remaining = 0; }
+        if (remaining > 0) plan.Clear();
+        return plan;
+    }
+
     public int CountOf(int itemId)
     {
         int total = 0;

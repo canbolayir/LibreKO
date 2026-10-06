@@ -834,6 +834,45 @@ public class ItemTests : GameTestBase
         session.Inventory[InventoryConstants.InventoryStart].IsEmpty.Should().Be(carriedAfter == 0);
     }
 
+    [Theory]
+    [InlineData(9, 100, 7, 25, 75, 32)]
+    [InlineData(9, 100, 0, 25, 75, 25)]
+    [InlineData(10, 7, 100, 25, 32, 75)]
+    [InlineData(10, 0, 100, 25, 25, 75)]
+    [InlineData(9, 100, 7, 101, 100, 7)]
+    [InlineData(9, 100, 9990, 25, 100, 9990)]
+    [InlineData(9, 100, 7, 100, 0, 107)]
+    public async Task MagicBagTransfer_UsesTheSelectedAmountAndRejectsInvalidQuantities(
+        byte direction, ushort carried, ushort stored, ushort amount, ushort expectedCarried, ushort expectedStored)
+    {
+        const int bagId = 700011, itemId = 389010000;
+        using var provider = CreateProvider(_ => { }, data =>
+        {
+            data.GetCoefficient(101).Returns(CreateBasicCoefficient(101));
+            data.GetItem(bagId).Returns(new ItemData { Num = bagId, Slot = 25, Kind = 11, Duration = 10 });
+            data.GetItem(itemId).Returns(new ItemData { Num = itemId, Slot = 15, Kind = 255, Countable = 1 });
+        });
+        var client = Substitute.For<IClient>(); client.Id.Returns(Guid.NewGuid());
+        var replies = new List<Packet>();
+        client.SendPacket(Arg.Do<Packet>(p => replies.Add(p)), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        var session = provider.GetRequiredService<SessionManager>().CreateSession(client, characterId: 962, accountId: 972);
+        session.Class = 101;
+        session.Inventory[InventoryConstants.BagSlotFor(0)].ItemId = bagId;
+        session.Inventory[InventoryConstants.BagSlotFor(0)].Count = 1;
+        var grid = session.Inventory[InventoryConstants.InventoryStart];
+        var bag = session.Inventory[InventoryConstants.MagicBagStart];
+        if (carried > 0) { grid.ItemId = itemId; grid.Count = carried; }
+        if (stored > 0) { bag.ItemId = itemId; bag.Count = stored; }
+        var packet = new Packet(GameOpcodes.GS_ITEM_MOVE);
+        packet.WriteByte(1); packet.WriteByte(direction); packet.WriteInt(itemId);
+        packet.WriteByte(0); packet.WriteByte(0); packet.WriteUShort(amount);
+        await provider.GetRequiredService<IItemPacketCoordinator>().HandleMoveAsync(client, packet);
+        grid.Count.Should().Be(expectedCarried); bag.Count.Should().Be(expectedStored);
+        var reply = replies.Single(p => p.GetOpcode() == (byte)GameOpcodes.GS_ITEM_MOVE);
+        reply.ResetOffset(); reply.ReadByte().Should().Be(1);
+        reply.ReadByte().Should().Be(expectedCarried == carried && expectedStored == stored ? (byte)0 : (byte)1);
+    }
+
     private static Packet BuildMagicBagMove(int itemId, byte destinationPosition)
     {
         var packet = new Packet(GameOpcodes.GS_ITEM_MOVE);

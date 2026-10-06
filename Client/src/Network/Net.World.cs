@@ -55,6 +55,7 @@ public partial class Net
             float z = p.ReadUShort() / 10f;
             float y = p.ReadUShort() / 10f;
             var e = LastEnter; e.Zone = zone; e.X = x; e.Z = z; e.Y = y; LastEnter = e;
+            Godot.GD.Print($"[inventory] zone snapshot: zone={zone}, slots={e.Inventory?.Length ?? 0}, pendingMove={_pendingItemMove.HasValue}");
             _known.Clear();
             ForgetKnownStalls();
             _zoneChanging = true;

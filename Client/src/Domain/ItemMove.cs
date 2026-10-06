@@ -27,6 +27,53 @@ public static class ItemMove
 
     public static bool IsCarried(int abs) => RegionOf(abs) is Region.Grid or Region.MagicBag;
 
+    public static bool TryResolveSlots(byte direction, byte source, byte destination, out int from, out int to)
+    {
+        (int Start, int Count) equip = (0, InventoryConstants.SlotMax),
+            grid = (InventoryConstants.InventoryStart, InventoryConstants.HaveMax),
+            costume = (InventoryConstants.CospreStart, InventoryConstants.CospreMax),
+            bag = (InventoryConstants.BagSlotStart, InventoryConstants.BagSlotMax),
+            contents = (InventoryConstants.MagicBagStart, InventoryConstants.MagicBagTotal);
+        var regions = direction switch
+        {
+            InventoryToSlot => (grid, equip), SlotToInventory => (equip, grid),
+            InventoryToInventory => (grid, grid), SlotToSlot => (equip, equip),
+            InventoryToCospre => (grid, costume), CospreToInventory => (costume, grid),
+            InventoryToBagSlot => (grid, bag), BagSlotToInventory => (bag, grid),
+            InventoryToMagicBag => (grid, contents), MagicBagToInventory => (contents, grid),
+            MagicBagToMagicBag => (contents, contents),
+            _ => ((0, 0), (0, 0)),
+        };
+        from = to = -1;
+        if (source >= regions.Item1.Item2 || destination >= regions.Item2.Item2) return false;
+        from = regions.Item1.Item1 + source;
+        to = regions.Item2.Item1 + destination;
+        return true;
+    }
+
+    public static void ApplyConfirmed(ItemSlot[] inventory, byte direction, int from, int to, int countable, int amount = 0)
+    {
+        var source = inventory[from];
+        var destination = inventory[to];
+        if (amount > 0 && amount < source.Count)
+        {
+            source.Count -= (short)amount;
+            var transferred = inventory[from]; transferred.Count = (short)amount;
+            if (destination.IsEmpty) destination = transferred;
+            else destination.Count += (short)amount;
+            inventory[from] = source; inventory[to] = destination;
+            return;
+        }
+        if (from != to && Merges(direction, source, destination, countable))
+        {
+            destination.Count += source.Count;
+            inventory[to] = destination;
+            inventory[from] = default;
+        }
+        else
+            (inventory[from], inventory[to]) = (destination, source);
+    }
+
     public static Region RegionOf(int abs)
     {
         if (abs < InventoryConstants.InventoryStart) return Region.Equip;

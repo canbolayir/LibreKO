@@ -108,6 +108,7 @@ public partial class World : Node3D
         public byte Src, Dst;
         public int From, To;
         public int PetPos;
+        public int Amount;
     }
     private readonly Queue<MoveStep> _moveQueue = new();
     private bool _moveInFlight;
@@ -660,7 +661,13 @@ public partial class World : Node3D
         int slot = _invDelSlot;
         int itemId = _invDelItemId;
         HideDeletePrompt();
+        DestroyInventoryItem(slot, itemId);
+    }
+
+    private void DestroyInventoryItem(int slot, int itemId)
+    {
         if (slot < 0 || slot >= Inv.Length || Inv[slot].ItemId != itemId) return;
+        if (slot >= InventoryConstants.CospreStart || RefuseItemInUse(slot)) return;
         if (_moveInFlight || _moveQueue.Count > 0 || _selfDead) return;
 
         if (slot < GridStart) Net.I.SendItemRemove(1, (byte)slot, itemId);
@@ -670,7 +677,7 @@ public partial class World : Node3D
 
     private void OnItemRemoveResult(bool ok)
     {
-        if (!ok) { CombatNotice("That item could not be destroyed."); return; }
+        if (!ok) { ChatStatusNotice("That item could not be destroyed."); return; }
         RefreshInventoryUI();
     }
 
@@ -926,8 +933,8 @@ public partial class World : Node3D
             _hint.Visible = false;
             _emptyIcon.Visible = false;
             _icon.Texture = ItemData.Icon(it.ItemId);
-            int shown = ItemData.ShownCount(ItemData.Get(it.ItemId), it);
-            _count.Text = shown > 1 ? shown.ToString() : "";
+            var def = ItemData.Get(it.ItemId);
+            _count.Text = ItemData.CountBadge(def, ItemData.ShownCount(def, it));
             TooltipText = "";
             _plus.Set(it.ItemId);
             if (!_locked) SealLook.Apply(it.State, _icon, this, _normal);
