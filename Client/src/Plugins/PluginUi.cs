@@ -13,6 +13,10 @@ public enum HudPart
     ExpBar,
     CombatLog,
     QuestTracker,
+    MailIcon,
+    AchievementsIcon,
+    AttendanceIcon,
+    PowerUpStoreIcon,
 }
 
 public sealed class WindowHost
@@ -97,7 +101,7 @@ public sealed class PluginUi
     public static readonly string[] KnownWindowIds =
     {
         "achievements", "admin_panel", "anvil", "attendance", "auction", "bounty", "cape", "changehair",
-        "character_info", "chatrooms", "clan", "clanwarehouse", "class_change", "collectionrace", "dailyquest",
+        "character_info", "character_clan_details", "chatrooms", "clan", "clanpoint", "clanwarehouse", "class_change", "collectionrace", "dailyquest",
         "disguise", "duel", "equipview", "eventquests", "exchange", "fishinghall", "forces", "fortune", "genie",
         "globalmap", "inn", "instance", "inventory", "itemcombine", "itemexchange", "king", "lottery", "mail",
         "mailcompose", "mailread", "marketbbs", "merchantmenu", "messenger", "namechange", "npc_dialog", "party",
@@ -112,6 +116,15 @@ public sealed class PluginUi
     private readonly List<Func<Control>> _extraHud = new();
 
     internal Func<DialogRequest, Control>? DialogBuilder { get; private set; }
+
+    internal Action<HudWindow>? WhisperStyler { get; private set; }
+    internal Func<string, bool, bool, string, Control>? WhisperLineBuilder { get; private set; }
+
+    public void StyleWhispers(Action<HudWindow> style, Func<string, bool, bool, string, Control> buildLine)
+    {
+        WhisperStyler = style;
+        WhisperLineBuilder = buildLine;
+    }
 
     internal IReadOnlyList<Func<Control>> ExtraHud => _extraHud;
 
@@ -146,6 +159,8 @@ public sealed class PluginUi
         _hud.Clear();
         _extraHud.Clear();
         DialogBuilder = null;
+        WhisperStyler = null;
+        WhisperLineBuilder = null;
     }
 
     private WindowRule Rule(string id)

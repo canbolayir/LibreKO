@@ -100,6 +100,14 @@ public interface IGameInventory
 
     GameItem At(int slot);
     void Move(int from, int to);
+    void MoveAmount(int from, int to, int count) => Move(from, to);
+    int TransferToInventorySlot(int from)
+    {
+        for (int slot = GridStart; slot < GridStart + GridCount; slot++)
+            if (At(slot).IsEmpty) return slot;
+        return -1;
+    }
+    void ConfirmDrop(int slot, int itemId) => Drop(slot);
     void Use(int slot);
     void Drop(int slot);
     void Arrange();
@@ -125,8 +133,14 @@ public interface IGameTarget
     event Action? Changed;
 }
 
+/// <summary>An isolated model factory for a single cached dialog portrait.</summary>
+public sealed record GameNpcPortrait(string AppearanceKey,string Name,int Level,Func<Node3D?> BuildModel);
+
 public interface IGameWindows
 {
+    IGameCharacterPanel? CharacterPanel => null;
+    GameNpcPortrait? NpcPortrait => null;
+    int NotificationCount(string id) => 0;
     bool IsOpen(string id);
     void Open(string id);
     void Close(string id);
@@ -135,6 +149,14 @@ public interface IGameWindows
 
 public interface IGameChat
 {
+    event Action<int,string>? ItemLinkRequested { add { } remove { } }
+    IReadOnlyList<string> ReadHistory(int mask, bool timestamps, string colors) => History;
+    bool LinkInventoryItem(int slot) => false;
+    void ShowLinkTooltip(int itemId) { }
+    void HideLinkTooltip() { }
+    void PlayerMenu(string name, Vector2 at) { }
+    IReadOnlyList<LibreKO.Domain.NearbyRow> NearbyPlayers() => Array.Empty<LibreKO.Domain.NearbyRow>();
+    event Action<string>? ChannelRequested { add { } remove { } }
     IReadOnlyList<string> History { get; }
 
     void Send(string text);
@@ -150,10 +172,12 @@ public interface IGameHotbar
     int SlotsPerPage { get; }
     int Page { get; }
     bool Locked { get; }
+    int SelectedAbs => -1;
 
     HotSlotInfo Slot(int abs);
     void Activate(int slotInPage);
     void ActivateAbs(int abs);
+    void Select(int abs) { }
     void SetPage(int page);
     void ChangePage(int delta);
     void Drop(int abs, int id, int fromAbs);
@@ -167,8 +191,15 @@ public interface IGameHotbar
 
 public interface IGameCommands
 {
+    bool Running => true;
+    bool Sitting => false;
+    bool AutoAttacking => false;
     void GoTown();
     void ToggleSit();
+    void ToggleRun() { }
+    void ToggleAttack() { }
+    void TurnCamera() { }
+    void OpenGameMenu() { }
     void TradeWithTarget();
 }
 
@@ -179,6 +210,7 @@ public interface IGameMap
     float X { get; }
     float Z { get; }
     float HeadingDegrees { get; }
+    bool MiniMapVisible => true;
     float WorldExtent { get; }
     Texture2D? MapTexture { get; }
     IReadOnlyList<MiniMap.Blip> Blips { get; }
@@ -296,8 +328,10 @@ public sealed class PluginGame
     internal void RaiseMap() => _map.Raise();
     internal void RaiseQuests() => _quests.Raise();
     internal void RaiseSkills() => _skills.Raise();
+    internal void RaiseChatItemLink(int id,string name) => _chat.RaiseItemLink(id,name);
     internal void RaiseChatLine(string bbcode) => _chat.RaiseLine(bbcode);
     internal void RaiseChatInputRequested() => _chat.RaiseInputRequested();
+    internal void RaiseChatChannelRequested(string prefix) => _chat.RaiseChannelRequested(prefix);
     internal void RaiseLogLine(GameLogLine line) => _log.RaiseLine(line);
 
     private sealed class CharacterProxy : IGameCharacter
@@ -348,6 +382,9 @@ public sealed class PluginGame
         public int GridCount => Source?.GridCount ?? InventoryConstants.HaveMax;
         public GameItem At(int slot) => Source?.At(slot) ?? GameItem.Empty(slot);
         public void Move(int from, int to) => Source?.Move(from, to);
+        public void MoveAmount(int from, int to, int count) => Source?.MoveAmount(from, to, count);
+        public int TransferToInventorySlot(int from) => Source?.TransferToInventorySlot(from) ?? -1;
+        public void ConfirmDrop(int slot, int itemId) => Source?.ConfirmDrop(slot, itemId);
         public void Use(int slot) => Source?.Use(slot);
         public void Drop(int slot) => Source?.Drop(slot);
         public void Arrange() => Source?.Arrange();
@@ -376,6 +413,10 @@ public sealed class PluginGame
     {
         public IGameWindows? Source;
 
+        public IGameCharacterPanel? CharacterPanel => Source?.CharacterPanel;
+        public GameNpcPortrait? NpcPortrait => Source?.NpcPortrait;
+
+        public int NotificationCount(string id) => Source?.NotificationCount(id) ?? 0;
         public bool IsOpen(string id) => Source?.IsOpen(id) ?? false;
         public void Open(string id) => Source?.Open(id);
         public void Close(string id) => Source?.Close(id);
@@ -385,8 +426,18 @@ public sealed class PluginGame
     private sealed class ChatProxy : IGameChat
     {
         public IGameChat? Source;
+        public event Action<int,string>? ItemLinkRequested;
+        internal void RaiseItemLink(int id,string name)=>ItemLinkRequested?.Invoke(id,name);
+        public IReadOnlyList<string> ReadHistory(int mask,bool timestamps,string colors)=>Source?.ReadHistory(mask,timestamps,colors)??History;
+        public bool LinkInventoryItem(int slot)=>Source?.LinkInventoryItem(slot)??false;
+        public void ShowLinkTooltip(int itemId)=>Source?.ShowLinkTooltip(itemId);
+        public void HideLinkTooltip()=>Source?.HideLinkTooltip();
+        public void PlayerMenu(string name,Vector2 at)=>Source?.PlayerMenu(name,at);
+        public IReadOnlyList<LibreKO.Domain.NearbyRow> NearbyPlayers()=>Source?.NearbyPlayers()??Array.Empty<LibreKO.Domain.NearbyRow>();
         public event Action<string>? LineAdded;
         public event Action? InputRequested;
+        public event Action<string>? ChannelRequested;
+        internal void RaiseChannelRequested(string prefix) => ChannelRequested?.Invoke(prefix);
         internal void RaiseLine(string bbcode) => LineAdded?.Invoke(bbcode);
         internal void RaiseInputRequested() => InputRequested?.Invoke();
 
@@ -405,9 +456,11 @@ public sealed class PluginGame
         public int SlotsPerPage => Source?.SlotsPerPage ?? HotbarLayout.SlotsPerPage;
         public int Page => Source?.Page ?? 0;
         public bool Locked => Source?.Locked ?? false;
+        public int SelectedAbs => Source?.SelectedAbs ?? -1;
         public HotSlotInfo Slot(int abs) => Source?.Slot(abs) ?? HotSlotInfo.Empty(abs);
         public void Activate(int slotInPage) => Source?.Activate(slotInPage);
         public void ActivateAbs(int abs) => Source?.ActivateAbs(abs);
+        public void Select(int abs) => Source?.Select(abs);
         public void SetPage(int page) => Source?.SetPage(page);
         public void ChangePage(int delta) => Source?.ChangePage(delta);
         public void Drop(int abs, int id, int fromAbs) => Source?.Drop(abs, id, fromAbs);
@@ -421,8 +474,15 @@ public sealed class PluginGame
     {
         public IGameCommands? Source;
 
+        public bool Running => Source?.Running ?? true;
+        public bool Sitting => Source?.Sitting ?? false;
+        public bool AutoAttacking => Source?.AutoAttacking ?? false;
         public void GoTown() => Source?.GoTown();
         public void ToggleSit() => Source?.ToggleSit();
+        public void ToggleRun() => Source?.ToggleRun();
+        public void ToggleAttack() => Source?.ToggleAttack();
+        public void TurnCamera() => Source?.TurnCamera();
+        public void OpenGameMenu() => Source?.OpenGameMenu();
         public void TradeWithTarget() => Source?.TradeWithTarget();
     }
 
@@ -437,6 +497,7 @@ public sealed class PluginGame
         public float X => Source?.X ?? 0f;
         public float Z => Source?.Z ?? 0f;
         public float HeadingDegrees => Source?.HeadingDegrees ?? 0f;
+        public bool MiniMapVisible => Source?.MiniMapVisible ?? true;
         public float WorldExtent => Source?.WorldExtent ?? 0f;
         public Texture2D? MapTexture => Source?.MapTexture;
         public IReadOnlyList<MiniMap.Blip> Blips => Source?.Blips ?? Array.Empty<MiniMap.Blip>();

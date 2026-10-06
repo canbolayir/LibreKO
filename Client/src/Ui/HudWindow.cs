@@ -1,4 +1,4 @@
-﻿using Godot;
+using Godot;
 using LibreKO.Domain;
 
 namespace LibreKO;
@@ -6,6 +6,7 @@ namespace LibreKO;
 public partial class HudWindow : PanelContainer
 {
     public VBoxContainer Body { get; }
+    public PanelContainer? Header => _header;
 
     public string Id { get; }
 
@@ -72,6 +73,8 @@ public partial class HudWindow : PanelContainer
     private static Vector2 HeaderButtonSize => Platform.Pick(new Vector2(20, 20), new Vector2(46, 46));
 
     public event System.Action<bool>? MinimizedChanged;
+
+    public System.Action<bool>? AttentionStyler { get; set; }
 
     public string Title { set => _titleLbl.Text = value; }
 
@@ -377,7 +380,7 @@ public partial class HudWindow : PanelContainer
 
     private void RecentreWhileSettling()
     {
-        if (Visible && Time.GetTicksMsec() < _centreSettlesAt && IsInstanceValid(Layout))
+        if (!HasMeta("content_open_anchor") && Visible && Time.GetTicksMsec() < _centreSettlesAt && IsInstanceValid(Layout))
             Callable.From(Layout.ReapplyDefault).CallDeferred();
     }
 }
