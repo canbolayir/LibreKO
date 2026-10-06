@@ -39,6 +39,8 @@ internal sealed class FxEmitterKeys
 public partial class FxSharedEmitter : GpuParticles3D
 {
     internal int Slots;
+    internal (ulong Viewport, FxPartKey Part) PoolKey;
+    public override void _ExitTree() => FxEmitterPool.Forget(PoolKey, this);
 }
 
 internal static class FxEmitterPool
@@ -46,14 +48,17 @@ internal static class FxEmitterPool
     private const int InstancesPerEmitter = 64;
     private const float SharedAabbHalf = 4096f;
 
-    private static readonly Dictionary<FxPartKey, List<FxSharedEmitter>> _emitters = new();
+    private static readonly Dictionary<(ulong Viewport, FxPartKey Part), List<FxSharedEmitter>> _emitters = new();
     private static QuadMesh? _quad;
 
     internal static int Live { get; private set; }
 
     internal static FxSharedEmitter? Acquire(Node part, FxPartKey key, FxParticleTemplate template)
     {
-        if (!_emitters.TryGetValue(key, out var list)) _emitters[key] = list = new List<FxSharedEmitter>();
+        var viewport = part.GetViewport();
+        if (viewport == null) return null;
+        var poolKey = (viewport.GetInstanceId(), key);
+        if (!_emitters.TryGetValue(poolKey, out var list)) _emitters[poolKey] = list = new List<FxSharedEmitter>();
         for (int i = list.Count - 1; i >= 0; i--)
         {
             var existing = list[i];
@@ -78,6 +83,7 @@ internal static class FxEmitterPool
             DrawPass1 = _quad ??= new QuadMesh { Size = Vector2.One },
             MaterialOverride = template.Material,
             Slots = 1,
+            PoolKey = poolKey,
         };
         parent.AddChild(emitter);
         list.Add(emitter);
@@ -88,6 +94,13 @@ internal static class FxEmitterPool
     internal static void Release(FxSharedEmitter? emitter)
     {
         if (emitter != null && GodotObject.IsInstanceValid(emitter) && emitter.Slots > 0) emitter.Slots--;
+    }
+
+    internal static void Forget((ulong Viewport, FxPartKey Part) key, FxSharedEmitter emitter)
+    {
+        if (!_emitters.TryGetValue(key, out var list) || !list.Remove(emitter)) return;
+        Live--;
+        if (list.Count == 0) _emitters.Remove(key);
     }
 
     internal static void Clear()

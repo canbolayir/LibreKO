@@ -50,8 +50,9 @@ public partial class World
         }
     }
 
-    private uint? AttachWeaponGlow(Node3D weaponMesh, int itemId)
+    public static uint? AttachWeaponGlow(Node3D weaponMesh, int itemId)
     {
+        _weaponIndex ??= LoadWeaponIndex();
         if (!_glowLoaded) { LoadWeaponGlow(); _glowLoaded = true; }
         if (!TryResolveWeaponGlow(itemId, out int baseItemId, out var fxName, out var tailFx)) return null;
         var def = ItemData.Get(baseItemId);
@@ -135,7 +136,7 @@ public partial class World
         return null;
     }
 
-    private int ResolveWeaponBaseId(int itemId)
+    private static int ResolveWeaponBaseId(int itemId)
     {
         if (_weaponIndex != null && _weaponIndex.ContainsKey(itemId)) return itemId;
 
@@ -169,10 +170,10 @@ public partial class World
         return bestBase != 0 ? bestBase : rounded;
     }
 
-    private bool TryResolveWeaponGlow(int itemId, out int baseItemId, out string fxName)
+    private static bool TryResolveWeaponGlow(int itemId, out int baseItemId, out string fxName)
         => TryResolveWeaponGlow(itemId, out baseItemId, out fxName, out _);
 
-    private void LoadWeaponGlow()
+    private static void LoadWeaponGlow()
     {
         _weaponCat = new System.Collections.Generic.Dictionary<int, int>();
         _glowCats = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<int, string>>();

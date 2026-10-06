@@ -197,12 +197,12 @@ public partial class World
         public uint TraceColor = 0xFFFFFFFF;
         public float Trace0, Trace1;
     }
-    private System.Collections.Generic.Dictionary<int, WeaponInfo>? _weaponIndex;
+    private static System.Collections.Generic.Dictionary<int, WeaponInfo>? _weaponIndex;
 
-    private System.Collections.Generic.Dictionary<int, int>? _weaponCat;
-    private System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<int, string>>? _glowCats;
-    private System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<int, string>>? _glowTails;
-    private bool _glowLoaded;
+    private static System.Collections.Generic.Dictionary<int, int>? _weaponCat;
+    private static System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<int, string>>? _glowCats;
+    private static System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<int, string>>? _glowTails;
+    private static bool _glowLoaded;
 
     private static readonly System.Collections.Generic.HashSet<int> NoWeaponNpcIds = new()
     {
@@ -210,7 +210,7 @@ public partial class World
         13013,
     };
 
-    private bool TryResolveWeaponGlow(int itemId, out int baseItemId, out string fxName, out string tailFx)
+    private static bool TryResolveWeaponGlow(int itemId, out int baseItemId, out string fxName, out string tailFx)
     {
         tailFx = "";
         baseItemId = ResolveWeaponBaseId(itemId);
