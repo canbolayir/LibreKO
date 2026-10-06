@@ -54,6 +54,9 @@ public static class ItemData
     public static int ShownCount(Item? def, ItemSlot slot) =>
         def is { IsChargeItem: true } ? slot.Durability : slot.Count;
 
+    public static string CountBadge(Item? def, int shown) =>
+        shown > 1 || shown == 1 && def is { Countable: > 0 } ? shown.ToString() : "";
+
     public static int MaxDurability(Item? def, Ext? ext) => (def?.Duration ?? 0) + (ext?.DurationBonus ?? 0);
 
     public static short MaxDurabilityOf(int itemId) =>

@@ -6,6 +6,7 @@ namespace LibreKO;
 public partial class MoneyEdit : LineEdit
 {
     public event Action<long>? ValueChanged;
+    public bool GroupDigits { get; set; } = true;
 
     private readonly long _max;
     private bool _formatting;
@@ -26,7 +27,7 @@ public partial class MoneyEdit : LineEdit
         {
             long clamped = Math.Clamp(value, 0, _max);
             _formatting = true;
-            Text = clamped.ToString("n0");
+            Text = FormatValue(clamped);
             CaretColumn = Text.Length;
             _formatting = false;
         }
@@ -41,7 +42,7 @@ public partial class MoneyEdit : LineEdit
             if (char.IsDigit(text[i])) digitsBeforeCaret++;
 
         long value = Math.Min(DigitsOf(text), _max);
-        string formatted = value == 0 && !HasDigit(text) ? "" : value.ToString("n0");
+        string formatted = value == 0 && !HasDigit(text) ? "" : FormatValue(value);
 
         _formatting = true;
         Text = formatted;
@@ -50,6 +51,8 @@ public partial class MoneyEdit : LineEdit
 
         ValueChanged?.Invoke(value);
     }
+
+    private string FormatValue(long value) => value.ToString(GroupDigits ? "n0" : "0");
 
     private static bool HasDigit(string text)
     {

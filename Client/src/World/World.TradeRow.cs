@@ -10,6 +10,7 @@ public partial class World
         int count = 0, bool worthless = false)
     {
         var row = new TradeRow(onDoubleClick);
+        SetTradeItemMetadata(row, itemId, tipItem.Count, tipItem.Durability, tipSlot);
         row.AddThemeStyleboxOverride("panel", UiTheme.Row());
         row.MouseEntered += () => ShowItemTooltip(tipSlot, tipItem);
         row.MouseExited += HideItemTooltip;
@@ -46,6 +47,12 @@ public partial class World
         btn.Pressed += () => onButton();
         hb.AddChild(btn);
         return row;
+    }
+
+    private static void SetTradeItemMetadata(Control row, int itemId, int count, short durability, int source)
+    {
+        row.SetMeta("trade_item_id", itemId); row.SetMeta("trade_count", count);
+        row.SetMeta("trade_durability", durability); row.SetMeta("trade_source", source);
     }
 
     private sealed partial class TradeRow : PanelContainer

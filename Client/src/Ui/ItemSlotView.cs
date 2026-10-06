@@ -40,6 +40,7 @@ public sealed partial class ItemSlotView : PanelContainer
 
     public int Index { get; set; }
     public ItemSlot Item { get; private set; }
+    public Label CountLabel => _count;
 
     public ItemSlotView(float size)
     {
@@ -78,6 +79,8 @@ public sealed partial class ItemSlotView : PanelContainer
         _count = HudStyle.Label(11, HorizontalAlignment.Right);
         _count.MouseFilter = MouseFilterEnum.Ignore;
         _count.VerticalAlignment = VerticalAlignment.Bottom;
+        _count.SizeFlagsHorizontal = _count.SizeFlagsVertical = SizeFlags.Fill;
+        _count.SetAnchorsPreset(LayoutPreset.FullRect);
         _count.AddThemeStyleboxOverride("normal", new StyleBoxEmpty { ContentMarginRight = 3, ContentMarginBottom = 1 });
         _count.AddThemeConstantOverride("outline_size", 3);
         _count.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 0.85f));
@@ -110,8 +113,8 @@ public sealed partial class ItemSlotView : PanelContainer
         else
         {
             _icon.Texture = ItemData.Icon(item.ItemId);
-            int shown = ItemData.ShownCount(ItemData.Get(item.ItemId), item);
-            _count.Text = shown > 1 ? shown.ToString() : "";
+            var def = ItemData.Get(item.ItemId);
+            _count.Text = ItemData.CountBadge(def, ItemData.ShownCount(def, item));
             _plus.Set(item.ItemId);
         }
         ApplyFrame();

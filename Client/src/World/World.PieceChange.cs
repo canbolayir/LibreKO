@@ -498,7 +498,8 @@ public partial class World
             _held = new ItemSlot { ItemId = itemId, Count = count, Durability = durability };
             _icon.Texture = ItemData.Icon(itemId);
             _label.Visible = false;
-            _count.Text = count > 1 ? count.ToString() : "";
+            var def = ItemData.Get(itemId);
+            _count.Text = ItemData.CountBadge(def, count);
             _plus.Set(itemId);
             AddThemeStyleboxOverride("panel", UiTheme.Slot(UiTheme.Gold));
         }

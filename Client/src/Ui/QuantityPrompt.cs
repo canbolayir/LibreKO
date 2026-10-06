@@ -122,7 +122,7 @@ public sealed partial class QuantityPrompt : CanvasLayer
         if (_summarise != null) _summary.Text = _summarise(_amount.Value);
     }
 
-    private void Confirm()
+    public void Confirm()
     {
         long value = _amount.Value;
         if (value <= 0 || value > _max || _confirm is not { } confirm) return;
