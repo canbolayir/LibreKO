@@ -31,6 +31,7 @@ public partial class World
         AddChild(_mailIconLayer);
 
         _mailIconButton = TopIconButton(_mailIconLayer, "system/envelope", "Mail", ToggleMail, out _mailIconImage);
+        _mailIconButton.Visible = !PluginHost.Ui.HudHidden(LibreKO.Plugins.HudPart.MailIcon);
 
         var badge = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         badge.AddThemeStyleboxOverride("panel", new StyleBoxEmpty());

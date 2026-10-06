@@ -492,11 +492,11 @@ public partial class World
 
     private void RefreshHotbar()
     {
+        if (_hotSelected >= 0 && (_hotSelected >= HotTotal || _hotbar[_hotSelected] == 0)) _hotSelected = -1;
         PluginNotifyHotbar();
         _touchActions?.Refresh(_hotPage);
         if (_hotbarBox == null || !GodotObject.IsInstanceValid(_hotbarBox)) return;
         HideItemTooltip();
-        if (_hotSelected >= 0 && (_hotSelected >= HotTotal || _hotbar[_hotSelected] == 0)) _hotSelected = -1;
         int page = _hotPage * HotSlotsPerPage;
         for (int i = 0; i < _hotCells.Count; i++)
             if (GodotObject.IsInstanceValid(_hotCells[i]))

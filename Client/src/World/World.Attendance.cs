@@ -75,6 +75,7 @@ public partial class World
 
         _attendanceGift = TopIconButton(_attendanceGiftLayer, "system/gift", "Daily attendance",
             OpenAttendance, out _attendanceGiftIcon);
+        _attendanceGift.Visible = !PluginHost.Ui.HudHidden(LibreKO.Plugins.HudPart.AttendanceIcon);
 
         var badge = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         badge.AddThemeStyleboxOverride("panel", new StyleBoxEmpty());
@@ -117,7 +118,7 @@ public partial class World
             _attendanceGiftBlink.Kill();
         _attendanceGiftBlink = null;
         _attendanceGift.Modulate = Colors.White;
-        if (!waiting) return;
+        if (!waiting || !_attendanceGift.Visible) return;
 
         var blink = _attendanceGift.CreateTween().SetLoops();
         blink.TweenProperty(_attendanceGift, "modulate:a",

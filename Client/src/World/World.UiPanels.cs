@@ -29,6 +29,7 @@ public partial class World
 
     private MiniMap _miniMap = null!;
     private Control? _statusHud;
+    private bool _miniMapShown = true;
     private readonly List<MiniMap.Blip> _blipScratch = new();
     private const float QuestTargetBlipRadius = 4.5f;
     private Label _kcLabel = null!;
@@ -146,12 +147,11 @@ public partial class World
 
     private void ToggleMiniMap()
     {
+        _miniMapShown = !_miniMapShown;
         if (_pluginHud.TryGetValue(LibreKO.Plugins.HudPart.MiniMap, out var themed))
-        {
-            themed.Visible = !themed.Visible;
-            return;
-        }
-        if (_miniMap != null) _miniMap.Visible = !_miniMap.Visible;
+            themed.Visible = _miniMapShown;
+        else if (_miniMap != null) _miniMap.Visible = _miniMapShown;
+        PluginNotifyMap();
     }
 
     private void UpdateMiniMap()
@@ -159,9 +159,9 @@ public partial class World
         if (_miniMap == null) return;
         _blipScratch.Clear();
         if (!_blind.HidesOthers(Now())) AddEntityBlips();
-        float heading = Coord.KoHeading(Mathf.Sin(_camYaw), -Mathf.Cos(_camYaw));
+        float heading = CharacterMapHeading;
         _miniMap.UpdateView(_myKoX, _myKoZ, heading, _blipScratch);
-        PluginNotifyMap(heading);
+        PluginNotifyMap();
     }
 
     private void AddEntityBlips()

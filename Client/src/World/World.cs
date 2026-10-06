@@ -9,6 +9,7 @@ public partial class World : Node3D, IWorldContext
     private int _myId;
     private int _zone;
     private bool _worldReady;
+    internal bool BenchmarkReady => _worldReady;
 
     internal ChatSystem Chat { get; private set; } = null!;
     internal FloaterSystem Floaters { get; private set; } = null!;
@@ -218,7 +219,12 @@ public partial class World : Node3D, IWorldContext
             if (k.Keycode == Key.Escape && TryMinimizeFocusedWhisper())
             { GetViewport().SetInputAsHandled(); return; }
             if (GetViewport().GuiGetFocusOwner() is LineEdit or TextEdit or SpinBox) return;
-            if (k.Keycode is Key.Enter or Key.KpEnter) { Chat.Open(); GetViewport().SetInputAsHandled(); return; }
+            if (k.Keycode is Key.Enter or Key.KpEnter)
+            {
+                if (!TryFocusWhisperInput()) Chat.Open();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
             NoteMoveKey(k);
             if (_hotkeys.TryGetValue(KeyChord.From(k), out var press))
             { press(); GetViewport().SetInputAsHandled(); return; }

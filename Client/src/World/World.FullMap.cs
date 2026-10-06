@@ -60,7 +60,7 @@ public partial class World
     private void UpdateFullMap()
     {
         if (!_fullMapShown) return;
-        float heading = Coord.KoHeading(Mathf.Sin(_camYaw), -Mathf.Cos(_camYaw));
+        float heading = CharacterMapHeading;
         _fullMapView.SetView(_myKoX, _myKoZ, heading, _blipScratch);
     }
 

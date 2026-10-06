@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Godot;
 
 namespace LibreKO;
@@ -25,6 +25,7 @@ public partial class World
         _powerUpStoreIcon = TopIconButton(_topIconLayer, "system/gem", "Power-Up Store",
             OpenPowerUpStore, out _powerUpStoreImage);
         _powerUpStoreImage.SelfModulate = UiTheme.Premium;
+        _powerUpStoreIcon.Visible = !PluginHost.Ui.HudHidden(LibreKO.Plugins.HudPart.PowerUpStoreIcon);
         _powerUpStoreIcon.Resized += PlacePowerUpStoreIcon;
 
         _lotteryIcon = TopIconButton(_topIconLayer, "system/ticket", "Lottery Event",

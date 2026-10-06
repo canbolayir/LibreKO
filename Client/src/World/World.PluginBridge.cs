@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
@@ -72,16 +72,26 @@ public partial class World
 
     private void PluginNotifyHotbar() => _pluginBridge?.RaiseHotbar();
 
-    private void PluginNotifyMap(float headingDegrees) => _pluginBridge?.RaiseMap(headingDegrees);
+    private void PluginNotifyMap() => _pluginBridge?.RaiseMap();
 
     private sealed class PluginGameBridge : IGameCharacter, IGameInventory, IGameTarget, IGameWindows, IGameChat,
         IGameHotbar, IGameMap, IGameCommands, IGameLog, IGameQuests, IGameSkills
     {
+        public IGameCharacterPanel CharacterPanel => _w._characterPanelBridge ??= new CharacterPanelBridge(_w);
+        public GameNpcPortrait? NpcPortrait => _w.DialogNpcPortrait();
         private const string SelectPlayerNotice = "Select a player to trade with.";
 
         public void GoTown() => _w.TownRecallPress();
 
         public void ToggleSit() => _w.ToggleSitting();
+
+        public bool Running => _w._running;
+        public bool Sitting => _w._selfSitting;
+        public bool AutoAttacking => _w._autoAttack;
+        public void ToggleRun() => _w.ToggleRunMode();
+        public void ToggleAttack() => _w.ToggleAutoAttack();
+        public void TurnCamera() => _w.StartCameraHalfTurn();
+        public void OpenGameMenu() => _w.ToggleEsc(true);
 
         public void TradeWithTarget()
         {
@@ -96,7 +106,6 @@ public partial class World
         private readonly World _w;
         private int _targetId = -1, _targetHp, _targetMaxHp;
         private string _targetName = "";
-        private float _heading;
         private string _mapStem = "";
         private Texture2D? _mapTexture;
 
@@ -125,7 +134,7 @@ public partial class World
                 var list = new List<GameMasteryTree>();
                 for (int type = MasteryPoints.FirstTree; type <= MasteryPoints.LastTree; type++)
                 {
-                    bool shown = type != MasteryPoints.MasterTree || MasteryPoints.ClassHasTree(_w._selfClass, type);
+                    bool shown = MasteryPoints.ClassHasTree(_w._selfClass, type);
                     list.Add(new GameMasteryTree(type, SkillData.PageName(_w._selfClass, type), _w.Mastery.InTree(type),
                         shown, _w.CanSpendMastery(type), _w.MasteryHint(type)));
                 }
@@ -153,7 +162,7 @@ public partial class World
         {
             if (SkillData.Get(skillId) is not { } s) return default;
             return new GameSkillInfo(s.Desc.Replace('|', '\n'), s.Msp, s.Level, s.Level, SkillData.MasteryType(s.Tree) > 0,
-                SkillData.WeaponRequirementName(s.NeedWeapon),
+                SkillData.EquippedWeaponRequirementName(s.ItemGroup),
                 s.NeedItem != 0 ? ItemData.DisplayName(s.NeedItem) : "",
                 s.ConsumedItem != 0 && s.ConsumedItem != s.NeedItem ? ItemData.DisplayName(s.ConsumedItem) : "");
         }
@@ -205,9 +214,8 @@ public partial class World
 
         public void RaiseHotbar() => Callable.From(PluginHost.Game.RaiseHotbar).CallDeferred();
 
-        public void RaiseMap(float headingDegrees)
+        public void RaiseMap()
         {
-            _heading = headingDegrees;
             PluginHost.Game.RaiseMap();
         }
 
@@ -268,6 +276,10 @@ public partial class World
         }
 
         public void Move(int from, int to) => _w.MoveBetween(from, to);
+        public void MoveAmount(int from, int to, int count) => _w.MoveBetween(from, to, count);
+        public int TransferToInventorySlot(int from) => from >= 0 && from < _w.Inv.Length
+            ? _w.Inv.FirstStackOrFreeGridSlot(_w.Inv[from], ItemData.Get(_w.Inv[from].ItemId)?.Countable ?? 0) : -1;
+        public void ConfirmDrop(int slot, int itemId) => _w.DestroyInventoryItem(slot, itemId);
 
         public void Use(int slot) => _w.InventoryContext(slot);
 
@@ -294,20 +306,74 @@ public partial class World
 
         public void Clear() => _w.Deselect();
 
+        public int NotificationCount(string id) => id.ToLowerInvariant() switch
+        {
+            "mail" => Net.I.MailUnread,
+            "achievements" => _w._achClaimablePerTab.Values.Sum(),
+            "attendance" => _w.ClaimableAttendanceCount(),
+            _ => 0,
+        };
+
+        private bool SetServiceWindow(string id, bool? shown)
+        {
+            switch (id.ToLowerInvariant())
+            {
+                case "mail":
+                    if (shown == null || shown != _w._mailShown) _w.ToggleMail();
+                    return true;
+                case "achievements":
+                    if (shown == null || shown != _w._achShown) _w.ToggleAchievements();
+                    return true;
+                case "attendance":
+                    if (shown == null || shown != _w._attendanceShown) _w.ToggleAttendance();
+                    return true;
+                case "shoppingmall":
+                    if (shown == null || shown != _w._pusShown) _w.ToggleShoppingMall();
+                    return true;
+                default: return false;
+            }
+        }
+
         public bool IsOpen(string id)
         {
+            switch (id.ToLowerInvariant())
+            {
+                case "mail": return _w._mailShown;
+                case "achievements": return _w._achShown;
+                case "attendance": return _w._attendanceShown;
+                case "shoppingmall": return _w._pusShown;
+            }
+            if (string.Equals(id, "zonemap", StringComparison.OrdinalIgnoreCase)) return _w._fullMapShown;
             if (MainWindowKeys.TryGetValue(id, out var key)) return _w.MainWindowOpen(key);
             return HudWindow.Find(id)?.Visible ?? false;
         }
 
         public void Open(string id)
         {
+            if (SetServiceWindow(id, true)) return;
+            if (string.Equals(id, "zonemap", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!_w._fullMapShown) _w.ToggleFullMap();
+                return;
+            }
+            if (string.Equals(id, "genie", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!_w._genieShown) _w.ToggleGenie();
+                return;
+            }
             if (MainWindowKeys.TryGetValue(id, out var key)) { _w.ShowMainWindow(key); return; }
             if (HudWindow.Find(id) is { } win) win.Visible = true;
         }
 
         public void Close(string id)
         {
+            if (SetServiceWindow(id, false)) return;
+            if (string.Equals(id, "zonemap", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_w._fullMapShown) _w.ToggleFullMap();
+                return;
+            }
+            if (string.Equals(id, "genie", StringComparison.OrdinalIgnoreCase)) { _w.CloseGenie(); return; }
             if (MainWindowKeys.TryGetValue(id, out var key))
             {
                 if (_w.MainWindowOpen(key)) _w.ToggleMainWindow(key);
@@ -318,11 +384,27 @@ public partial class World
 
         public void Toggle(string id)
         {
+            if (SetServiceWindow(id, null)) return;
+            if (string.Equals(id, "zonemap", StringComparison.OrdinalIgnoreCase)) { _w.ToggleFullMap(); return; }
+            if (string.Equals(id, "genie", StringComparison.OrdinalIgnoreCase)) { _w.ToggleGenie(); return; }
             if (string.Equals(id, ClanWindowId, StringComparison.OrdinalIgnoreCase)) { _w.OpenCharacterPage(CharacterPage.Clan); return; }
             if (MainWindowKeys.TryGetValue(id, out var key)) { _w.ToggleMainWindow(key); return; }
             if (HudWindow.Find(id) is { } win) win.Visible = !win.Visible;
         }
 
+        public IReadOnlyList<string> ReadHistory(int mask,bool timestamps,string colors)=>_w.Chat?.ClassicHistory(mask,timestamps,colors)??Array.Empty<string>();
+        public bool LinkInventoryItem(int slot)
+        {
+            if(_w.Chat?.PluginTyping!=true || !Input.IsKeyPressed(Key.Shift) || slot<0 || slot>=_w.Inv.Length || _w.Inv[slot].IsEmpty) return false;
+            int id=_w.Inv[slot].ItemId;
+            if(id==LibreKO.Domain.ChatItemLink.RefusedItem) return false;
+            PluginHost.Game.RaiseChatItemLink(id,ItemData.DisplayName(id));
+            return true;
+        }
+        public void ShowLinkTooltip(int itemId)=>_w.ShowChatItemTip(itemId);
+        public void HideLinkTooltip()=>_w.HideItemTooltip();
+        public void PlayerMenu(string name,Vector2 at)=>_w.ShowPlayerMenuByName(name,at);
+        public IReadOnlyList<LibreKO.Domain.NearbyRow> NearbyPlayers()=>_w.ClassicNearbyPlayers();
         IReadOnlyList<string> IGameChat.History => _w.Chat?.History ?? Array.Empty<string>();
 
         public void Send(string text) => _w.Chat?.SendText(text);
@@ -336,6 +418,7 @@ public partial class World
         public int SlotsPerPage => HotbarLayout.SlotsPerPage;
         public int Page => _w._hotPage;
         public bool Locked => Config.HotbarLocked;
+        public int SelectedAbs => _w._hotSelected;
 
         public HotSlotInfo Slot(int abs)
         {
@@ -364,6 +447,7 @@ public partial class World
         public void Activate(int slotInPage) => _w.ActivateHotSlot(slotInPage);
 
         public void ActivateAbs(int abs) => _w.FireHotSlot(abs);
+        public void Select(int abs) => _w.SelectHotAbs(abs);
 
         public void SetPage(int page) => _w.SetHotPage(page);
 
@@ -383,7 +467,8 @@ public partial class World
         public string ZoneName => MapName(_w._zone);
         public float X => _w._myKoX;
         public float Z => _w._myKoZ;
-        public float HeadingDegrees => _heading;
+        public float HeadingDegrees => _w.CharacterMapHeading;
+        public bool MiniMapVisible => _w._miniMapShown;
         public float WorldExtent => _w._miniMap?.WorldExtent ?? 0f;
         public IReadOnlyList<MiniMap.Blip> Blips => _w._blipScratch;
 

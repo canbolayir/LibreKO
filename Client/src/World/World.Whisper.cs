@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Godot;
 using LibreKO.Network;
@@ -34,6 +34,7 @@ public partial class World
     private CanvasLayer _whisperLayer = null!;
     private readonly Dictionary<string, WhisperChat> _whispers = new(StringComparer.OrdinalIgnoreCase);
     private int _whisperOpened;
+    private string? _whisperComposeTarget;
 
     private void WhisperInit()
     {
@@ -99,7 +100,9 @@ public partial class World
         chat.Window.Closed += () => CloseWhisper(name);
         chat.Window.MinimizedChanged += isMinimized =>
         {
+            if (isMinimized && _whisperComposeTarget == name) _whisperComposeTarget = null;
             if (isMinimized || !_whispers.TryGetValue(name, out var restored)) return;
+            _whisperComposeTarget = name;
             StopWhisperBlink(restored);
             restored.StickBottom = true;
             ScrollWhisperToEnd(restored);
@@ -132,9 +135,10 @@ public partial class World
             PlaceholderText = "Message",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             MaxLength = 128,
-            KeepEditingOnTextSubmit = true,
+            KeepEditingOnTextSubmit = false,
         };
         chat.Input.TextSubmitted += _ => SendWhisperFrom(name);
+        chat.Input.FocusEntered += () => _whisperComposeTarget = name;
         row.AddChild(chat.Input);
 
         var send = new Button { Text = "Send", FocusMode = Control.FocusModeEnum.None };
@@ -147,9 +151,11 @@ public partial class World
         send.Pressed += () => SendWhisperFrom(name);
         row.AddChild(send);
 
+        PluginHost.Ui.WhisperStyler?.Invoke(chat.Window);
+
         _whispers[name] = chat;
         foreach (var line in Net.I.WhisperHistory(name))
-            chat.Log.AddChild(BuildWhisperRow(line.Mine, line.Notice, line.Text));
+            chat.Log.AddChild(BuildWhisperRow(name, line.Mine, line.Notice, line.Text));
         ScrollWhisperToEnd(chat);
         if (minimized) chat.Window.SetMinimized(true);
         return chat;
@@ -161,6 +167,8 @@ public partial class World
         var chat = GetOrCreateWhisper(name, minimized: false);
         chat.Window.Visible = true;
         chat.Window.SetMinimized(false);
+        _whisperLayer.MoveChild(chat.Window, -1);
+        _whisperComposeTarget = name;
         StopWhisperBlink(chat);
         chat.StickBottom = true;
         ScrollWhisperToEnd(chat);
@@ -170,6 +178,7 @@ public partial class World
     private void CloseWhisper(string name)
     {
         if (!_whispers.Remove(name, out var chat)) return;
+        if (_whisperComposeTarget == name) _whisperComposeTarget = null;
         StopWhisperBlink(chat);
         chat.Window.QueueFree();
     }
@@ -178,22 +187,38 @@ public partial class World
     {
         if (!_whispers.TryGetValue(name, out var chat)) return;
         string message = chat.Input.Text.Trim();
-        if (message.Length == 0) return;
-
-        Chat.SendWhisper(name, message);
+        if (message.Length > 0) Chat.SendWhisper(name, message);
         chat.Input.Clear();
-        if (!chat.Input.HasFocus()) chat.Input.CallDeferred(Control.MethodName.GrabFocus);
+        _whisperComposeTarget = name;
+        chat.Input.ReleaseFocus();
     }
 
     private void FocusWhisperAt(Vector2 screenPos)
     {
-        foreach (var chat in _whispers.Values)
+        // Match the rendered stack so Enter addresses the window under the click.
+        for (int i = _whisperLayer.GetChildCount() - 1; i >= 0; i--)
         {
-            if (!GodotObject.IsInstanceValid(chat.Window) || !chat.Window.Visible) continue;
-            if (chat.Window.Minimized || !chat.Window.GetGlobalRect().HasPoint(screenPos)) continue;
-            if (!chat.Input.HasFocus()) chat.Input.CallDeferred(Control.MethodName.GrabFocus);
-            return;
+            if (_whisperLayer.GetChild(i) is not HudWindow window || !window.Visible
+                || !window.GetGlobalRect().HasPoint(screenPos)) continue;
+            if (window.Minimized) break;
+            foreach (var chat in _whispers.Values)
+            {
+                if (chat.Window != window) continue;
+                _whisperComposeTarget = chat.Name;
+                return;
+            }
         }
+        _whisperComposeTarget = null;
+        foreach (var chat in _whispers.Values)
+            if (GodotObject.IsInstanceValid(chat.Input) && chat.Input.HasFocus()) chat.Input.ReleaseFocus();
+    }
+
+    private bool TryFocusWhisperInput()
+    {
+        if (_whisperComposeTarget == null || !_whispers.TryGetValue(_whisperComposeTarget, out var chat)
+            || !IsWhisperExpanded(chat)) return false;
+        chat.Input.GrabFocus();
+        return true;
     }
 
     private void OnWhisperChat(ChatLine line)
@@ -204,6 +229,7 @@ public partial class World
         bool isNew = !_whispers.ContainsKey(line.Name);
         var chat = GetOrCreateWhisper(line.Name, minimized: isNew);
         chat.Window.Visible = true;
+        _whisperLayer.MoveChild(chat.Window, -1);
         AppendWhisper(chat, mine: false, notice: false, line.Message);
 
         if (chat.Window.Minimized) StartWhisperBlink(chat);
@@ -233,7 +259,7 @@ public partial class World
         Net.I.RecordWhisper(chat.Name, mine, notice, text);
         chat.StickBottom = mine || WhisperAtBottom(chat);
 
-        chat.Log.AddChild(BuildWhisperRow(mine, notice, text));
+        chat.Log.AddChild(BuildWhisperRow(chat.Name, mine, notice, text));
         while (chat.Log.GetChildCount() > Net.WhisperLogMax)
         {
             var first = chat.Log.GetChild(0);
@@ -258,8 +284,9 @@ public partial class World
         chat.Scroll.ScrollVertical = (int)chat.Scroll.GetVScrollBar().MaxValue;
     }
 
-    private static Control BuildWhisperRow(bool mine, bool notice, string text)
+    private static Control BuildWhisperRow(string name, bool mine, bool notice, string text)
     {
+        if (PluginHost.Ui.WhisperLineBuilder is { } build) return build(name, mine, notice, text);
         var row = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         row.Alignment = notice
             ? BoxContainer.AlignmentMode.Center
@@ -306,6 +333,7 @@ public partial class World
 
     private void StartWhisperBlink(WhisperChat chat)
     {
+        if (chat.Window.AttentionStyler is { } style) { style(true); return; }
         if (chat.Blink != null && chat.Blink.IsValid()) return;
         var tween = chat.Window.CreateTween().SetLoops();
         tween.TweenProperty(chat.Window, "modulate:a", WhisperBlinkDim, WhisperBlinkStep);
@@ -317,6 +345,7 @@ public partial class World
     {
         if (chat.Blink != null && chat.Blink.IsValid()) chat.Blink.Kill();
         chat.Blink = null;
+        chat.Window.AttentionStyler?.Invoke(false);
         chat.Window.Modulate = Colors.White;
     }
 

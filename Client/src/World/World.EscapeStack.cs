@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Godot;
 
@@ -24,11 +24,14 @@ public partial class World : Node3D
         EscapeCloses(() => _whShown, () => CloseWarehouse());
         EscapeCloses(() => _upgradeShown, () => CloseUpgrade());
         EscapeCloses(() => _classChangeShown, () => CloseClassChange());
+        EscapeCloses(() => _exFinalPending, CloseExchangeFinal);
         EscapeCloses(() => _exAmountShown, () => CloseExchangeAmount());
+        EscapeCloses(() => _exRequestPending, () => AnswerExchangeRequest(false));
         EscapeCloses(() => _exWaiting, () => CancelExchangeRequest());
         EscapeCloses(() => _exShown, () => AbortExchange(local: true));
-        EscapeCloses(() => _shopShown, () => CloseShop());
+        EscapeCloses(() => _merchantAdvertLayer is { Visible:true }, () => _merchantAdvertLayer.Visible=false);
         EscapeCloses(() => _amountLayer.Visible, CloseAmountPrompt);
+        EscapeCloses(() => _shopShown, () => CloseShop());
         EscapeCloses(() => _wishFindShown, CloseWishFind);
         EscapeCloses(() => _wishShown, CloseWishList);
         EscapeCloses(() => _wantedShown, CloseWantedStall);
@@ -36,6 +39,7 @@ public partial class World : Node3D
         EscapeCloses(() => _merchantMenuShown, CloseMerchantMenu);
         EscapeCloses(() => _clanCreateShown, () => CloseClanCreate());
         EscapeCloses(() => _clanPointsShown, () => CloseClanPoints());
+        EscapeCloses(() => _characterClanDetails is { Visible: true }, () => _characterClanDetails!.Visible = false);
         EscapeCloses(() => _warpShown, () => CloseWarp());
         EscapeCloses(() => _rankShown, () => ToggleRank());
         EscapeCloses(() => _petShown, () => TogglePet());
@@ -59,6 +63,7 @@ public partial class World : Node3D
         EscapeCloses(() => _tournamentShown, () => CloseTournament());
         EscapeCloses(() => _disguiseShown, () => CloseDisguise());
         EscapeCloses(() => _presetShown, () => ClosePreset());
+        EscapeCloses(() => _titleShown, () => CloseTitlePicker());
         EscapeCloses(() => _msgrShown, () => CloseMessenger());
         EscapeCloses(() => _forcesShown, () => CloseForces());
         EscapeCloses(() => _instanceShown, () => CloseInstance());

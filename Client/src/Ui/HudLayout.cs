@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Godot;
 using LibreKO.Domain;
 
@@ -28,10 +28,17 @@ public sealed partial class HudLayout : Node
     private readonly Corner _moveCorner;
     private readonly bool _moveGripAlwaysVisible;
     private readonly bool _moveGripOverlay;
+    private readonly bool _legacyResizeGrip;
     private readonly Vector2 _resizeGripOffset;
     private readonly Action<float>? _backgroundOpacityChanged;
     private int _backgroundOpacityIndex = -1;
     private static readonly float[] BackgroundOpacityLevels = { 0.90f, 0.50f, 0.20f };
+
+    private static readonly System.Collections.Generic.List<HudLayout> SnapLayouts = new();
+    private const float ResizeSnapDistance = 12f;
+    private string? _resizeSnapPeerId;
+    private HudLayout? _resizePartner;
+    private Rect2 _partnerResizeOrigin;
 
     private bool _dragging;
     private bool _resizing;
@@ -67,7 +74,8 @@ public sealed partial class HudLayout : Node
         HudAnchor.Spot? anchor,
         Vector2 anchorMargin,
         Vector2 anchorSize,
-        bool moveGripOverlay)
+        bool moveGripOverlay,
+        bool legacyResizeGrip)
     {
         _target = target;
         _id = id;
@@ -84,6 +92,7 @@ public sealed partial class HudLayout : Node
         _moveCorner = moveCorner;
         _moveGripAlwaysVisible = moveGripAlwaysVisible;
         _moveGripOverlay = moveGripOverlay;
+        _legacyResizeGrip = legacyResizeGrip;
         _resizeGripOffset = resizeGripOffset;
         _backgroundOpacityChanged = backgroundOpacityChanged;
     }
@@ -118,18 +127,22 @@ public sealed partial class HudLayout : Node
         HudAnchor.Spot? anchor = null,
         Vector2 anchorMargin = default,
         Vector2 anchorSize = default,
-        bool moveGripOverlay = true)
+        bool moveGripOverlay = true,
+        bool legacyResizeGrip = false,
+        string? resizeSnapPeerId = null)
     {
         var behavior = new HudLayout(
             target, id, dragHandle, defaultPosition, resizable, defaultSize, minimumSize, persist,
             resizeCorner, moveCorner, moveGripAlwaysVisible, resizeGripOffset, backgroundOpacityChanged,
-            anchor, anchorMargin, anchorSize, moveGripOverlay);
+            anchor, anchorMargin, anchorSize, moveGripOverlay, legacyResizeGrip);
+        behavior._resizeSnapPeerId = resizeSnapPeerId;
         target.AddChild(behavior);
         return behavior;
     }
 
     public override void _Ready()
     {
+        if (_resizeSnapPeerId != null) SnapLayouts.Add(this);
         if (_dragHandle != null && _anchor == null)
         {
             _dragHandle.MouseFilter = Control.MouseFilterEnum.Stop;
@@ -177,7 +190,7 @@ public sealed partial class HudLayout : Node
     private void FollowDefaultOnScreen()
     {
         if (!GodotObject.IsInstanceValid(_target)) return;
-        if (_anchor == null && _persist && _defaultPosition != null && !_dragging && !Config.HasWindowPos(_id))
+        if (!_target.HasMeta("content_open_anchor") && _anchor == null && _persist && _defaultPosition != null && !_dragging && !Config.HasWindowPos(_id))
             _target.Position = _defaultPosition();
         ClampOnScreen();
     }
@@ -244,7 +257,10 @@ public sealed partial class HudLayout : Node
         if (_dragging && ev is InputEventMouseMotion drag)
         {
             if (drag.GlobalPosition.DistanceTo(_dragOriginMouse) >= 4f)
+            {
                 _dragMoved = true;
+                DetachResizePartner();
+            }
             _target.Position = drag.GlobalPosition + _dragOffset;
             ClampOnScreen();
             GetViewport().SetInputAsHandled();
@@ -266,6 +282,7 @@ public sealed partial class HudLayout : Node
             _target.Position = position;
             _target.Size = size;
             ClampOnScreen();
+            SnapAndResizePartner(fromLeft);
             GetViewport().SetInputAsHandled();
             return;
         }
@@ -329,6 +346,8 @@ public sealed partial class HudLayout : Node
 
     public override void _ExitTree()
     {
+        DetachResizePartner();
+        SnapLayouts.Remove(this);
         GetViewport().SizeChanged -= KeepOnScreen;
         if (GodotObject.IsInstanceValid(_target))
         {
@@ -380,15 +399,86 @@ public sealed partial class HudLayout : Node
         _resizeOriginMouse = mouse;
         _resizeOriginSize = _target.Size;
         _resizeOriginPosition = _target.Position;
+        if (_resizePartner != null)
+        {
+            if (!PartnerAvailable(_resizePartner)) DetachResizePartner();
+            else _partnerResizeOrigin = _resizePartner._target.GetGlobalRect();
+        }
     }
 
     private void EndResize()
     {
         if (!_resizing) return;
         _resizing = false;
+        SaveResizedLayout();
+        _resizePartner?.SaveResizedLayout();
+    }
+
+    private void SaveResizedLayout()
+    {
         if (!_persist) return;
         if (_anchor == null) Config.SaveWindowPos(_id, _target.Position);
         Config.SaveWindowSize(_id, _target.Size);
+        Placed?.Invoke();
+    }
+
+    private bool PartnerAvailable(HudLayout peer) => GodotObject.IsInstanceValid(peer)
+        && GodotObject.IsInstanceValid(peer._target) && peer._target.IsVisibleInTree()
+        && !peer.Frozen && peer.GetViewport() == GetViewport();
+
+    private void DetachResizePartner()
+    {
+        if (_resizePartner == null) return;
+        if (GodotObject.IsInstanceValid(_resizePartner)) _resizePartner._resizePartner = null;
+        _resizePartner = null;
+    }
+
+    private void SnapAndResizePartner(bool fromLeft)
+    {
+        if (_resizeSnapPeerId == null) return;
+        if (_resizePartner != null && !PartnerAvailable(_resizePartner)) DetachResizePartner();
+        bool joined = false;
+        if (_resizePartner == null)
+        {
+            var rect = _target.GetGlobalRect();
+            foreach (var peer in SnapLayouts)
+            {
+                if (peer == this || peer._id != _resizeSnapPeerId || !PartnerAvailable(peer)) continue;
+                var other = peer._target.GetGlobalRect();
+                float edge = fromLeft ? rect.Position.X : rect.End.X;
+                float otherEdge = fromLeft ? other.End.X : other.Position.X;
+                if (Mathf.Abs(edge - otherEdge) > ResizeSnapDistance
+                    || Mathf.Max(rect.Position.Y, other.Position.Y) > Mathf.Min(rect.End.Y, other.End.Y) + ResizeSnapDistance) continue;
+                peer.DetachResizePartner();
+                _resizePartner = peer;
+                peer._resizePartner = this;
+                _partnerResizeOrigin = other;
+                joined = true;
+                break;
+            }
+        }
+        if (_resizePartner == null) return;
+        var partner = _resizePartner._target;
+        var current = _target.GetGlobalRect();
+        var origin = _partnerResizeOrigin;
+        float left = fromLeft ? origin.Position.X : current.Position.X;
+        float right = fromLeft ? current.End.X : origin.End.X;
+        float minimum = Mathf.Max(_minimumSize.X, _target.GetCombinedMinimumSize().X);
+        float partnerMinimum = Mathf.Max(_resizePartner._minimumSize.X, partner.GetCombinedMinimumSize().X);
+        if (right - left < minimum + partnerMinimum) { DetachResizePartner(); return; }
+        float seam = joined ? (fromLeft ? origin.End.X : origin.Position.X)
+            : (fromLeft ? current.Position.X : current.End.X);
+        seam = Mathf.Round(Mathf.Clamp(seam, left + (fromLeft ? partnerMinimum : minimum),
+            right - (fromLeft ? minimum : partnerMinimum)));
+        float bottom = Mathf.Round(current.End.Y);
+        float minHeight = Mathf.Max(Mathf.Max(_minimumSize.Y, _target.GetCombinedMinimumSize().Y),
+            Mathf.Max(_resizePartner._minimumSize.Y, partner.GetCombinedMinimumSize().Y));
+        if (bottom < minHeight) { DetachResizePartner(); return; }
+        float height = Mathf.Round(Mathf.Clamp(current.Size.Y, minHeight, bottom));
+        _target.Size = new Vector2(fromLeft ? right - seam : seam - left, height);
+        _target.GlobalPosition = new Vector2(fromLeft ? seam : left, bottom - height);
+        partner.Size = new Vector2(fromLeft ? seam - left : right - seam, height);
+        partner.GlobalPosition = new Vector2(fromLeft ? left : seam, bottom - height);
     }
 
     private Vector2 ClampSize(Vector2 requested, bool fromLeft = false, bool fromTop = false)
@@ -439,7 +529,7 @@ public sealed partial class HudLayout : Node
         {
             _owner = owner;
             _placement = placement;
-            CustomMinimumSize = new Vector2(GripSize, GripSize);
+            CustomMinimumSize = _owner._legacyResizeGrip ? new Vector2(20,20) : new Vector2(GripSize, GripSize);
             Size = CustomMinimumSize;
             MouseFilter = MouseFilterEnum.Stop;
             MouseDefaultCursorShape = placement is Corner.TopRight or Corner.BottomLeft
@@ -456,6 +546,14 @@ public sealed partial class HudLayout : Node
             Vector2 Mirror(Vector2 p) => new(
                 _placement is Corner.TopRight or Corner.BottomRight ? p.X : Size.X - p.X,
                 _placement is Corner.BottomLeft or Corner.BottomRight ? p.Y : Size.Y - p.Y);
+            if (_owner._legacyResizeGrip)
+            {
+                var color = new Color(0.78f,0.80f,0.82f,0.90f);
+                DrawLine(Mirror(new Vector2(7,18)),Mirror(new Vector2(18,7)),color,2);
+                DrawLine(Mirror(new Vector2(12,18)),Mirror(new Vector2(18,12)),color,2);
+                DrawLine(Mirror(new Vector2(17,18)),Mirror(new Vector2(18,17)),color,2);
+                return;
+            }
             var shadeOffset = new Vector2(1, 1);
             foreach (var stroke in Strokes)
                 DrawLine(Mirror(stroke[0]) + shadeOffset, Mirror(stroke[1]) + shadeOffset, Shade, StrokeWidth);

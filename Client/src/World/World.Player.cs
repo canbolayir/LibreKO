@@ -52,6 +52,8 @@ public partial class World
     private bool GmSpeedHeld => (_isGm || Net.I.GmSpeedGranted) && Held(KeyAction.GmSpeed);
     private Vector3 _moveWish;
     private Vector3 _faceDir = Vector3.Forward;
+    private float? _mapTravelHeading;
+    private float CharacterMapHeading => _mapTravelHeading ?? Coord.KoHeading(-_faceDir.X,_faceDir.Z);
     private Vector3 _attackLungeDir;
     private double _attackLungeUntil;
     private void HandleInput(double delta)
@@ -62,7 +64,9 @@ public partial class World
 
         if (_selfDead) { _selfMoving = false; _moveSent = false; return; }
         bool typing = GetViewport().GuiGetFocusOwner() is LineEdit or TextEdit or SpinBox;
-        if (typing && !WhisperInputHasFocus() && !Chat.IsActive) { _selfMoving = false; SendMoveStop(); return; }
+        if (typing && !WhisperInputHasFocus()
+            && (!Chat.IsActive || LibreKO.Plugins.PluginHost.Ui.HudHidden(LibreKO.Plugins.HudPart.Chat)))
+        { _selfMoving = false; SendMoveStop(); return; }
 
         if (_selfSitting)
         {
@@ -115,6 +119,12 @@ public partial class World
             _self.Position = _lastFreePos;
         else
             _lastFreePos = _self.Position;
+
+        // Use actual travel after collision resolution, including reverse walking
+        // and sliding. Camera orbit never changes this heading; retain it at rest.
+        var travelled = _self.Position - wasAt;
+        if (travelled.X*travelled.X + travelled.Z*travelled.Z > 0.000001f)
+            _mapTravelHeading = Coord.KoHeading(-travelled.X,travelled.Z);
 
         (koX, koZ) = WorldToKo(_self.Position);
         _myKoX = koX; _myKoZ = koZ; _myKoY = _self.Position.Y - _selfLift;
@@ -247,7 +257,7 @@ public partial class World
         _collisionsOff = !on;
         ApplyCollisionPolicy();
         RefreshAdminCollisionSwitch();
-        CombatNotice(on ? "Collision enabled." : "Collision disabled — you now walk through everything.");
+        ChatStatusNotice(on ? "Collision enabled." : "Collision disabled — you now walk through everything.");
     }
 
     private bool RunLocalCommand(string command)

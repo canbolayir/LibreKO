@@ -585,6 +585,7 @@ public partial class World
 
         _trophy = TopIconButton(_trophyLayer, "system/trophy", "Achievements",
             ToggleAchievements, out _trophyIcon);
+        _trophy.Visible = !PluginHost.Ui.HudHidden(LibreKO.Plugins.HudPart.AchievementsIcon);
 
         var badge = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         badge.AddThemeStyleboxOverride("panel", new StyleBoxEmpty());
@@ -626,7 +627,7 @@ public partial class World
         if (_trophyBlink != null && _trophyBlink.IsValid()) _trophyBlink.Kill();
         _trophyBlink = null;
         _trophy.Modulate = Colors.White;
-        if (!waiting) return;
+        if (!waiting || !_trophy.Visible) return;
 
         var blink = _trophy.CreateTween().SetLoops();
         blink.TweenProperty(_trophy, "modulate:a", TrophyBlinkDim, TrophyBlinkStep);
