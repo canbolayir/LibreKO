@@ -11,6 +11,9 @@ public partial class World
     private const int StallColumns = 6;
     private const int StallBagColumns = 7;
     private const int MerchantAdvertMax = 40;
+    private const int MerchantCoinMax = 2_100_000_000;
+    private readonly record struct MerchantAction(int MerchantId, int Slot, int ItemId, int Count, int Price);
+    private MerchantAction? _merchantPurchase, _wantedSale;
 
     private CanvasLayer _mctLayer = null!;
 
@@ -23,6 +26,8 @@ public partial class World
     private LineEdit _sellAdvert = null!;
     private Label _sellTotal = null!, _sellBalance = null!, _sellStatus = null!;
     private bool _sellStallShown;
+    private CanvasLayer _merchantAdvertLayer=null!;
+    private bool _merchantAdvertAccepted;
 
     private readonly MerchantStallItem[] _myStall = new MerchantStallItem[StallSlots];
     private readonly int[] _myStallSrc = new int[StallSlots];
@@ -31,6 +36,7 @@ public partial class World
     private MerchantCell[] _shopCells = null!, _shopBagCells = null!;
     private Label _shopStatus = null!, _shopBalance = null!;
     private bool _shopShown;
+    private bool _merchantBuyPending;
     private int _shopTargetId = -1;
     private MerchantStallItem[] _shopItems = new MerchantStallItem[StallSlots];
 
@@ -40,6 +46,7 @@ public partial class World
     {
         BuildMerchantPanels();
         BuildBuyMerchantPanels();
+        Net.I.GoldChangeEvent += OnMerchantGold;
         Net.I.MerchantOpenResultEvent += OnMerchantOpenResult;
         Net.I.MerchantItemAddEvent += OnMerchantItemAdd;
         Net.I.MerchantItemCancelEvent += OnMerchantItemCancel;
@@ -55,6 +62,7 @@ public partial class World
 
     private void MerchantDispose()
     {
+        Net.I.GoldChangeEvent -= OnMerchantGold;
         Net.I.MerchantOpenResultEvent -= OnMerchantOpenResult;
         Net.I.MerchantItemAddEvent -= OnMerchantItemAdd;
         Net.I.MerchantItemCancelEvent -= OnMerchantItemCancel;
@@ -112,8 +120,8 @@ public partial class World
         root.AddThemeConstantOverride("separation", 8);
 
         root.AddChild(UiTheme.SectionTitle("On the stall"));
-        _sellStallCells = BuildMerchantGrid(root, StallSlots, StallColumns, null,
-            dragKey: "stallFrom", acceptKey: "bagFrom", onDropFrom: (bag, _) => StageStallItem(bag));
+        _sellStallCells = BuildMerchantGrid(root, StallSlots, StallColumns, UnstageStallItem,
+            dragKey: "stallFrom", acceptKey: "bagFrom", onDropFrom: StageStallItemAt);
 
         var money = UiTheme.Section();
         root.AddChild(money);
@@ -124,7 +132,7 @@ public partial class World
         moneyBox.AddChild(MoneyRow("Current Balance", out _sellBalance, UiTheme.TextHi));
 
         root.AddChild(UiTheme.SectionTitle("Your bags"));
-        _sellBagCells = BuildMerchantGrid(root, GridCount, StallBagColumns, null,
+        _sellBagCells = BuildMerchantGrid(root, GridCount, StallBagColumns, StageStallItem,
             dragKey: "bagFrom", acceptKey: "stallFrom", onDropFrom: (stall, _) => UnstageStallItem(stall));
 
         var advertRow = new HBoxContainer();
@@ -250,6 +258,8 @@ public partial class World
 
     private void CloseSellStall()
     {
+        CloseAmountPrompt();
+        if(_merchantAdvertLayer!=null)_merchantAdvertLayer.Visible=false;
         HideItemTooltip();
         if (!_sellStallShown) return;
         _sellStallShown = false;
@@ -263,13 +273,17 @@ public partial class World
         foreach (var slot in _myStall) if (!slot.IsEmpty) staged++;
         if (staged == 0) { SetSellStatus("Put at least one item on the stall.", true); return; }
 
+        if(_sellStallPanel.HasMeta("classic_merchant") && !_merchantAdvertAccepted){_merchantAdvertLayer.Visible=true;return;}
+        _merchantAdvertAccepted=false;_merchantAdvertLayer.Visible=false;
         _sellStallShown = false;
         _sellStallPanel.Visible = false;
         HideItemTooltip();
         Net.I.SendMerchantBeginSell(_sellAdvert.Text.Trim());
     }
 
-    private void StageStallItem(int gridIndex)
+    private void StageStallItem(int gridIndex) => StageStallItemAt(gridIndex, -1);
+
+    private void StageStallItemAt(int gridIndex, int preferredSlot)
     {
         if (gridIndex < 0 || gridIndex >= GridCount) return;
         int absSlot = GridStart + gridIndex;
@@ -280,8 +294,10 @@ public partial class World
             return;
         }
 
-        int dst = -1;
-        for (int i = 0; i < _myStall.Length; i++) if (_myStall[i].IsEmpty) { dst = i; break; }
+        int dst = preferredSlot;
+        if (dst >= _myStall.Length) return;
+        if (dst >= 0 && !_myStall[dst].IsEmpty) { SetSellStatus("That listing slot is occupied.", true); return; }
+        if (dst < 0) for (int i = 0; i < _myStall.Length; i++) if (_myStall[i].IsEmpty) { dst = i; break; }
         if (dst < 0) { SetSellStatus($"The stall only holds {StallSlots} items.", true); return; }
 
         var slot = Inv[absSlot];
@@ -421,6 +437,8 @@ public partial class World
 
     private void OnMerchantList(int merchantId, MerchantStallItem[] items)
     {
+        CloseAmountPrompt();
+        SetShopStatus("", false);
         _shopTargetId = merchantId;
         _shopItems = items;
         _shopPanel.Title = ShopTitle(merchantId);
@@ -466,14 +484,21 @@ public partial class World
 
     private void BuyFromStall(int merchantSlot)
     {
-        if (merchantSlot < 0 || merchantSlot >= _shopItems.Length) return;
+        if (_merchantBuyPending || !_shopShown || merchantSlot < 0 || merchantSlot >= _shopItems.Length) return;
         var item = _shopItems[merchantSlot];
         if (item.IsEmpty) return;
         if (item.Price > Sheet.Gold) { SetShopStatus("You don't have enough gold.", true); return; }
 
-        int most = System.Math.Max(1, item.Count);
+        if (item.Price < 1) { SetShopStatus("That item has an invalid price.", true); return; }
+        int most = System.Math.Max(1, System.Math.Min(item.Count, Sheet.Gold / item.Price));
         var def = ItemData.Get(item.ItemId);
-        bool countable = def != null && def.Countable != 0 && most > 1;
+        bool stackable = def != null && def.Countable != 0;
+        int capacity = Inv.FirstFreeGridSlot() >= 0 ? (stackable ? Inventory.StackMax : 1) : 0;
+        if (stackable) for (int abs = GridStart; abs < GridStart + GridCount && abs < Inv.Length; abs++)
+            if (Inv[abs].ItemId == item.ItemId) capacity = System.Math.Max(capacity, Inventory.StackMax - Inv[abs].Count);
+        if (capacity < 1) { SetShopStatus("Your bags are full.", true); return; }
+        most = System.Math.Min(most, capacity);
+        bool countable = stackable && most > 1;
 
         string itemName = ItemData.DisplayName(item.ItemId);
         string hint = countable
@@ -483,42 +508,52 @@ public partial class World
         AskTrade(StallSlot(item), hint, item.Price, most, countable,
             (count, _) =>
             {
-                int buyerSlot = Inv.FirstFreeGridSlot();
+                int buyerSlot = -1;
+                if (stackable) for (int abs = GridStart; abs < GridStart + GridCount && abs < Inv.Length; abs++)
+                    if (Inv[abs].ItemId == item.ItemId && Inv[abs].Count + count <= Inventory.StackMax) { buyerSlot = abs; break; }
+                if (buyerSlot < 0) buyerSlot = Inv.FirstFreeGridSlot();
                 if (buyerSlot < 0) { SetShopStatus("Your bags are full.", true); return; }
+                if (!_shopShown || _merchantBuyPending || _shopItems[merchantSlot].ItemId!=item.ItemId) return;
+                if ((long)count * item.Price > Sheet.Gold) { SetShopStatus("You don't have enough gold.", true); return; }
+                _merchantPurchase = new MerchantAction(_shopTargetId, merchantSlot, item.ItemId, count, item.Price);
+                _merchantBuyPending=true;
                 Net.I.SendMerchantBuy(item.ItemId, count, (byte)merchantSlot, (byte)(buyerSlot - GridStart));
             });
     }
 
+    private void OnMerchantGold(int total)
+    {
+        foreach (var label in new[] { _sellBalance, _shopBalance, _wantedBalance })
+            if (GodotObject.IsInstanceValid(label)) label.Text = Money(total);
+        long offered = 0;
+        foreach (var wish in _wishes) if (!wish.IsEmpty) offered += (long)wish.Price * wish.Count;
+        if (GodotObject.IsInstanceValid(_wishTotal))
+            _wishTotal.AddThemeColorOverride("font_color", offered > total ? UiTheme.Bad : UiTheme.GoldBright);
+    }
+
     private void OnMerchantBuy(bool ok, int itemId, int remaining, int merchantSlot, int buyerSlot)
     {
-        if (!ok) { SetShopStatus("That purchase was refused.", true); return; }
-
-        int abs = GridStart + buyerSlot;
-        var def = ItemData.Get(itemId);
-        if (abs >= 0 && abs < Inv.Length)
-        {
-            if (def != null && def.Countable != 0 && Inv[abs].ItemId == itemId)
-                Inv.Stack(abs, 1);
-            else
-                Inv[abs] = new ItemSlot { ItemId = itemId, Count = 1, Durability = (short)(def?.Duration ?? 0) };
-            Net.I.MirrorInventorySlot(abs, Inv[abs]);
-        }
-
-        int price = 0;
+        var request = _merchantPurchase;
+        _merchantPurchase = null;
+        _merchantBuyPending = false;
+        if (request is not { } action) return;
+        long total = (long)action.Price * action.Count;
+        string message = ok ? $"Bought {action.Count} x {ItemData.DisplayName(action.ItemId)} for {Money(total)}." : "That purchase was refused.";
+        if (!_shopShown || _shopTargetId != action.MerchantId) { CombatNotice(message); return; }
+        if (!ok) { SetShopStatus(message, true); return; }
         if (merchantSlot >= 0 && merchantSlot < _shopItems.Length && _shopItems[merchantSlot].ItemId == itemId)
         {
-            price = _shopItems[merchantSlot].Price;
             _shopItems[merchantSlot].Count = remaining;
             if (remaining <= 0) _shopItems[merchantSlot] = default;
         }
-
         if (CharTabOpen()) RefreshInventoryUI();
         RefreshShop();
-        SetShopStatus($"Bought {ItemData.DisplayName(itemId)} for {Money(price)}.", false);
+        SetShopStatus(message, false);
     }
 
     private void CloseShop()
     {
+        CloseAmountPrompt();
         HideItemTooltip();
         if (!_shopShown) return;
         _shopShown = false;

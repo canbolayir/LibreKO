@@ -19,6 +19,7 @@ public partial class World
         private readonly Label _count;
         private readonly UpgradeBadge _plus;
         private bool _hovering;
+        private bool _draggedSincePress;
 
         public ItemSlot Item { get; private set; }
         public int TipSlot { get; set; } = -1;
@@ -61,8 +62,8 @@ public partial class World
             else
             {
                 _icon.Texture = ItemData.Icon(item.ItemId);
-                int shown = ItemData.ShownCount(ItemData.Get(item.ItemId), item);
-                _count.Text = shown > 1 ? shown.ToString() : "";
+                var def = ItemData.Get(item.ItemId);
+                _count.Text = ItemData.CountBadge(def, ItemData.ShownCount(def, item));
                 _plus.Set(item.ItemId);
             }
             Notify();
@@ -119,15 +120,28 @@ public partial class World
         public override void _DropData(Vector2 atPosition, Variant data) =>
             OnDropFrom?.Invoke(data.AsGodotDictionary()[AcceptKey].AsInt32(), Index);
 
+        public override void _Notification(int what)
+        {
+            if (what == NotificationDragBegin) _draggedSincePress = true;
+        }
+
         public override void _GuiInput(InputEvent ev)
         {
-            if (OnActivate != null
-                && ev is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+            if (ev is not InputEventMouseButton click) return;
+            if (click.ButtonIndex == MouseButton.Left && click.Pressed)
+            {
+                _draggedSincePress = false;
+                return;
+            }
+            if (OnActivate != null &&
+                ((click.ButtonIndex == MouseButton.Right && click.Pressed) ||
+                 (click.ButtonIndex == MouseButton.Left && !click.Pressed && !_draggedSincePress)))
             {
                 OnActivate(Index);
                 AcceptEvent();
             }
         }
+
     }
 
     private static GridContainer MerchantGrid(int columns, int spacing = 4)

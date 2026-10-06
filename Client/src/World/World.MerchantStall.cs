@@ -165,10 +165,13 @@ public partial class World
             ? Net.MerchantStallDisplaySlotsPremium
             : Net.MerchantStallDisplaySlots;
 
-        if (stall.Sign == null || !GodotObject.IsInstanceValid(stall.Sign) || stall.SignCells.Length != shown)
+        if (stall.Sign == null || !GodotObject.IsInstanceValid(stall.Sign) || stall.SignCells.Length != shown
+            || (stall.Sign.HasMeta("merchant_buying") && stall.Sign.GetMeta("merchant_buying").AsBool() != stall.IsBuying))
         {
             FreeStallSign(stall);
             stall.Sign = UiTheme.Section();
+            stall.Sign.SetMeta("merchant_buying",stall.IsBuying);
+            stall.Sign.AddToGroup("merchant_signs");
             stall.Sign.MouseFilter = Control.MouseFilterEnum.Pass;
             _stallSignLayer.AddChild(stall.Sign);
 

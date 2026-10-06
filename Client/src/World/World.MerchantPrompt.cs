@@ -7,10 +7,23 @@ public partial class World
 {
     private const int MerchantPriceMax = 2_000_000_000;
 
+    private void BuildMerchantAdvert()
+    {
+        _merchantAdvertLayer=new CanvasLayer {Layer=77,Visible=false};AddChild(_merchantAdvertLayer);
+        _merchantAdvertLayer.SetMeta("merchant_advert",true);
+        var block=new ColorRect {Color=Colors.Transparent,MouseFilter=Control.MouseFilterEnum.Stop};block.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);_merchantAdvertLayer.AddChild(block);
+        var centre=new CenterContainer();centre.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);_merchantAdvertLayer.AddChild(centre);
+        var box=new VBoxContainer();centre.AddChild(box);_merchantAdvertLayer.SetMeta("merchant_advert_edit",_sellAdvert);
+        var ok=new Button {Text="OK",FocusMode=Control.FocusModeEnum.None};box.AddChild(ok);
+        ok.Pressed+=()=>{_merchantAdvertAccepted=true;ConfirmSellStall();};
+        var cancel=new Button {Text="Cancel",FocusMode=Control.FocusModeEnum.None};box.AddChild(cancel);cancel.Pressed+=()=>_merchantAdvertLayer.Visible=false;
+    }
+
     private void BuildAmountPrompt()
     {
         _amountLayer = new CanvasLayer { Layer = 77, Visible = false };
         AddChild(_amountLayer);
+        _amountLayer.SetMeta("merchant_amount",true);
 
         var dim = new ColorRect { Color = new Color(0f, 0f, 0f, 0.45f) };
         dim.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
@@ -107,13 +120,16 @@ public partial class World
         ItemSlot slot, string hint, int price, int maxCount, bool countable,
         System.Action<int, int> accept)
     {
-        AskAmount(slot, hint, price, maxCount, countable, accept, priceEditable: false, defaultCount: 1);
+        AskAmount(slot, hint, price, maxCount, countable, accept, priceEditable: false, defaultCount: hint.StartsWith("Buy ") ? 1 : maxCount);
     }
 
     private void AskAmount(
         ItemSlot slot, string hint, int price, int maxCount, bool countable,
         System.Action<int, int> accept, bool priceEditable = true, int defaultCount = 0)
     {
+        _amountLayer.SetMeta("merchant_price_editable",priceEditable);
+        _amountLayer.SetMeta("merchant_quantity",countable && maxCount>1);
+        _amountLayer.SetMeta("merchant_error","");
         _amountAccept = accept;
         _amountIcon.Texture = ItemData.Icon(slot.ItemId);
         _amountName.Text = ItemData.DisplayName(slot.ItemId);
@@ -149,7 +165,11 @@ public partial class World
     private void AcceptAmount()
     {
         var accept = _amountAccept;
-        int count = (int)_amountCount.Value;
+        int count=1;
+        if (_amountLayer.GetMeta("merchant_quantity",false).AsBool() && (!int.TryParse(_amountCount.GetLineEdit().Text.Trim(),out count) || count<1 || count>_amountCount.MaxValue)) {
+            _amountLayer.SetMeta("merchant_error","Enter a valid quantity.");return;
+        }
+        if (_amountLayer.GetMeta("merchant_price_editable",false).AsBool() && _amountPrice.Value<1) { _amountLayer.SetMeta("merchant_error","Enter a valid price.");return; }
         int price = (int)System.Math.Clamp(_amountPrice.Value, 1, MerchantPriceMax);
         CloseAmountPrompt();
         accept?.Invoke(count, price);

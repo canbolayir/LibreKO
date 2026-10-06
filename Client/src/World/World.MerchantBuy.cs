@@ -69,6 +69,7 @@ public partial class World
         BuildWishFindPanel();
         BuildWantedPanel();
         BuildAmountPrompt();
+        BuildMerchantAdvert();
     }
 
     private void BuildWishPanel()
@@ -148,8 +149,10 @@ public partial class World
         money.AddChild(MoneyRow("Current Balance", out _wantedBalance, UiTheme.TextHi));
 
         root.AddChild(UiTheme.SectionTitle("Your bags"));
-        _wantedBagCells = BuildMerchantGrid(root, GridCount, StallBagColumns, null,
-            dragKey: "bagFrom");
+        _wantedBagCells = BuildMerchantGrid(root, GridCount, StallBagColumns, grid => {
+                int abs=GridStart+grid;if(abs>=Inv.Length)return;
+                for(int wanted=0;wanted<_wantedItems.Length;wanted++)if(_wantedItems[wanted].ItemId==Inv[abs].ItemId && !_wantedItems[wanted].IsEmpty){SellToWanted(grid,wanted);return;}
+            }, dragKey: "bagFrom");
 
         _wantedStatus = UiTheme.Text("", 12, UiTheme.TextLo);
         _wantedStatus.AutowrapMode = TextServer.AutowrapMode.WordSmart;
@@ -195,6 +198,7 @@ public partial class World
 
     private void CloseWishFind()
     {
+        CloseAmountPrompt();
         if (!_wishFindShown) return;
         _wishFindShown = false;
         _wishFindPanel.Visible = false;
@@ -328,6 +332,7 @@ public partial class World
 
     private void CloseWantedStall()
     {
+        CloseAmountPrompt();
         HideItemTooltip();
         if (!_wantedShown) return;
         _wantedShown = false;
@@ -366,7 +371,7 @@ public partial class World
 
     private void SellToWanted(int gridIndex, int wantedSlot)
     {
-        if (wantedSlot < 0 || wantedSlot >= _wantedItems.Length) return;
+        if (!_wantedShown || _wantedSale != null || gridIndex < 0 || gridIndex >= GridCount || wantedSlot < 0 || wantedSlot >= _wantedItems.Length) return;
         int absSlot = GridStart + gridIndex;
         if (absSlot >= Inv.Length || Inv[absSlot].IsEmpty) return;
 
@@ -378,51 +383,44 @@ public partial class World
             return;
         }
 
-        int most = System.Math.Max(1, System.Math.Min(held.Count, wanted.Count));
+        if (wanted.Price < 1) { SetWantedStatus("That order has an invalid price.", true); return; }
+        int capacity = (MerchantCoinMax - Sheet.Gold) / wanted.Price;
+        if (capacity < 1) { SetWantedStatus("You cannot carry any more gold.", true); return; }
+        int most = System.Math.Max(1, System.Math.Min(capacity, System.Math.Min(held.Count, wanted.Count)));
         var def = ItemData.Get(held.ItemId);
         bool countable = def != null && def.Countable != 0 && most > 1;
 
         AskTrade(held, "Sell to this shop", wanted.Price, most, countable,
-            (count, _) => Net.I.SendBuyMerchantSell((byte)gridIndex, (byte)wantedSlot, count));
+            (count, _) =>
+            {
+                if (!_wantedShown || _wantedSale != null || _wantedItems[wantedSlot].ItemId != held.ItemId || Inv[absSlot].ItemId != held.ItemId || Inv[absSlot].Count < count) return;
+                _wantedSale = new MerchantAction(_wantedMerchantId, wantedSlot, held.ItemId, count, wanted.Price);
+                Net.I.SendBuyMerchantSell((byte)gridIndex, (byte)wantedSlot, count);
+            });
     }
 
     private void OnBuyMerchantResult(byte result)
     {
         if (result == Net.BuyMerchantAccepted) return;
+        _wantedSale = null;
         SetWantedStatus(BuyMerchantMessage(result), true);
     }
 
     private void OnBuyMerchantSold(int wantedSlot, int wantedRemaining, int sellerSlot, int sellerRemaining)
     {
-        int absSlot = GridStart + sellerSlot;
-        if (absSlot >= 0 && absSlot < Inv.Length)
-        {
-            int itemId = Inv[absSlot].ItemId;
-            int sold = Inv[absSlot].Count - sellerRemaining;
-            if (sellerRemaining <= 0) Inv[absSlot] = default;
-            else Inv[absSlot] = new ItemSlot
-            {
-                ItemId = itemId,
-                Count = (short)sellerRemaining,
-                Durability = Inv[absSlot].Durability,
-            };
-            Net.I.MirrorInventorySlot(absSlot, Inv[absSlot]);
-
-            if (wantedSlot >= 0 && wantedSlot < _wantedItems.Length && sold > 0)
-            {
-                long paid = (long)_wantedItems[wantedSlot].Price * sold;
-                SetWantedStatus($"Sold {sold} x {ItemData.DisplayName(itemId)} for {Money(paid)}.", false);
-            }
-        }
-
+        var request = _wantedSale;
+        _wantedSale = null;
+        if (request is not { } action) return;
+        string message = $"Sold {action.Count} x {ItemData.DisplayName(action.ItemId)} for {Money((long)action.Price * action.Count)}.";
+        if (!_wantedShown || _wantedMerchantId != action.MerchantId) { CombatNotice(message); return; }
         if (wantedSlot >= 0 && wantedSlot < _wantedItems.Length)
         {
             _wantedItems[wantedSlot].Count = wantedRemaining;
             if (wantedRemaining <= 0) _wantedItems[wantedSlot] = default;
         }
-
         if (CharTabOpen()) RefreshInventoryUI();
         RefreshWantedStall();
+        SetWantedStatus(message, false);
     }
 
     private void OnBuyMerchantBought(int wantedSlot, int remaining, string sellerName)
