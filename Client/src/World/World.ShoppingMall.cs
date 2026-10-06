@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
@@ -28,6 +28,8 @@ public partial class World
 
     private CanvasLayer _pusLayer = null!;
     private HudWindow _pusWindow = null!;
+    private Control _pusCategoryColumn = null!;
+    private Control _pusCartColumn = null!;
     private Viewport? _pusViewport;
     private Label _pusCashValue = null!;
     private Godot.Timer _pusTicker = null!;
@@ -86,9 +88,9 @@ public partial class World
         var columns = new HBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         columns.AddThemeConstantOverride("separation", PusColumnGap);
         _pusWindow.Body.AddChild(columns);
-        columns.AddChild(BuildPusCategoryColumn());
+        columns.AddChild(_pusCategoryColumn = BuildPusCategoryColumn());
         columns.AddChild(BuildPusGridColumn());
-        columns.AddChild(BuildPusCartColumn());
+        columns.AddChild(_pusCartColumn = BuildPusCartColumn());
 
         BuildPusModal();
 
@@ -201,6 +203,12 @@ public partial class World
     {
         if (!_pusShown || !IsInstanceValid(_pusWindow) || !_pusWindow.IsInsideTree()) return;
         var target = PowerUpStoreLayout.WindowSize(_pusWindow.GetViewportRect().Size, Platform.TouchUi);
+        bool compact=target.X<960;
+        _pusCategoryColumn.CustomMinimumSize=new Vector2(compact?180:PusCategoryWidth,0);
+        _pusCartColumn.CustomMinimumSize=new Vector2(compact?264:PusCartWidth,0);
+        foreach(var label in new[]{_pusCartEmpty,_pusShortfall,_pusCartStatus})
+            label.CustomMinimumSize=new Vector2((compact?264:PusCartWidth)-2*PusWellMargin,0);
+        _pusTools.Vertical=compact;
         var chrome = _pusWindow.GetCombinedMinimumSize() - _pusWindow.Body.GetCombinedMinimumSize();
         _pusWindow.Body.CustomMinimumSize = (target - chrome).Max(Vector2.Zero);
         _pusWindow.ResetSize();
@@ -331,7 +339,7 @@ public partial class World
                 _pusCart.Clear();
             }
             SetPusCartStatus(message, false);
-            CombatNotice(message);
+            ChatStatusNotice(message);
             RenderPusCart();
             return;
         }

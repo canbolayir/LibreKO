@@ -48,6 +48,7 @@ public partial class World
     private Label _pusGridTitle = null!;
     private LineEdit _pusSearch = null!;
     private OptionButton _pusSortPick = null!;
+    private BoxContainer _pusTools = null!;
     private ScrollContainer _pusGridScroll = null!;
     private GridContainer _pusGrid = null!;
     private Label _pusGridEmpty = null!;
@@ -99,7 +100,7 @@ public partial class World
         title.AddChild(_pusGridTitle);
         title.AddChild(BuildPusCashRow());
 
-        var tools = new HBoxContainer();
+        var tools = _pusTools = new BoxContainer();
         tools.AddThemeConstantOverride("separation", 8);
         column.AddChild(tools);
         tools.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
