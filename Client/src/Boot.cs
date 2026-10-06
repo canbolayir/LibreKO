@@ -7,6 +7,20 @@ public partial class Boot : Control
     public override void _Ready()
     {
         var cli = OS.GetCmdlineUserArgs();
+        if (cli.Length >= 1 && cli[0] == "renderbench")
+        {
+            Config.SetVideo(Config.VideoMode.Windowed, 1920, 1080, false);
+            int bestScreen = 0;
+            for (int screen = 1; screen < DisplayServer.GetScreenCount(); screen++)
+                if (DisplayServer.ScreenGetRefreshRate(screen) > DisplayServer.ScreenGetRefreshRate(bestScreen)) bestScreen = screen;
+            DisplayServer.WindowSetCurrentScreen(bestScreen);
+            DisplayServer.WindowSetPosition(DisplayServer.ScreenGetPosition(bestScreen));
+            Config.SetGraphics(true, false, false, true, true, true, Config.AaMode.Msaa2X,
+                Config.UpscaleMode.Off, Config.UpscaleLevel.UltraQuality, Config.FpsCap.Unlimited);
+            var tree = GetTree();
+            tree.Root.CallDeferred(Node.MethodName.AddChild, new RendererBenchmark());
+            return;
+        }
         if (cli.Length >= 2 && cli[0] == "terraincheck")
         {
             TerrainSelfTest(cli[1]);
@@ -15,6 +29,24 @@ public partial class Boot : Control
         if (cli.Length >= 1 && cli[0] == "modelcheck")
         {
             ModelSelfTest();
+            return;
+        }
+        if (cli.Length >= 1 && cli[0] == "charselectcheck")
+        {
+            Config.ApplyVideo();
+            Config.ApplyGraphicsToViewport();
+            var tree = GetTree();
+            var timer = new Godot.Timer { WaitTime = 30, OneShot = true, Autostart = true };
+            tree.Root.CallDeferred(Node.MethodName.AddChild, timer);
+            timer.Timeout += () =>
+            {
+                bool ok = tree.CurrentScene is CharSelect;
+                GD.Print($"[charselectcheck] {(ok ? "PASS" : "FAIL")}: rendered character selection for 30 seconds");
+                if (ok)
+                    tree.Root.GetTexture().GetImage().SavePng(OS.GetExecutablePath().GetBaseDir().PathJoin("charselect-check.png"));
+                tree.Quit(ok ? 0 : 1);
+            };
+            tree.CallDeferred(SceneTree.MethodName.ChangeSceneToFile, "res://scenes/CharSelect.tscn");
             return;
         }
 

@@ -198,7 +198,7 @@ public partial class Sky : Node3D
 
     private void ApplyAmbientOcclusion()
     {
-        bool ssao = Config.Ssao && !Perf.SkipSsao;
+        bool ssao = Config.Ssao && !Perf.SkipSsao && RenderingServer.GetCurrentRenderingMethod() != "mobile";
         _env.SsaoEnabled = ssao;
         ProjectSettings.SetSetting(DepthPrepassSetting, ssao);
     }
@@ -208,7 +208,7 @@ public partial class Sky : Node3D
         if (_env == null) return;
         ApplyAmbientOcclusion();
         _env.GlowEnabled = Config.Bloom;
-        _env.VolumetricFogEnabled = Config.VolumetricFog;
+        _env.VolumetricFogEnabled = Config.VolumetricFog && RenderingServer.GetCurrentRenderingMethod() == "forward_plus";
         CloudsEnabled = Config.Clouds;
         _sun.ShadowEnabled = Config.Shadows;
         _moon.ShadowEnabled = false;

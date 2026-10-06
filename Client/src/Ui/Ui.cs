@@ -521,6 +521,12 @@ public partial class SettingsPanel : CanvasLayer
         vb.AddChild(Row("Shadows", _shadows = new CheckButton { ButtonPressed = Config.Shadows }));
         vb.AddChild(Row("Ambient Occlusion", _ssao = new CheckButton { ButtonPressed = Config.Ssao }));
         vb.AddChild(Row("Volumetric Fog", _volFog = new CheckButton { ButtonPressed = Config.VolumetricFog }));
+        if (RenderingServer.GetCurrentRenderingMethod() == "mobile")
+        {
+            _ssao.ButtonPressed = _volFog.ButtonPressed = false;
+            _ssao.Disabled = _volFog.Disabled = true;
+            _ssao.TooltipText = _volFog.TooltipText = "Not available on the Mobile renderer.";
+        }
         vb.AddChild(Row("Bloom", _bloom = new CheckButton { ButtonPressed = Config.Bloom }));
         var fxLayerRow = Row("Accurate Effect Blending", _fxLayer = new CheckButton { ButtonPressed = Config.FxLayer });
         fxLayerRow.TooltipText = "Blends spells and effects the way the original client does, outside bloom and tone mapping.";

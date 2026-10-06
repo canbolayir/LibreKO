@@ -29,9 +29,29 @@ public partial class Packs : Node
     public override void _Ready()
     {
         Diag.Install();
+        if (!OS.HasFeature("editor"))
+        {
+            Config.PinShippedDefaults();
+            Build.Pin();
+        }
+        // Reuse installed content without unpacking it, in the editor or a standalone build.
+        string installedClient = System.Environment.GetEnvironmentVariable("LIBREKO_CONTENT_DIR") ?? "";
+        if (installedClient.Length == 0 && !OS.HasFeature("editor"))
+        {
+            string linkedContent = OS.GetExecutablePath().GetBaseDir().PathJoin("source-content");
+            if (DirAccess.DirExistsAbsolute(linkedContent)) installedClient = linkedContent;
+        }
+        if (installedClient.Length > 0)
+        {
+            Mount(installedClient.PathJoin("knightonline.pck"), required: true, replaceFiles: false);
+            foreach (var (pck, _) in Content)
+                Mount(installedClient.PathJoin(ContentDir).PathJoin(pck), required: true, replaceFiles: false);
+            ContentReady = _missing.Count == 0;
+            if (!ContentReady)
+                GD.PushError($"[packs] missing installed content: {string.Join(", ", _missing)}");
+            return;
+        }
         if (OS.HasFeature("editor")) return;
-        Config.PinShippedDefaults();
-        Build.Pin();
         if (Platform.BundledContent) { MountDownloaded(); return; }
 
         string dir = OS.GetExecutablePath().GetBaseDir().PathJoin(ContentDir);
@@ -71,7 +91,7 @@ public partial class Packs : Node
         return names.Count;
     }
 
-    private static void Mount(string osPath, bool required)
+    private static void Mount(string osPath, bool required, bool replaceFiles = true)
     {
         string name = osPath.GetFile();
         if (!FileAccess.FileExists(osPath))
@@ -80,7 +100,7 @@ public partial class Packs : Node
                 _missing.Add(name);
             return;
         }
-        if (!ProjectSettings.LoadResourcePack(osPath))
+        if (!ProjectSettings.LoadResourcePack(osPath, replaceFiles))
         {
             GD.PushError($"[packs] failed to mount {osPath} (corrupt, truncated, or wrong engine version)");
             if (required)
