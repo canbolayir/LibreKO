@@ -48,7 +48,7 @@ public partial class World
 
         var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(420, 230) };
         root.AddChild(scroll);
-        _seekListBox = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        _seekListBox = new VBoxContainer { Name = "seek_members", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _seekListBox.AddThemeConstantOverride("separation", 4);
         scroll.AddChild(_seekListBox);
 
@@ -96,6 +96,7 @@ public partial class World
 
     private void UpdateSeekStatus()
     {
+        _seekRegisterBtn.SetMeta("seeking", _seeking);
         _seekRegisterBtn.Text = _seeking ? "Stop looking" : "Look for a party";
         _seekStatusLbl.Text = _seeking
             ? "You are listed as looking for a party."
@@ -104,7 +105,7 @@ public partial class World
 
     private void OnBbsRegister(bool ok)
     {
-        if (ok) { _seeking = true; CombatNotice("You are now listed as looking for a party."); }
+        if (ok) { _seeking = true; ChatStatusNotice("You are now listed as looking for a party."); }
         else CombatNotice("Can't seek a party while you're already in one.");
         UpdateSeekStatus();
         if (_seekShown) Net.I.SendPartyBbsList(_seekPage);
@@ -113,12 +114,12 @@ public partial class World
     private void OnBbsDelete()
     {
         _seeking = false;
-        CombatNotice("Removed your seek-party listing.");
+        ChatStatusNotice("Removed your seek-party listing.");
         UpdateSeekStatus();
         if (_seekShown) Net.I.SendPartyBbsList(_seekPage);
     }
 
-    private void OnBbsWantedFail() => CombatNotice("Only the party leader can post a recruiting message.");
+    private void OnBbsWantedFail() => ChatStatusNotice("Only the party leader can post a recruiting message.");
 
     private void OnBbsList(int page, int total, List<PartyBbsEntry> entries)
     {
@@ -126,10 +127,11 @@ public partial class World
         _seekTotal = total;
         if (!_seekShown) return;
 
-        foreach (var c in _seekListBox.GetChildren()) c.QueueFree();
+        foreach (var c in _seekListBox.GetChildren()) { _seekListBox.RemoveChild(c); c.QueueFree(); }
 
         int pages = Mathf.Max(1, (total + 9) / 10);
         _seekPageLbl.Text = $"Page {page + 1} / {pages}";
+        _seekPageLbl.SetMeta("page_caption", $"{page + 1} / {pages}");
 
         if (entries.Count == 0)
         {
@@ -146,6 +148,10 @@ public partial class World
     private Control BuildSeekRow(PartyBbsEntry e)
     {
         var panel = new PanelContainer();
+        panel.SetMeta("seek_name", e.Name);
+        panel.SetMeta("seek_level", e.IsLeaderRecruiting ? $"{e.MemberCount}/8" : e.Level.ToString());
+        panel.SetMeta("seek_class", e.IsLeaderRecruiting ? WantedClasses[System.Math.Clamp(e.ClassOrWanted, 0, 4)].Label : ClassName(e.ClassOrWanted));
+        panel.SetMeta("seek_detail", $"{SeekZoneName(e.ZoneId)}\n{e.Message}");
         var sb = new StyleBoxFlat { BgColor = new Color(1, 1, 1, 0.05f) };
         foreach (var s in new[] { "left", "right", "top", "bottom" }) sb.Set($"content_margin_{s}", 6f);
         sb.CornerRadiusTopLeft = sb.CornerRadiusTopRight = sb.CornerRadiusBottomLeft = sb.CornerRadiusBottomRight = 3;
@@ -176,8 +182,11 @@ public partial class World
         inviteBtn.Pressed += () =>
         {
             if (InParty) Net.I.SendPartyInvite(name); else Net.I.SendPartyCreate(name);
-            CombatNotice($"Inviting {name} to your party…");
+            ChatStatusNotice($"Inviting {name} to your party…");
         };
+        var whisper = SmallButton("Private", row);
+        whisper.Visible = false;
+        whisper.Pressed += () => Chat.WhisperOpened?.Invoke(name);
         return panel;
     }
 

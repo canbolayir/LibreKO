@@ -86,10 +86,13 @@ public partial class World
 
     private Vector2 DockSpot(string key)
     {
+        if (key == "Party" && _mainWindows[key].HasMeta("classic_party"))
+            return new Vector2(Mathf.Max(0, GetViewport().GetVisibleRect().Size.X - Footprint(_mainWindows[key]).X), 0);
         bool left = LeftDocked.Contains(key);
         var stack = new List<string>();
         foreach (string k in _dockOrder)
         {
+            if (k == "Party" && _mainWindows[k].HasMeta("classic_party")) continue;
             if (LeftDocked.Contains(k) != left) continue;
             if (k == key) break;
             if (_mainWindows.TryGetValue(k, out var earlier) && FollowsDock(earlier)) stack.Add(k);

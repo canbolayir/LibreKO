@@ -79,7 +79,7 @@ public partial class World
         _partyHeaderLbl = HudStyle.Label(15);
         _partyContent.AddChild(_partyHeaderLbl);
 
-        _partyMembersBox = new VBoxContainer();
+        _partyMembersBox = new VBoxContainer { Name = "party_members" };
         _partyMembersBox.AddThemeConstantOverride("separation", 7);
         _partyContent.AddChild(_partyMembersBox);
 
@@ -152,6 +152,21 @@ public partial class World
         }
 
         var row = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Stop };
+        row.SetMeta("party_id", m.CharId);
+        row.SetMeta("party_name", m.Name);
+        row.SetMeta("party_leader", isLeader);
+        row.SetMeta("party_hp", hp);
+        row.SetMeta("party_max_hp", maxHp);
+        row.SetMeta("party_mp", mp);
+        row.SetMeta("party_max_mp", maxMp);
+        row.SetMeta("party_status", string.Join(", ", Net.I.PartyStatusOf(m.CharId) ?? System.Array.Empty<byte>()));
+        row.TooltipText = $"{m.Name} · Lv {level} {ClassName(cls)}\nHP {hp}/{maxHp} · MP {mp}/{maxMp}";
+        if (Net.I.PartyStatusOf(m.CharId) is { Count: > 0 } tooltipStatus)
+        {
+            var statusNames = new List<string>();
+            foreach (byte statusType in tooltipStatus) { var name = StatusName(statusType); if (name.Length > 0) statusNames.Add(name); }
+            row.TooltipText += "\n" + string.Join(", ", statusNames);
+        }
         row.AddThemeConstantOverride("separation", 2);
 
         var head = HudStyle.Label(14);
@@ -190,6 +205,12 @@ public partial class World
         bool self = m.CharId == _myId;
         row.GuiInput += ev =>
         {
+            if (ev is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }
+                && row.HasMeta("classic_party_row"))
+            {
+                _partyMembersBox.SetMeta("party_selected", memberId);
+                if (_ents.TryGetValue(memberId, out var member) && Selectable(member)) Select(memberId, member);
+            }
             if (ev is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right }
                 && AmLeader && !self)
             {
