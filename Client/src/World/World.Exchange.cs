@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using Godot;
 using LibreKO.Domain;
 using LibreKO.Network;
@@ -14,10 +14,15 @@ public partial class World
     private Button _exConfirmBtn = null!, _exCancelBtn = null!;
     private LineEdit _exGoldEdit = null!;
     private ConfirmationDialog _exAskDialog = null!;
+    private CanvasLayer _exRequestLayer = null!;
+    private CanvasLayer _exFinalLayer = null!;
+    private Label _exFinalLabel = null!;
+    private bool _exFinalPending;
+    private Label _exRequestLabel = null!;
 
     private bool _exShown;
     private bool _exRequestPending;
-    private bool _exConfirmedByMe;
+    private bool _exConfirmedByMe, _exConfirmedByPartner;
     private int _exPartnerId = -1;
     private string _exPartnerName = "Player";
     private int _exMyGoldOffer, _exTheirGoldOffer;
@@ -35,7 +40,7 @@ public partial class World
     private TextureRect _exAmountIcon = null!;
     private Label _exAmountName = null!, _exAmountHint = null!;
     private SpinBox _exAmountSpin = null!;
-    private bool _exAmountShown;
+    private bool _exAmountShown, _exAmountIsGold;
     private int _exAmountSlot = -1;
     private int _exAmountMax = 1;
 
@@ -84,6 +89,7 @@ public partial class World
         root.AddChild(cols);
         cols.AddChild(BuildOfferColumn("You offer", out _exMineList, out _exMineGold));
         cols.AddChild(BuildOfferColumn("Partner offers", out _exTheirsList, out _exTheirsGold));
+        _exMineList.Name = "exchange_mine"; _exTheirsList.Name = "exchange_theirs";
 
         root.AddChild(new HSeparator());
 
@@ -94,14 +100,14 @@ public partial class World
         _exGoldEdit = new LineEdit { PlaceholderText = "amount", CustomMinimumSize = new Vector2(110, 0) };
         goldRow.AddChild(_exGoldEdit);
         var addGoldBtn = new Button { Text = "Add gold", FocusMode = Control.FocusModeEnum.None };
-        addGoldBtn.Pressed += OnAddGold;
+        addGoldBtn.Pressed += () => { if (_exPanel.HasMeta("classic_exchange")) OpenExchangeGold(); else OnAddGold(); };
         goldRow.AddChild(addGoldBtn);
         root.AddChild(goldRow);
 
         root.AddChild(UiTheme.SectionTitle("My backpack"));
         var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(360, 200), HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         root.AddChild(scroll);
-        _exBagList = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        _exBagList = new VBoxContainer { Name = "exchange_inventory", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _exBagList.AddThemeConstantOverride("separation", 3);
         scroll.AddChild(_exBagList);
 
@@ -126,13 +132,66 @@ public partial class World
         _exAskDialog.Canceled += () => AnswerExchangeRequest(false);
         _exLayer.AddChild(_exAskDialog);
 
+        BuildExchangeRequestPanel();
+        BuildExchangeFinalPanel();
         BuildExchangeWaitPanel();
         BuildExchangeAmountPrompt();
     }
 
+    private void BuildExchangeRequestPanel()
+    {
+        _exRequestLayer = new CanvasLayer { Name = "exchange_request", Layer = 76, Visible = false };
+        _exRequestLayer.SetMeta("exchange_request", true);
+        AddChild(_exRequestLayer);
+        var blocker = new ColorRect { Color = Colors.Transparent, MouseFilter = Control.MouseFilterEnum.Stop };
+        blocker.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _exRequestLayer.AddChild(blocker);
+        var centre = new CenterContainer();
+        centre.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _exRequestLayer.AddChild(centre);
+        var box = new VBoxContainer(); centre.AddChild(box);
+        _exRequestLabel = UiTheme.Text("", 13);
+        box.AddChild(_exRequestLabel);
+        var buttons = new HBoxContainer(); box.AddChild(buttons);
+        var accept = new Button { Name = "exchange_accept", Text = "Accept", FocusMode = Control.FocusModeEnum.None };
+        var decline = new Button { Name = "exchange_decline", Text = "Decline", FocusMode = Control.FocusModeEnum.None };
+        accept.Pressed += () => AnswerExchangeRequest(true);
+        decline.Pressed += () => AnswerExchangeRequest(false);
+        buttons.AddChild(accept); buttons.AddChild(decline);
+    }
+
+    private void BuildExchangeFinalPanel()
+    {
+        _exFinalLayer = new CanvasLayer { Name = "exchange_final", Layer = 77, Visible = false };
+        _exFinalLayer.SetMeta("exchange_final", true);
+        AddChild(_exFinalLayer);
+        var blocker = new ColorRect { Color = Colors.Transparent, MouseFilter = Control.MouseFilterEnum.Stop };
+        blocker.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _exFinalLayer.AddChild(blocker);
+        var centre = new CenterContainer();
+        centre.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _exFinalLayer.AddChild(centre);
+        var box = new VBoxContainer(); centre.AddChild(box);
+        _exFinalLabel = UiTheme.Text("", 13); box.AddChild(_exFinalLabel);
+        var buttons = new HBoxContainer(); box.AddChild(buttons);
+        var accept = new Button { Name = "exchange_final_accept", Text = "Accept", FocusMode = Control.FocusModeEnum.None };
+        var decline = new Button { Name = "exchange_final_decline", Text = "Decline", FocusMode = Control.FocusModeEnum.None };
+        accept.Pressed += AcceptExchangeFinal;
+        decline.Pressed += CloseExchangeFinal;
+        buttons.AddChild(accept); buttons.AddChild(decline);
+    }
+
+    private void CloseExchangeFinal()
+    {
+        _exFinalPending = false;
+        _exFinalLayer.Visible = false;
+        SyncExchangeView();
+    }
+
     private void BuildExchangeWaitPanel()
     {
-        _exWaitLayer = new CanvasLayer { Layer = 76, Visible = false };
+        _exWaitLayer = new CanvasLayer { Name = "exchange_wait", Layer = 76, Visible = false };
+        _exWaitLayer.SetMeta("exchange_wait", true);
         AddChild(_exWaitLayer);
 
         var centre = new CenterContainer();
@@ -167,7 +226,8 @@ public partial class World
 
     private void BuildExchangeAmountPrompt()
     {
-        _exAmountLayer = new CanvasLayer { Layer = 76, Visible = false };
+        _exAmountLayer = new CanvasLayer { Name = "exchange_amount", Layer = 76, Visible = false };
+        _exAmountLayer.SetMeta("exchange_amount", true);
         AddChild(_exAmountLayer);
 
         var dim = new ColorRect { Color = new Color(0f, 0f, 0f, 0.45f) };
@@ -311,12 +371,17 @@ public partial class World
 
     private void OnExchangeRequest(int requesterCharId)
     {
-        if (_exShown || _exWaiting) { Net.I.SendExchangeAgree(false); return; }
+        if (_exShown || _exWaiting || _exRequestPending) { Net.I.SendExchangeAgree(false); return; }
         _exPartnerId = requesterCharId;
         _exPartnerName = _ents.TryGetValue(requesterCharId, out var e) ? e.Name : "Player";
         _exRequestPending = true;
         _exAskDialog.DialogText = $"{_exPartnerName} wants to trade.\nAccept?";
-        _exAskDialog.PopupCentered();
+        if (_exPanel.HasMeta("classic_exchange"))
+        {
+            _exRequestLabel.Text = $"{_exPartnerName} wants to trade with you.\nDo you agree?";
+            _exRequestLayer.Visible = true;
+        }
+        else _exAskDialog.PopupCentered();
         CombatNotice($"{_exPartnerName} wants to trade. (Press T to trade)");
     }
 
@@ -324,6 +389,8 @@ public partial class World
     {
         if (!_exRequestPending) return;
         _exRequestPending = false;
+        _exRequestLayer.Visible = false;
+        _exAskDialog.Hide();
         Net.I.SendExchangeAgree(accept);
         if (accept) OpenExchange();
     }
@@ -339,6 +406,8 @@ public partial class World
     {
         ResetExchangeState();
         _exPanel.Title = $"Trade — {_exPartnerName}";
+        _exPanel.SetMeta("ex_partner", _exPartnerName);
+        _exPanel.SetMeta("ex_self", Net.I.LastEnter.Name ?? "You");
         _exConfirmBtn.Disabled = false;
         _exConfirmBtn.Text = "Confirm";
         SetExStatus("", false);
@@ -366,11 +435,16 @@ public partial class World
 
     private void ResetExchangeState()
     {
+        CloseExchangeFinal();
+        _exRequestPending = false;
+        _exRequestLayer.Visible = false;
+        _exAskDialog.Hide();
         _exMyOffer.Clear();
         _exTheirOffer.Clear();
         _exMyGoldOffer = 0;
         _exTheirGoldOffer = 0;
         _exConfirmedByMe = false;
+        _exConfirmedByPartner = false;
         _exAddInFlight = false;
         CloseExchangeAmount();
         if (_exGoldEdit != null) _exGoldEdit.Text = "";
@@ -379,7 +453,7 @@ public partial class World
     private void RefreshExchangeBag()
     {
         HideItemTooltip();
-        foreach (var c in _exBagList.GetChildren()) c.QueueFree();
+        foreach (var c in _exBagList.GetChildren()) { _exBagList.RemoveChild(c); c.QueueFree(); }
         for (int abs = GridStart; abs < GridStart + GridCount && abs < Inv.Length; abs++)
         {
             if (Inv[abs].IsEmpty) continue;
@@ -404,14 +478,19 @@ public partial class World
         RefreshOfferColumn(_exTheirsList, _exTheirOffer);
         _exMineGold.Text = _exMyGoldOffer > 0 ? $"+ {_exMyGoldOffer:n0} gold" : "";
         _exTheirsGold.Text = _exTheirGoldOffer > 0 ? $"+ {_exTheirGoldOffer:n0} gold" : "";
+        SyncExchangeView();
     }
 
-    private static void RefreshOfferColumn(VBoxContainer list, List<ExOfferItem> offer)
+    private void RefreshOfferColumn(VBoxContainer list, List<ExOfferItem> offer)
     {
-        foreach (var c in list.GetChildren()) c.QueueFree();
+        foreach (var c in list.GetChildren()) { list.RemoveChild(c); c.QueueFree(); }
         foreach (var o in offer)
         {
             var hb = new HBoxContainer();
+            SetTradeItemMetadata(hb, o.ItemId, o.Count, o.Dura, o.SourceAbs);
+            var tooltipItem = new ItemSlot { ItemId = o.ItemId, Count = (short)o.Count, Durability = o.Dura };
+            hb.MouseEntered += () => ShowItemTooltip(-1, tooltipItem);
+            hb.MouseExited += HideItemTooltip;
             hb.AddThemeConstantOverride("separation", 6);
             hb.AddChild(new TextureRect
             {
@@ -430,10 +509,11 @@ public partial class World
     private void OfferSlot(int absSlot)
     {
         if (_exConfirmedByMe) { SetExStatus("You already confirmed.", true); return; }
-        if (_exAddInFlight) return;
+        if (_exAddInFlight || _exFinalPending || _exConfirmedByPartner) return;
         if (absSlot < 0 || absSlot >= Inv.Length || Inv[absSlot].IsEmpty) return;
-        if (_exMyOffer.Count >= 12) { SetExStatus("Offer is full (12 items).", true); return; }
+        if (ExchangeOfferCount() >= 12 && !((ItemData.Get(Inv[absSlot].ItemId)?.Countable ?? 0) != 0 && _exMyOffer.Exists(o => o.ItemId == Inv[absSlot].ItemId))) { SetExStatus("Offer is full (12 items).", true); return; }
         var slot = Inv[absSlot];
+        if (!slot.IsTradable) { SetExStatus("That item cannot be traded.", true); return; }
         int have = Mathf.Max(1, (int)slot.Count);
 
         if (have > 1 && (ItemData.Get(slot.ItemId)?.Countable ?? 0) != 0)
@@ -447,18 +527,21 @@ public partial class World
 
     private void OfferSlotAmount(int absSlot, int count)
     {
+        if (!_exShown || _exConfirmedByMe || _exConfirmedByPartner || _exAddInFlight || _exFinalPending) return;
         if (absSlot < 0 || absSlot >= Inv.Length || Inv[absSlot].IsEmpty) return;
         var slot = Inv[absSlot];
         count = Mathf.Clamp(count, 1, Mathf.Max(1, (int)slot.Count));
 
         _exPending = new PendingExAdd { IsGold = false, ItemId = slot.ItemId, SourceAbs = absSlot, Count = count, Dura = slot.Durability };
         _exAddInFlight = true;
+        SyncExchangeView();
         Net.I.SendExchangeAddItem((byte)(absSlot - GridStart), slot.ItemId, count);
     }
 
     private void OpenExchangeAmount(int absSlot, int max)
     {
         HideItemTooltip();
+        _exAmountIsGold = false;
         _exAmountSlot = absSlot;
         _exAmountMax = max;
         int itemId = Inv[absSlot].ItemId;
@@ -468,10 +551,12 @@ public partial class World
         _exAmountSpin.MaxValue = max;
         _exAmountSpin.Value = max;
         _exAmountSpin.GetLineEdit().Text = max.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _exAmountLayer.SetMeta("ex_amount_error", "");
         _exAmountLayer.Visible = true;
         _exAmountShown = true;
         _exAmountSpin.GetLineEdit().GrabFocus();
         _exAmountSpin.GetLineEdit().SelectAll();
+        SyncExchangeView();
     }
 
     private void CloseExchangeAmount()
@@ -480,28 +565,76 @@ public partial class World
         _exAmountShown = false;
         _exAmountLayer.Visible = false;
         _exAmountSlot = -1;
+        SyncExchangeView();
     }
 
     private void ConfirmExchangeAmount()
     {
-        if (!_exAmountShown || _exAmountSlot < 0) return;
+        if (!_exAmountShown || (_exAmountSlot < 0 && !_exAmountIsGold)) return;
         string typed = _exAmountSpin.GetLineEdit().Text.Trim();
-        int value = int.TryParse(typed, out int parsed) ? parsed : (int)_exAmountSpin.Value;
+        if (!int.TryParse(typed, out int value) || value < 1 || value > _exAmountMax)
+        {
+            _exAmountHint.Text = $"Valid quantity: 1–{_exAmountMax:n0}.";
+            _exAmountLayer.SetMeta("ex_amount_error", _exAmountHint.Text);
+            _exAmountSpin.GetLineEdit().GrabFocus();
+            _exAmountSpin.GetLineEdit().SelectAll();
+            return;
+        }
         int slotAbs = _exAmountSlot;
-        int count = Mathf.Clamp(value, 1, _exAmountMax);
+        int count = value;
+        bool gold = _exAmountIsGold;
         CloseExchangeAmount();
-        OfferSlotAmount(slotAbs, count);
+        if (gold) { _exGoldEdit.Text = count.ToString(); OnAddGold(); }
+        else OfferSlotAmount(slotAbs, count);
+    }
+
+    private int ExchangeOfferCount()
+    {
+        var counted = new HashSet<int>();
+        int count = 0;
+        foreach (var item in _exMyOffer)
+            if ((ItemData.Get(item.ItemId)?.Countable ?? 0) == 0 || counted.Add(item.ItemId)) count++;
+        return count;
+    }
+
+    private void SyncExchangeView()
+    {
+        if (_exPanel == null) return;
+        _exPanel.SetMeta("ex_locked", _exConfirmedByMe);
+        _exPanel.SetMeta("ex_partner_locked", _exConfirmedByPartner);
+        _exPanel.SetMeta("ex_pending", _exAddInFlight);
+        _exPanel.SetMeta("ex_modal", _exAmountShown || _exFinalPending);
+        _exPanel.SetMeta("ex_wallet", Sheet.Gold);
+        _exPanel.SetMeta("ex_my_gold", _exMyGoldOffer);
+        _exPanel.SetMeta("ex_other_gold", _exTheirGoldOffer);
+        _exAmountLayer?.SetMeta("ex_gold", _exAmountIsGold);
+    }
+
+    private void OpenExchangeGold()
+    {
+        if (!_exShown || _exConfirmedByMe || _exConfirmedByPartner || _exAddInFlight || _exFinalPending || Sheet.Gold <= 0) return;
+        HideItemTooltip(); _exAmountIsGold = true; _exAmountSlot = -1;
+        _exAmountMax = Sheet.Gold;
+        _exAmountIcon.Texture = UiIcons.Get("system/coin");
+        _exAmountName.Text = "Offer coins"; _exAmountHint.Text = $"You have {Sheet.Gold:n0}";
+        _exAmountSpin.MaxValue = Sheet.Gold; _exAmountSpin.Value = 1;
+        _exAmountSpin.GetLineEdit().Text = "1";
+        _exAmountLayer.SetMeta("ex_amount_error", "");
+        _exAmountLayer.Visible = true; _exAmountShown = true;
+        _exAmountSpin.GetLineEdit().GrabFocus(); _exAmountSpin.GetLineEdit().SelectAll();
+        SyncExchangeView();
     }
 
     private void OnAddGold()
     {
         if (_exConfirmedByMe) { SetExStatus("You already confirmed.", true); return; }
-        if (_exAddInFlight) return;
+        if (_exAddInFlight || _exFinalPending || _exConfirmedByPartner) return;
         if (!int.TryParse(_exGoldEdit.Text.Trim(), out int amount) || amount <= 0) { SetExStatus("Enter a gold amount.", true); return; }
         if (amount > Sheet.Gold) { SetExStatus("Not enough gold.", true); return; }
 
         _exPending = new PendingExAdd { IsGold = true, Count = amount };
         _exAddInFlight = true;
+        SyncExchangeView();
         Net.I.SendExchangeAddGold(amount);
     }
 
@@ -544,6 +677,7 @@ public partial class World
     private void OnExchangeOtherAdd(int itemId, int count, short dura)
     {
         if (!_exShown) return;
+        CloseExchangeFinal();
         if (itemId == Net.ExchangeGoldItem) _exTheirGoldOffer += count;
         else _exTheirOffer.Add(new ExOfferItem { ItemId = itemId, Count = count, Dura = dura });
         RefreshExchangeOffers();
@@ -551,18 +685,33 @@ public partial class World
 
     private void OnExchangeConfirm()
     {
-        if (!_exShown || _exConfirmedByMe) return;
+        if (!_exShown || _exConfirmedByMe || _exFinalPending) return;
+        if (_exAddInFlight || _exAmountShown) { SetExStatus("Finish adding your offer before confirming.", true); return; }
+        HideItemTooltip();
+        _exFinalLabel.Text = "Are you sure you want to trade?";
+        _exFinalPending = true;
+        _exFinalLayer.Visible = true;
+        SyncExchangeView();
+    }
+
+    private void AcceptExchangeFinal()
+    {
+        if (!_exFinalPending) return;
+        CloseExchangeFinal();
+        if (!_exShown || _exConfirmedByMe || _exAddInFlight || _exAmountShown) return;
         _exConfirmedByMe = true;
         _exConfirmBtn.Disabled = true;
         _exConfirmBtn.Text = "Confirmed";
-        SetExStatus("Waiting for partner…", false);
+        SetExStatus("Waiting for partner...", false);
         Net.I.SendExchangeDecide();
     }
 
     private void OnExchangeOtherDecide()
     {
         if (!_exShown) return;
-        SetExStatus(_exConfirmedByMe ? "Finalising…" : "Partner confirmed — press Confirm.", false);
+        _exConfirmedByPartner = true;
+        CloseExchangeAmount();
+        SetExStatus(_exConfirmedByMe ? "Finalising..." : "Partner confirmed", false);
     }
 
     private void OnExchangeDone(bool ok, int money, List<(byte DstPos, ItemSlot Slot)> received)
@@ -605,6 +754,7 @@ public partial class World
         if (_exRequestPending)
         {
             _exRequestPending = false;
+            _exRequestLayer.Visible = false;
             _exAskDialog.Hide();
             ResetExchangeState();
             CombatNotice("The trade request was withdrawn.");
@@ -646,6 +796,7 @@ public partial class World
     private void SetExStatus(string text, bool warn)
     {
         _exStatus.Text = text;
+        SyncExchangeView();
         _exStatus.AddThemeColorOverride("font_color", warn ? new Color("ff6a6a") : Colors.White);
     }
 }
