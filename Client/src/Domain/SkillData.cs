@@ -239,6 +239,25 @@ public static class SkillData
         _ => "",
     };
 
+    // Match the equipment group checked by CanCastWithGear, including unrestricted weapon skills.
+    public static string EquippedWeaponRequirementName(int itemGroup) => itemGroup switch
+    {
+        WeaponAnimation.GroupNeedsNoWeapon => "",
+        0 => "Any weapon",
+        1 => "Dagger",
+        2 => "Sword",
+        3 => "Axe",
+        4 or 18 => "Mace",
+        5 => "Spear, Polearm",
+        6 => "Shield",
+        7 => "Bow, Crossbow",
+        8 => "Longbow",
+        10 => "Launcher",
+        11 => "Staff",
+        14 => "Jamadar",
+        _ => $"Weapon group {itemGroup}",
+    };
+
     public readonly record struct Page(int Category, string Label, List<Skill> Skills);
 
     public static List<Page> Pages(int classCode, int transformId = 0)

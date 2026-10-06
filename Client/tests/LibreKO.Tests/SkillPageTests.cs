@@ -84,4 +84,20 @@ public class SkillPageTests
     [InlineData(SkillPage.EmoteWeapon, "")]
     public void WeaponRequirement_MatchesRetailWording(int code, string expected) =>
         Assert.Equal(expected, SkillData.WeaponRequirementName(code));
+
+    [Fact]
+    public void UnrestrictedWeaponRequirementStillRequiresEquippedWeapon()
+    {
+        Assert.Equal(WeaponAnimation.GearCheck.NoWeapon, WeaponAnimation.CheckGear(0, 0, 0));
+        Assert.Equal(WeaponAnimation.GearCheck.Ok, WeaponAnimation.CheckGear(0, WeaponAnimation.Sword, 0));
+        Assert.Equal("Any weapon", SkillData.EquippedWeaponRequirementName(0));
+    }
+
+    [Fact]
+    public void WeaponlessSkillRequirementMatchesCastingWithoutEquipment()
+    {
+        int group=WeaponAnimation.GroupNeedsNoWeapon;
+        Assert.Equal(WeaponAnimation.GearCheck.Ok, WeaponAnimation.CheckGear(group, 0, 0));
+        Assert.Equal("", SkillData.EquippedWeaponRequirementName(group));
+    }
 }
