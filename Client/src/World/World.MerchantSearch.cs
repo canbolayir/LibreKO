@@ -212,7 +212,7 @@ public partial class World
         double left = _merchantSearchReadyAt - Now();
         if (left > 0)
         {
-            CombatNotice(string.Format(MerchantSearchText(MerchantSearchCooldownText, "Available after %d seconds.").Replace("%d", "{0}"),
+            ChatStatusNotice(string.Format(MerchantSearchText(MerchantSearchCooldownText, "Available after %d seconds.").Replace("%d", "{0}"),
                 Mathf.CeilToInt((float)left)));
             return true;
         }

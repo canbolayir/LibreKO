@@ -93,7 +93,7 @@ public partial class World
         var me = Net.I.LastEnter;
         if (!GenderChange.CanChange(me.Class))
         {
-            CombatNotice(ItemData.Text(GenderChange.NotForClassText, "Your class cannot change gender."));
+            ChatStatusNotice(ItemData.Text(GenderChange.NotForClassText, "Your class cannot change gender."));
             return;
         }
         _genderInFlight = false;
@@ -157,7 +157,7 @@ public partial class World
             ? ItemData.Text(GenderChange.NoItemText, "It does not have items.")
             : ItemData.Text(GenderChange.FailedText, "Gender change failed.");
         if (_genderShown) SetGenderStatus(text, true);
-        else CombatNotice(text);
+        else ChatStatusNotice(text);
     }
 
     private void OnGenderChanged()

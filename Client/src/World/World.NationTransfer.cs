@@ -194,7 +194,7 @@ public partial class World
             NationTransferRefusalTexts.TryGetValue(result, out int id) ? id : NationTransferFailedText,
             "Transfer failed");
         if (_transferShown) SetTransferStatus(text, true);
-        else CombatNotice(text);
+        else ChatStatusNotice(text);
     }
 
     private void OnNationTransferWar(int karus, int elmorad)

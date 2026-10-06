@@ -24,6 +24,9 @@ public partial class World : Node3D
         EscapeCloses(() => _whShown, () => CloseWarehouse());
         EscapeCloses(() => _upgradeShown, () => CloseUpgrade());
         EscapeCloses(() => _classChangeShown, () => CloseClassChange());
+        EscapeCloses(() => _genderShown, CloseGenderChange);
+        EscapeCloses(() => _transferShown, CancelNationTransfer);
+        EscapeCloses(() => _merchantSearchShown, CloseMerchantSearch);
         EscapeCloses(() => _exFinalPending, CloseExchangeFinal);
         EscapeCloses(() => _exAmountShown, () => CloseExchangeAmount());
         EscapeCloses(() => _exRequestPending, () => AnswerExchangeRequest(false));
