@@ -208,4 +208,12 @@ The preceding source-driven Godot review inspected 20 Human/Karus store/mail cap
 
 ## Limits
 
+## NPC services integration: 4772e7a
+
+Upstream `4772e7abf4ee98630b4a8765e048ffb7f32408b1` is retained as a merge parent, preserving its feature history and the nineteen earlier local commits. New Kelly gender/race/face/hair, Kaishan account nation transfer and Menissiah merchant search windows deliberately retain upstream styling; their Classic redesign is deferred. Kaira/Hemes certificate and package exchanges, Maestro potion pricing, consumed clan rename scrolls and compatible humanoid transformation accessories are included. Character rename now requires the identity scroll and NPC entry rather than its removed hotkey; the live player name and plate update while notices retain the Info route.
+
+The only textual merge conflict was in the rename success handler. The resolution preserves both live name refresh and local status routing. A separate interaction commit adds the three native service windows to the existing Escape stack and routes non-combat service notices to Info. Nation transfer retains its in-flight cancellation guard. No database migration was added. Custom Moradon terrain, maps and zone registrations remain local and excluded from publication.
+
+Final verification: 915 client, 2,113 game and 16 login tests passed. Source-driven Godot audits cover six native service windows and their Escape callbacks, 40 inventory renders, 82 merchant renders, 28 trade renders, 20 PUS/mail renders, NPC speech/reward controls, chat docking and mail badges. All eight Human/Karus Character Report, Quest, Clan and Friend parent pages retain identical baseline pixels and checked control bounds. Existing bag quantity and stacking rules, vendor approvals, final trade approval with no Enter acceptance, merchant quantity/pending guards, mail partial claims and chat docking are retained. Review artifacts live under `research/upstream-4772e7a-audit` in the workspace.
+
 Optional elemental weapon-trail textures are absent; the existing colored fallback remains active. Automated UI fixtures do not replace live player-to-player transaction testing. Original game artwork retains its original ownership; adapter code licensing does not relicense those assets.
