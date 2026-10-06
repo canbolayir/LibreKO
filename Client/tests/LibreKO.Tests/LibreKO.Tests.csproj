@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../LibreKO.csproj" />
+    <Compile Include="../../../Server/LibreKO.Common/Domain/Services/ProgressionTable.cs" Link="ServerRules/ProgressionTable.cs" />
   </ItemGroup>
 
 </Project>
