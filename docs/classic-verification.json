@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-06",
+  "upstream": "9cc436e977347b7aa4067ff7c52c5b9da9b500e5",
+  "implementationTip": "8e97bc54f323d1ea5fad57dc764c8b8b3d993a70",
+  "cleanArchiveTests": {
+    "client": {
+      "total": 869,
+      "passed": 869,
+      "failed": 0
+    },
+    "game": {
+      "total": 2018,
+      "passed": 2018,
+      "failed": 0
+    },
+    "login": {
+      "total": 16,
+      "passed": 16,
+      "failed": 0
+    }
+  },
+  "customMoradonIncluded": false,
+  "pluginBuildAgainstCleanClient": {
+    "warnings": 0,
+    "errors": 0
+  },
+  "visualReview": "https://github.com/canbolayir/LibreKO-knightonline-ui-classic/blob/main/docs/visual-review.html",
+  "scope": "Final committed source series; no per-commit tests or live transaction claims."
+}
