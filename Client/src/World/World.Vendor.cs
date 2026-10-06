@@ -53,13 +53,16 @@ public partial class World
     private BagCompanion? _vendorCompanion;
 
     private bool _tradeInFlight;
+    private bool _vendorConfirming;
     private PendingTrade _pendingTrade;
+
+    private bool VendorBlocked => _tradeInFlight || _vendorConfirming || _moveInFlight || _moveQueue.Count > 0 || _selfDead;
 
     private bool VendorSearching => _vendorSearch.Text.Trim().Length > 0;
 
     private int VendorPageCount => VendorSearching
         ? ShopCatalogue.PagesFor(_vendorResults.Count)
-        : Mathf.Max(1, _vendorCatalogue.Pages.Count);
+        : _vendorCatalogue.CompactPageCount;
 
     private void VendorInit()
     {
@@ -86,6 +89,10 @@ public partial class World
         AddChild(_vendorLayer);
 
         _vendorPanel = new HudWindow("vendor", "Merchant") { Visible = false };
+        // Classic controls read the authoritative interaction state without inspecting World internals.
+        _vendorPanel.SetMeta("vendor_blocked", Callable.From(() => _tradeInFlight || _vendorConfirming || _moveInFlight || _moveQueue.Count > 0));
+        _vendorPanel.SetMeta("vendor_dead", Callable.From(() => _selfDead));
+        _vendorPanel.SetMeta("vendor_sellable", Callable.From<int, bool>(abs => InMainBag(abs) && !Inv[abs].IsEmpty && Inv[abs].IsTradable && VendorSellUnit(Inv[abs].ItemId) > 0));
         _vendorPanel.Closed += CloseVendor;
         _vendorLayer.AddChild(_vendorPanel);
 
@@ -160,7 +167,9 @@ public partial class World
 
     private void OpenVendor(int sellingGroup)
     {
+        if (_tradeInFlight || _vendorConfirming || _moveInFlight) return;
         _vendorGroup = sellingGroup;
+        _vendorPanel.SetMeta("vendor_group", sellingGroup);
         _tradeInFlight = false;
         CloseNpcDialog();
         var entries = ItemData.SellGroup(sellingGroup).Where(e => ItemData.Get(e.Id) != null).ToList();
@@ -180,6 +189,7 @@ public partial class World
 
     private void CloseVendor()
     {
+        if (_tradeInFlight || _vendorConfirming || _moveInFlight) { _vendorPanel.Visible = true; return; }
         _tradePrompt.Close();
         HideItemTooltip();
         if (!_vendorShown) return;
@@ -204,7 +214,7 @@ public partial class World
             : _vendorResults.Count == 1 ? "1 match" : $"{_vendorResults.Count:n0} matches";
         FillVendorCells(VendorSearching
             ? ShopCatalogue.Slice(_vendorResults, page)
-            : _vendorCatalogue.Pages.Count == 0 ? new int[ShopCatalogue.PageSize] : _vendorCatalogue.Page(_vendorCatalogue.Pages[page]));
+            : _vendorCatalogue.CompactPage(page));
         SelectVendorItem(_vendorSelected != 0 && _vendorCellIds.Contains(_vendorSelected)
             ? _vendorSelected : _vendorCellIds.FirstOrDefault(id => id != 0));
     }
@@ -255,8 +265,8 @@ public partial class World
 
     private Variant VendorDragOut(ItemSlotView cell)
     {
-        if (_vendorCellIds[cell.Index] == 0) return default;
-        return new Godot.Collections.Dictionary { { "companionFrom", cell.Index } };
+        if (VendorBlocked || _vendorCellIds[cell.Index] == 0) return default;
+        return new Godot.Collections.Dictionary { { "companionFrom", cell.Index }, { "id", _vendorCellIds[cell.Index] } };
     }
 
     private void OnVendorCellClicked(ItemSlotView cell)
@@ -285,7 +295,7 @@ public partial class World
 
     private void AskBuy(int itemId, int preferred)
     {
-        if (_tradeInFlight || _selfDead || !_vendorEntries.TryGetValue(itemId, out var entry)) return;
+        if (VendorBlocked || !_vendorEntries.TryGetValue(itemId, out var entry)) return;
         if (ItemData.Get(itemId) is not { } def) return;
         int price = ItemData.BuyPrice(itemId);
         long? freeWeight = Sheet.MaxWeight > 0 ? Sheet.MaxWeight - CarriedWeight() : null;
@@ -296,14 +306,50 @@ public partial class World
             _vendorFooter.Status(problem.Length > 0 ? problem : "You can't buy that.", bad: true);
             return;
         }
-        if (def.Countable == 0)
+        if (def.Countable == 0 || max == 1)
         {
-            BuyAmount(entry, 1, preferred);
+            ConfirmVendorBuy(entry, 1, preferred);
             return;
         }
         _tradePrompt.Open(ItemData.Icon(itemId), $"Buy {ItemData.DisplayName(itemId)}",
-            $"{price:n0} {VendorCurrency} each · up to {max:n0}", max, 1, n => BuyAmount(entry, (int)n, preferred),
+            $"{price:n0} {VendorCurrency} each · up to {max:n0}", max, 1, n => ConfirmVendorBuy(entry, (int)n, preferred),
             "Buy", n => $"Total {(long)price * n:n0} {VendorCurrency} · {(long)def.Weight * n / 10f:0.0} wt");
+    }
+
+    private void ConfirmVendorBuy(ItemData.SellEntry entry, int count, int preferred)
+    {
+        if (VendorBlocked || count <= 0 || !_vendorEntries.ContainsKey(entry.Id)) return;
+        if (!CanBuy(entry.Id, count, preferred, out _, out _, out string problem))
+        { _vendorFooter.Status(problem, bad: true); return; }
+        ConfirmVendorTrade(true, entry.Id, count, ItemData.BuyPrice(entry.Id), () => BuyAmount(entry, count, preferred));
+    }
+
+    private void ConfirmVendorTrade(bool buy, int itemId, int count, int unitPrice, System.Action send)
+    {
+        if (VendorBlocked || !_vendorShown) return;
+        int group = _vendorGroup, npc = _vendorNpcId;
+        _vendorConfirming = true;
+        string title = buy ? "Buy item" : "Sell item";
+        long total = (long)unitPrice * count;
+        string name = ItemData.DisplayName(itemId);
+        string message = $"{name}\nQuantity: {count:n0}\n{(buy ? "You pay" : "You receive")}: {total:n0} {VendorCurrency}";
+        void Cancel() => _vendorConfirming = false;
+        void Accept()
+        {
+            if (!_vendorConfirming) return;
+            Cancel();
+            if (_vendorShown && _vendorGroup == group && _vendorNpcId == npc && !VendorBlocked) send();
+        }
+        if (_vendorPanel.HasMeta("vendor_confirmation"))
+        {
+            var details = new Godot.Collections.Dictionary
+            {
+                { "title", title }, { "message", message }, { "buy", buy }, { "item_id", itemId },
+                { "item_name", name }, { "quantity", count }, { "total", total }, { "currency", VendorCurrency }
+            };
+            _vendorPanel.GetMeta("vendor_confirmation").AsCallable().Call(details, Callable.From(Accept), Callable.From(Cancel));
+        }
+        else Notice.Confirm(_vendorPanel, message, "OK", "Cancel", Accept, Cancel, title);
     }
 
     private int BuyRoom(int itemId, ItemData.Item def, int preferred)
@@ -324,7 +370,7 @@ public partial class World
 
     private void BuyAmount(ItemData.SellEntry entry, int count, int preferred)
     {
-        if (_tradeInFlight || _selfDead) return;
+        if (VendorBlocked) return;
         count = Mathf.Clamp(count, 1, Inventory.StackMax);
         if (!CanBuy(entry.Id, count, preferred, out int dest, out bool stack, out string problem))
         {
@@ -371,7 +417,7 @@ public partial class World
 
     private void AskSell(int abs)
     {
-        if (_tradeInFlight || _selfDead || !InMainBag(abs) || Inv[abs].IsEmpty) return;
+        if (VendorBlocked || !InMainBag(abs) || Inv[abs].IsEmpty) return;
         if (RefuseItemInUse(abs)) return;
         if (LoyaltyShop)
         {
@@ -379,6 +425,11 @@ public partial class World
             return;
         }
         var slot = Inv[abs];
+        if (!slot.IsTradable)
+        {
+            _vendorFooter.Status("This item cannot be sold.", bad: true);
+            return;
+        }
         int unit = VendorSellUnit(slot.ItemId);
         if (unit <= 0)
         {
@@ -387,18 +438,33 @@ public partial class World
         }
         if (slot.Count <= 1 || ItemData.Get(slot.ItemId) is not { Countable: not 0 })
         {
-            SellSlot(abs, 1);
+            ConfirmVendorSell(abs, 1, slot.ItemId);
             return;
         }
         _tradePrompt.Open(ItemData.Icon(slot.ItemId), $"Sell {ItemData.DisplayName(slot.ItemId)}",
-            $"{unit:n0} gold each · you carry {slot.Count:n0}", slot.Count, slot.Count, n => SellSlot(abs, (int)n),
+            $"{unit:n0} gold each · you carry {slot.Count:n0}", slot.Count, slot.Count,
+            n => ConfirmVendorSell(abs, (int)n, slot.ItemId),
             "Sell", n => $"Sells for {(long)unit * n:n0} gold");
+    }
+
+    private void ConfirmVendorSell(int abs, int count, int itemId)
+    {
+        if (VendorBlocked || !InMainBag(abs) || Inv[abs].ItemId != itemId || count <= 0 || Inv[abs].Count < count) return;
+        if (!Inv[abs].IsTradable || VendorSellUnit(itemId) <= 0 || LoyaltyShop) return;
+        ConfirmVendorTrade(false, itemId, count, VendorSellUnit(itemId), () =>
+        {
+            if (Inv[abs].ItemId == itemId && Inv[abs].Count >= count) SellSlot(abs, count);
+            else _vendorFooter.Status("The item or quantity changed. Please try again.", bad: true);
+        });
     }
 
     private void SellSlot(int absSlot, int count)
     {
-        if (_tradeInFlight || _selfDead || !InMainBag(absSlot) || Inv[absSlot].IsEmpty) return;
+        if (VendorBlocked || !InMainBag(absSlot) || Inv[absSlot].IsEmpty) return;
+        if (RefuseItemInUse(absSlot)) return;
         var slot = Inv[absSlot];
+        if (!slot.IsTradable) { _vendorFooter.Status("This item cannot be sold.", bad: true); return; }
+        if (LoyaltyShop || VendorSellUnit(slot.ItemId) <= 0) return;
         count = Mathf.Clamp(count, 1, Mathf.Max(1, (int)slot.Count));
         _pendingTrade = new PendingTrade { Buy = false, ItemId = slot.ItemId, AbsSlot = absSlot, Count = count };
         _tradeInFlight = true;

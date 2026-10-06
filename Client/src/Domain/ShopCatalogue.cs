@@ -29,6 +29,10 @@ public sealed class ShopCatalogue
 
     public int Count => _entries.Length;
 
+    public int CompactPageCount => PagesFor(Count);
+
+    public int[] CompactPage(int page) => Slice(_entries.Select(e => e.ItemId).ToArray(), page);
+
     public int[] Page(int page)
     {
         var cells = new int[PageSize];

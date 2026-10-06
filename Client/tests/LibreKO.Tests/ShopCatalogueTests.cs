@@ -70,4 +70,28 @@ public class ShopCatalogueTests
         Assert.Equal(30, second[5]);
         Assert.Equal(0, second[6]);
     }
+
+    [Fact]
+    public void CompactPagesPackSparseSourcePagesWithoutChangingTheirCoordinates()
+    {
+        var shop = Catalogue();
+        Assert.Equal(1, shop.CompactPageCount);
+        Assert.Equal(new[] { 200, 100, 300, 400 }, shop.CompactPage(0)[..4]);
+        Assert.Equal(0, shop.CompactPage(0)[4]);
+        Assert.Equal(100, shop.Page(0)[2]);
+        Assert.Equal(400, shop.Page(1)[5]);
+    }
+
+    [Fact]
+    public void CompactPagesFillTwentyFourCellsBeforeStartingTheNextPage()
+    {
+        var entries = new List<ShopCatalogue.Entry>();
+        for (int i = 0; i < 30; i++) entries.Add(new ShopCatalogue.Entry(i + 1, i, 5));
+        var shop = new ShopCatalogue(entries, id => id.ToString());
+        Assert.Equal(2, shop.CompactPageCount);
+        Assert.Equal(24, shop.CompactPage(0)[23]);
+        Assert.Equal(25, shop.CompactPage(1)[0]);
+        Assert.Equal(30, shop.CompactPage(1)[5]);
+        Assert.Equal(0, shop.CompactPage(1)[6]);
+    }
 }
