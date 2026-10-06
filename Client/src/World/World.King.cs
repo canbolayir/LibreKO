@@ -254,7 +254,7 @@ public partial class World
     private void OnKingNpc(string kingName)
     {
         if (kingName.Length > 0)
-            CombatNotice($"[Kingdom] The reigning king is {kingName}.");
+            ChatStatusNotice($"[Kingdom] The reigning king is {kingName}.");
     }
 
     private void OnKingNationIntro(string kingName, int treasury, int tariff)

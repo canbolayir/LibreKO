@@ -23,7 +23,7 @@ public partial class World
     {
         if (!_worldReady || _self == null) return;
 
-        CombatNotice("Awakening succeeded — your power surges.");
+        ChatStatusNotice("Awakening succeeded — your power surges.");
         SpawnAwakenBurst(effectScale);
     }
 

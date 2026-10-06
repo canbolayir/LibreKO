@@ -95,7 +95,7 @@ public partial class World
         if (ok)
         {
             _disguiseCurrent = disguiseId;
-            CombatNotice("Disguise applied. (model swap deferred)");
+            ChatStatusNotice("Disguise applied. (model swap deferred)");
             Net.I.SendDisguiseList();
         }
     }
@@ -105,7 +105,7 @@ public partial class World
         if (ok)
         {
             _disguiseCurrent = 0;
-            CombatNotice("Disguise removed.");
+            ChatStatusNotice("Disguise removed.");
             Net.I.SendDisguiseList();
         }
     }

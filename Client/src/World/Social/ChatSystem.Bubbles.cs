@@ -34,7 +34,8 @@ internal sealed partial class ChatSystem
             _bubbles.Remove(charId);
         }
 
-        var col = _colors.ForLine(type);
+        var col = LibreKO.Plugins.PluginHost.Ui.HudHidden(LibreKO.Plugins.HudPart.Chat)
+            ? new Color("#"+LibreKO.Domain.ClassicChatFormat.Channel(type).Color) : _colors.ForLine(type);
         var holder = new Node3D { Position = new Vector3(0, BubbleHeadY, 0) };
         var label = new Label3D
         {

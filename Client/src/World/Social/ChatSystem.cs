@@ -613,7 +613,11 @@ internal sealed partial class ChatSystem
         _peekText.Text = bbcode;
     }
 
-    private void Info(string msg) => StatusNotice?.Invoke(msg);
+    internal void Info(string msg)
+    {
+        if (PluginHost.Ui.HudHidden(HudPart.Chat)) AddEntry(ChatEntry.Raw(ChatCategory.System,$"[color=#ffe24a]{BbCode.Esc(msg)}[/color]"));
+        else StatusNotice?.Invoke(msg);
+    }
 
     internal void AppendShout(string message) => AddEntry(ChatEntry.Plain(ChatCategory.Shout, ChatType.Shout, message));
 }

@@ -66,13 +66,13 @@ public partial class World : Node3D
     }
 
     private void OnClassEligibility(int code) =>
-        CombatNotice(code == 1 ? "You are eligible to change class." : "You cannot change class yet.");
+        ChatStatusNotice(code == 1 ? "You are eligible to change class." : "You cannot change class yet.");
 
     private void OnClassPromoted(int charId, int newClass)
     {
         if (charId != _myId && charId != Net.I.LastEnter.CharId) return;
         ApplyClassChange(newClass);
-        CombatNotice($"You are now a {CharacterClassCatalog.SpecializationName(newClass)}!");
+        ChatStatusNotice($"You are now a {CharacterClassCatalog.SpecializationName(newClass)}!");
     }
 
     private void ApplyClassChange(int newClass)
@@ -85,7 +85,7 @@ public partial class World : Node3D
 
     private void OnJobChangeResult(int code)
     {
-        CombatNotice(code switch
+        ChatStatusNotice(code switch
         {
             1 => "Class changed!",
             4 => "Take off your equipment before changing class.",
@@ -473,13 +473,15 @@ public partial class World : Node3D
 
     private void OnGoldChange(int total)
     {
-        long gained = total - Sheet.Gold;
+        long gained = (long)total - Sheet.Gold;
         Sheet.SetGold(total);
         if (gained > 0)
         {
             Floaters?.Gold(gained);
-            CombatLogAdd($"You picked up {gained:n0} gold.", CombatLogKind.Resource);
+            CombatLogAdd($"You received +{gained:n0} gold.", CombatLogKind.GoldIncome);
         }
+        else if (gained < 0)
+            CombatLogAdd($"You spent −{-gained:n0} gold.", CombatLogKind.GoldExpense);
         RefreshStatsUI();
     }
 

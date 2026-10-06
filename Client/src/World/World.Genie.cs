@@ -87,7 +87,7 @@ public partial class World
     {
         if (ok)
         {
-            CombatNotice($"Your genie granted you {rewardGold} gold.");
+            ChatStatusNotice($"Your genie granted you {rewardGold} gold.");
             Net.I.SendGenieStatus();
         }
     }

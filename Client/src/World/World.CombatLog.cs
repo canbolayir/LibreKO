@@ -7,7 +7,7 @@ namespace LibreKO;
 
 public partial class World
 {
-    private enum CombatLogKind { Damage, Outgoing, Incoming, Recovery, Resource, Status }
+    private enum CombatLogKind { Damage, Outgoing, Incoming, Recovery, Resource, GoldIncome, GoldExpense, Status }
 
     private VBoxContainer _combatLogFrame = null!;
     private PanelContainer _combatLogRoot = null!;
@@ -187,6 +187,8 @@ public partial class World
             CombatLogKind.Incoming => "f07870",
             CombatLogKind.Recovery => "79d892",
             CombatLogKind.Resource => "70aee8",
+            CombatLogKind.GoldIncome => "79d892",
+            CombatLogKind.GoldExpense => "f07870",
             _ => "aaa79f",
         };
         _combatLogLines.Enqueue($"[color=#{color}]{BbCode.Esc(message)}[/color]");
@@ -194,7 +196,8 @@ public partial class World
             _combatLogLines.Dequeue();
         if (_combatLogText != null)
             _combatLogText.Text = string.Join("\n", _combatLogLines);
-        PluginLogAdd(kind == CombatLogKind.Resource ? LibreKO.Plugins.GameLogKind.Item : LibreKO.Plugins.GameLogKind.Status,
+        PluginLogAdd(kind is CombatLogKind.Resource or CombatLogKind.GoldIncome or CombatLogKind.GoldExpense
+            ? LibreKO.Plugins.GameLogKind.Item : LibreKO.Plugins.GameLogKind.Status,
             message, new Color("#" + color));
     }
 
@@ -203,6 +206,12 @@ public partial class World
         if (string.IsNullOrWhiteSpace(message)) return;
         Floaters?.Notice(message);
         CombatLogAdd(message, CombatLogKind.Status);
+    }
+
+    private void ChatStatusNotice(string message)
+    {
+        if (Chat != null && LibreKO.Plugins.PluginHost.Ui.HudHidden(LibreKO.Plugins.HudPart.Chat)) Chat.Info(message);
+        else CombatNotice(message);
     }
 
     private static string SystemText(int id, string fallback, string? arg = null)

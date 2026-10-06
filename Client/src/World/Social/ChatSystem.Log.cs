@@ -4,6 +4,7 @@ using System.Text;
 using Godot;
 using LibreKO.Domain;
 using LibreKO.Network;
+using LibreKO.Plugins;
 
 namespace LibreKO;
 
@@ -163,12 +164,12 @@ internal sealed partial class ChatSystem
 
     private void AddEntry(ChatEntry entry)
     {
+        if (PluginHost.Ui.HudHidden(HudPart.Chat) && entry.Category==ChatCategory.Whisper) return;
         entry = entry with { Seq = ++_seq, Time = DateTime.Now };
         bool atBottom = AtBottom();
         string bbcode = Render(entry);
-        Publish(bbcode);
-
         _store.AddLast(entry);
+        Publish(bbcode);
         if (_store.Count > StoreMax)
         {
             var dropped = _store.First!.Value;
@@ -224,8 +225,28 @@ internal sealed partial class ChatSystem
         Callable.From(() => _scroll.ScrollToLine(Math.Max(0, _scroll.GetLineCount() - 1))).CallDeferred();
     }
 
+    internal IReadOnlyList<string> ClassicHistory(int mask,bool timestamps,string colors)
+    {
+        var result=new List<string>();
+        var overrides=colors.Split(',');
+        foreach(var entry in _store)
+        {
+            if(((int)entry.Category & mask)==0) continue;
+            string hex=ClassicChatFormat.Channel(entry.Type).Color;
+            int slot=entry.Type switch {1=>0,5=>1,3=>2,6=>3,15=>4,_=>-1};
+            if(slot>=0 && overrides.Length==5 && Color.HtmlIsValid(overrides[slot])) hex=overrides[slot];
+            string line=entry.Bbcode.Length>0 ? entry.Bbcode : ClassicChatFormat.Line(entry.Type,entry.Name,entry.Nation,entry.Gm,entry.Text,hex,RenderText(entry.Text,hex),true);
+            if(timestamps) line=$"[color=#8d939b]{entry.Time:HH:mm}[/color] "+line;
+            result.Add(line);
+        }
+        if(result.Count>PublishedMax) result.RemoveRange(0,result.Count-PublishedMax);
+        return result;
+    }
+
     private string Render(ChatEntry entry)
     {
+        if (PluginHost.Ui.HudHidden(HudPart.Chat))
+            return entry.Bbcode.Length>0 ? entry.Bbcode : ClassicChatFormat.Line(entry.Type,entry.Name,entry.Nation,entry.Gm,entry.Text);
         var line = new StringBuilder();
         if (entry.Bbcode.Length > 0)
         {

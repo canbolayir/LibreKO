@@ -332,7 +332,7 @@ public partial class World
             return;
 
         if (charId == _myId)
-            CombatNotice(stealth ? "You vanish into stealth." : "You return to sight.");
+            ChatStatusNotice(stealth ? "You vanish into stealth." : "You return to sight.");
 
         if (_ents.TryGetValue(charId, out var ent) && GodotObject.IsInstanceValid(ent.Body))
             SetBodyAlpha(ent.Body, stealth ? StealthAlpha : 1f);

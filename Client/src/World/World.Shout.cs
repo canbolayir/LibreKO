@@ -104,7 +104,7 @@ public partial class World
     {
         if (result == Net.ShoutRegisterAccepted) return;
 
-        CombatNotice(result switch
+        ChatStatusNotice(result switch
         {
             Net.ShoutRegisterNoItem => "You need a Logos Shout scroll to shout server-wide.",
             Net.ShoutRegisterChatRestricted => "You cannot shout while chat is restricted.",

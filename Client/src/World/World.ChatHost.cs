@@ -37,10 +37,10 @@ public partial class World
         Chat.ItemTipHide = HideItemTooltip;
         Chat.IsFriend = IsFriendName;
         Chat.ColorsRequested = OpenChatColors;
-        Chat.StatusNotice = CombatNotice;
+        Chat.StatusNotice = ChatStatusNotice;
         Chat.LayoutChanged += OnChatLayoutChanged;
         Net.I.NearbyPlayersEvent += OnNearbyPlayers;
-        if (!Platform.TouchUi) BuildNearbyCard();
+        if (!Platform.TouchUi && !LibreKO.Plugins.PluginHost.Ui.HudHidden(LibreKO.Plugins.HudPart.Chat)) BuildNearbyCard();
     }
 
     private void ChatHostDispose()
@@ -95,9 +95,23 @@ public partial class World
     private NearbyViewer NearbyViewerNow() =>
         new(Net.I.LastEnter.Name, Net.I.Nation, Net.I.MyClan.ClanId, _myKoX, _myKoZ, Net.I.IsGm);
 
+    private ulong _classicNearbyPoll;
+    private int _classicNearbyZone=-1;
+    private IReadOnlyList<NearbyRow> ClassicNearbyPlayers()
+    {
+        if(!_worldReady || _self==null) return Array.Empty<NearbyRow>();
+        if(_classicNearbyZone!=_zone) {_classicNearbyZone=_zone;_nearbyListed.Clear();_nearbyRows.Clear();_classicNearbyPoll=0;_nearbyFirstPoll=true;}
+        ulong now=Time.GetTicksMsec();
+        if(now>=_classicNearbyPoll)
+        {
+            Net.I.SendNearbyPlayersRequest(_nearbyFirstPoll);
+            _nearbyFirstPoll=false;_classicNearbyPoll=now+5000;
+        }
+        RebuildNearby();return _nearbyRows;
+    }
+
     private void RebuildNearby()
     {
-        if (_nearbyCard == null) return;
         var me = NearbyViewerNow();
         var seen = new List<NearbySeen>();
         foreach (var (id, e) in _ents)
@@ -114,7 +128,7 @@ public partial class World
         var rows = NearbyRoster.Build(me, listed, seen, party);
         if (NearbyRoster.SameRows(rows, _nearbyRows)) return;
         _nearbyRows = rows;
-        _nearbyCard.SetRows(rows);
+        _nearbyCard?.SetRows(rows);
     }
 
     private void OpenChatColors()

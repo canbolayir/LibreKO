@@ -446,7 +446,7 @@ public partial class World
         }
 
         Net.I.SendWarpSelect(_warpSourceId, entry.WarpId);
-        CombatNotice(entry.Fee > 0
+        ChatStatusNotice(entry.Fee > 0
             ? $"Travelling to {info.Name} (−{entry.Fee:n0} Noahs)…"
             : $"Travelling to {info.Name}…");
         CloseWarp();

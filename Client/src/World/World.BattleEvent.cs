@@ -141,7 +141,7 @@ public partial class World
         if (declareType == Net.BattleDeclareWinner)
         {
             ShowBattleResultPopup(mine ? "VICTORY!" : $"{nationName} won the war.", mine);
-            CombatNotice($"[War] {nationName} has won the battle!");
+            ChatStatusNotice($"[War] {nationName} has won the battle!");
         }
         else if (declareType == Net.BattleDeclareLoser)
         {
@@ -195,7 +195,7 @@ public partial class World
 
     private void ShowBattleBanner(string text)
     {
-        CombatNotice(text);
+        ChatStatusNotice(text);
         _battleeventBannerLbl.Text = text;
         _battleeventBanner.Visible = true;
         int token = ++_battleeventBannerToken;
