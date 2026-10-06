@@ -71,6 +71,8 @@ public partial class Net
                 if (p.RemainingBytes < 6) return;
                 bool ok = p.ReadByte() != 0;
                 int id = p.ReadInt();
+                // Read acknowledgements do not include the remaining unread count.
+                if (ok) SendMailByte(MailSubUnread);
                 MailReadEvent?.Invoke(id, ok, p.ReadSByteString());
                 break;
             }

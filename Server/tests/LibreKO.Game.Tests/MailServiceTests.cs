@@ -231,6 +231,41 @@ public class MailServiceTests : GameTestBase
     }
 
     [Fact]
+    public async Task ClaimAttachmentAsync_FillsExistingStack_AndRetainsOnlyTheUndeliveredRemainder()
+    {
+        using var provider = Provider();
+        var (bob, sent) = Online(provider, BobId, "Bob");
+        FillBagLeaving(bob, 0);
+        var stack = bob.Inventory[InventoryConstants.InventoryStart];
+        stack.ItemId = Apple;
+        stack.Count = 9990;
+        var service = provider.GetRequiredService<IMailService>();
+        await service.SendSystemMailAsync(BobId, "Apples", "", [new MailAttachmentDraft(MailAttachmentKind.Item, Apple, 20)]);
+        var id = await FirstMailIdAsync(service, bob, sent);
+
+        await service.ClaimAttachmentAsync(bob, id, 0);
+        stack.Count.Should().Be(9999);
+        MailPacket(sent, MailPacketWriter.SubClaim).ReadByte().Should().Be(MailPacketWriter.Succeeded);
+        using (var scope = provider.CreateScope())
+        {
+            var attachment = await scope.ServiceProvider.GetRequiredService<AppDbContext>().MailAttachments.SingleAsync(a => a.MailId == id);
+            attachment.ClaimedCount.Should().Be(9);
+            attachment.Remaining.Should().Be(11);
+        }
+
+        await service.ClaimAsync(bob, id);
+        MailPacket(sent, MailPacketWriter.SubClaim).ReadByte().Should().Be(MailPacketWriter.Failed);
+        stack.Count.Should().Be(9999);
+
+        bob.Inventory[InventoryConstants.InventoryStart + 1].Clear();
+        await service.ClaimAsync(bob, id);
+        bob.Inventory[InventoryConstants.InventoryStart + 1].Count.Should().Be(11);
+        await service.ClaimAsync(bob, id);
+        MailPacket(sent, MailPacketWriter.SubClaim).ReadByte().Should().Be(MailPacketWriter.Failed);
+        CountInBag(bob, Apple).Should().Be(10010);
+    }
+
+    [Fact]
     public async Task ClaimAsync_WithAFullBag_DeliversNothing_AndKeepsTheMailPending()
     {
         using var provider = Provider();
