@@ -1,4 +1,4 @@
-﻿using Godot;
+using Godot;
 
 namespace LibreKO.Plugins;
 
@@ -100,15 +100,17 @@ public sealed class PluginUi
 {
     public static readonly string[] KnownWindowIds =
     {
-        "achievements", "admin_panel", "anvil", "attendance", "auction", "bounty", "cape", "changehair",
-        "character_info", "character_clan_details", "chatrooms", "clan", "clanpoint", "clanwarehouse", "class_change", "collectionrace", "dailyquest",
-        "disguise", "duel", "equipview", "eventquests", "exchange", "fishinghall", "forces", "fortune", "genie",
-        "globalmap", "inn", "instance", "inventory", "itemcombine", "itemexchange", "king", "lottery", "mail",
-        "mailcompose", "mailread", "marketbbs", "merchantmenu", "messenger", "namechange", "npc_dialog", "party",
-        "pet", "piecechange", "presets", "quest_available", "quest_receipt", "quest_target", "quests", "rank",
-        "rebirth", "rental", "repair", "report", "ring_upgrade", "roulette", "seal", "seek_party", "sellstall",
-        "shop", "shoppingmall", "siege", "skills", "titles", "tournament", "userinfo", "vendor", "vipwarehouse",
-        "wantedstall", "warehouse", "warp", "wishfind", "wishlist",
+        "achievements", "admin_panel", "anvil", "anvil_choice", "attendance", "bounty", "cape", "changehair", "character_info", "character_clan_details", "clanpoint",
+        "chatrooms", "clan", "clanwarehouse", "class_change", "collectionrace", "combinerecipes", "disguise",
+        "equipview", "exchange", "fishinghall", "forces", "fortune", "genie", "globalmap",
+        "inventory", "itemcombine", "kingballot", "kingelection", "kingnominate", "kingplan", "kingvote", "lottery",
+        "mail", "mailcompose", "mailread", "marketprice", "merchantmenu", "messenger", "namechange", "nationintro",
+        "nationtax", "nationtaxrate", "npc_dialog", "party", "pet", "piecechange", "presets", "quest_available",
+        "quest_receipt", "quest_target", "quests", "rank", "rebirth", "repair", "report", "roulette", "seal",
+        "seek_party", "sellstall", "shop", "shoppingmall", "siegechallengers", "siegedefenders", "siegeguard",
+        "siegeoffice", "siegeschedule", "siegetaxlist", "siegetaxrate", "skills", "specialauction", "titles",
+        "tournament", "userinfo", "vendor", "vipwarehouse", "wantedstall", "warehouse", "warp", "wishfind",
+        "wishlist",
     };
 
     private readonly Dictionary<string, WindowRule> _windows = new(StringComparer.OrdinalIgnoreCase);

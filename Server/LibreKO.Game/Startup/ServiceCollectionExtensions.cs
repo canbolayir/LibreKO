@@ -64,6 +64,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMerchantPacketCoordinator, MerchantPacketCoordinator>();
         services.AddSingleton<IMiscPacketCoordinator, MiscPacketCoordinator>();
         services.AddSingleton<IGenderChangePacketCoordinator, GenderChangePacketCoordinator>();
+        services.AddSingleton<IMarketPriceService, MarketPriceService>();
         services.AddSingleton<INationTransferService, NationTransferService>();
         services.AddSingleton<IMerchantSearchService, MerchantSearchService>();
         services.AddSingleton<IAchievementPacketCoordinator, AchievementPacketCoordinator>();
@@ -71,33 +72,23 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILoyaltyService, LoyaltyService>();
         services.AddSingleton<IMailPacketCoordinator, MailPacketCoordinator>();
         services.AddSingleton<IMailService, MailService>();
-        services.AddSingleton<IAuctionPacketCoordinator, AuctionPacketCoordinator>();
+        services.AddSingleton<ISpecialAuctionService, SpecialAuctionService>();
         services.AddSingleton<IAttendancePacketCoordinator, AttendancePacketCoordinator>();
         services.AddSingleton<IBountyPacketCoordinator, BountyPacketCoordinator>();
         services.AddSingleton<ITournamentPacketCoordinator, TournamentPacketCoordinator>();
-        services.AddSingleton<IDisguisePacketCoordinator, DisguisePacketCoordinator>();
         services.AddSingleton<IMessengerPacketCoordinator, MessengerPacketCoordinator>();
         services.AddSingleton<IForcesPacketCoordinator, ForcesPacketCoordinator>();
-        services.AddSingleton<IInstancePacketCoordinator, InstancePacketCoordinator>();
         services.AddSingleton<IChatRoomPacketCoordinator, ChatRoomPacketCoordinator>();
         services.AddSingleton<INationTaxPacketCoordinator, NationTaxPacketCoordinator>();
-        services.AddSingleton<IFortunePacketCoordinator, FortunePacketCoordinator>();
-        services.AddSingleton<IItemCombinePacketCoordinator, ItemCombinePacketCoordinator>();
         services.AddSingleton<IFishingHallPacketCoordinator, FishingHallPacketCoordinator>();
         services.AddSingleton<IRoulettePacketCoordinator, RoulettePacketCoordinator>();
         services.AddSingleton<IEventBoardPacketCoordinator, EventBoardPacketCoordinator>();
-        services.AddSingleton<IDuelPacketCoordinator, DuelPacketCoordinator>();
-        services.AddSingleton<IItemExchangePacketCoordinator, ItemExchangePacketCoordinator>();
-        services.AddSingleton<IRingUpgradePacketCoordinator, RingUpgradePacketCoordinator>();
-        services.AddSingleton<IInnPacketCoordinator, InnPacketCoordinator>();
         services.AddSingleton<IClientSettingsPacketCoordinator, ClientSettingsPacketCoordinator>();
         services.AddSingleton<IGuardPetPacketCoordinator, GuardPetPacketCoordinator>();
-        services.AddSingleton<IEventQuestPacketCoordinator, EventQuestPacketCoordinator>();
         services.AddSingleton<IGlobalMapPacketCoordinator, GlobalMapPacketCoordinator>();
         services.AddSingleton<IGeniePacketCoordinator, GeniePacketCoordinator>();
         services.AddSingleton<IGenieSystemPacketCoordinator, GenieSystemPacketCoordinator>();
         services.AddSingleton<IGenieHammerService, GenieHammerService>();
-        services.AddSingleton<IDailyQuestPacketCoordinator, DailyQuestPacketCoordinator>();
         services.AddSingleton<ICollectionRacePacketCoordinator, CollectionRacePacketCoordinator>();
         services.AddSingleton<ILotteryPacketCoordinator, LotteryPacketCoordinator>();
         services.AddSingleton<INationSystemsPacketCoordinator, NationSystemsPacketCoordinator>();
@@ -127,6 +118,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMonsterStoneService, MonsterStoneService>();
         services.AddSingleton<IJuraidMountainService, JuraidMountainService>();
         services.AddSingleton<IBorderDefenseWarService, BorderDefenseWarService>();
+        services.AddSingleton<IUnderTheCastleService, UnderTheCastleService>();
         services.AddSingleton<ISessionTerminationService, SessionTerminationService>();
         services.AddSingleton<IAccountLockService, AccountLockService>();
         services.AddSingleton<IUserNotificationService, UserNotificationService>();
@@ -149,6 +141,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IItemTradeService, ItemTradeService>();
         services.AddSingleton<IGlobalAnvilRateService, GlobalAnvilRateService>();
         services.AddSingleton<IChaoticGeneratorService, ChaoticGeneratorService>();
+        services.AddSingleton<IItemCombineService, ItemCombineService>();
         services.AddSingleton<IItemUpgradeService, ItemUpgradeService>();
 
         // Knights
@@ -260,6 +253,8 @@ public static class ServiceCollectionExtensions
         services.AddHostedService(sp => sp.GetRequiredService<EventSchedulerService>());
         services.AddHostedService<KingElectionTimerService>();
         services.AddHostedService<MonthlyLoyaltyResetService>();
+        services.AddHostedService<MarketPricePruneService>();
+        services.AddHostedService<SpecialAuctionTickService>();
         services.AddHostedService(sp => sp.GetRequiredService<TimeWeatherBroadcastService>());
         services.AddHostedService<HeartbeatProbeService>();
         services.AddHostedService<DailyLoyaltyResetService>();

@@ -97,7 +97,7 @@ public partial class World
 
         root.AddChild(MenuButton("Selling Merchant", OpenSellStall));
         root.AddChild(MenuButton("Buying Merchant", OpenWishList));
-        root.AddChild(MenuButton("Market Price", OpenMarketPrice));
+        root.AddChild(MenuButton("Market Price", OpenMarketPriceFromMenu));
 
     }
 
@@ -227,10 +227,10 @@ public partial class World
         Net.I.SendMerchantOpen();
     }
 
-    private void OpenMarketPrice()
+    private void OpenMarketPriceFromMenu()
     {
         CloseMerchantMenu();
-        CombatNotice("Market prices are not available on this server yet.");
+        OpenMarketPrice();
     }
 
     private void OnMerchantOpenResult(int status)
