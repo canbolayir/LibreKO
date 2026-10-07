@@ -9,6 +9,7 @@ public class TempleEventRulesTests
     [Theory]
     [InlineData(TempleEvent.Chaos, 20)]
     [InlineData(TempleEvent.BorderDefenseWar, 30)]
+    [InlineData(TempleEvent.ForgottenTemple, 40)]
     [InlineData(TempleEvent.JuraidMountain, 45)]
     [InlineData(TempleEvent.UnderTheCastle, 60)]
     public void EachContestRunsForItsOwnLength(TempleEvent contest, int minutes)
@@ -27,6 +28,7 @@ public class TempleEventRulesTests
     [InlineData(TempleEvent.BorderDefenseWar, ZoneId.BorderDefenseWar)]
     [InlineData(TempleEvent.JuraidMountain, ZoneId.JuradMountain)]
     [InlineData(TempleEvent.UnderTheCastle, ZoneId.UnderCastle)]
+    [InlineData(TempleEvent.ForgottenTemple, ZoneId.ForgottenTemple)]
     public void EachContestHasItsOwnZone(TempleEvent contest, ZoneId zone)
     {
         TempleEventRules.ZoneFor(contest).Should().Be((byte)zone);
