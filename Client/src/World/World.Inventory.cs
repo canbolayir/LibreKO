@@ -522,6 +522,7 @@ public partial class World : Node3D
             else
                 ShowItemTooltip(_hoverCell.Slot, _hoverCell.Current, _bagCompanion?.Note(_hoverCell.Slot) ?? "");
         }
+        if(_upgradeShown){DropStaleSockets();RefreshAnvilInventory();}
         ApplyBagFit();
     }
 

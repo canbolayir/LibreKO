@@ -23,6 +23,7 @@ public partial class World : Node3D
         EscapeCloses(() => _whAmount.Visible, () => _whAmount.Close());
         EscapeCloses(() => _whShown, () => CloseWarehouse());
         EscapeCloses(() => _upgradeShown, () => CloseUpgrade());
+        EscapeCloses(() => _upgradeChoicePanel is { Visible: true }, () => _upgradeChoicePanel.Visible = false);
         EscapeCloses(() => _classChangeShown, () => CloseClassChange());
         EscapeCloses(() => _genderShown, CloseGenderChange);
         EscapeCloses(() => _transferShown, CancelNationTransfer);

@@ -11,7 +11,6 @@ public sealed partial class ItemSlotView : PanelContainer
 {
     private const float WearHeight = 3f;
     private const float WearInset = 3f;
-    private const float DragPreviewSize = 40f;
     private static readonly Color DimmedTint = new(1f, 1f, 1f, 0.32f);
     private static readonly Color UnfitTint = new(1f, 0.6f, 0.6f, 0.45f);
     private static readonly Color StagedTint = new(1f, 1f, 1f, 0.45f);
@@ -27,6 +26,7 @@ public sealed partial class ItemSlotView : PanelContainer
     private readonly ColorRect _wearFill;
     private SlotLook _look;
     private bool _hover;
+    private Vector2 _dragGrabPoint;
 
     public event Action<ItemSlotView>? Clicked;
     public event Action<ItemSlotView>? DoubleClicked;
@@ -165,6 +165,8 @@ public sealed partial class ItemSlotView : PanelContainer
     public override void _GuiInput(InputEvent ev)
     {
         if (ev is not InputEventMouseButton mb) return;
+        if (mb.Pressed && mb.ButtonIndex == MouseButton.Left)
+            _dragGrabPoint = _icon.GetGlobalTransform().AffineInverse() * (GetGlobalTransform() * mb.Position);
         if (mb.Pressed && Wheeled != null && mb.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
         {
             Wheeled(this, mb.ButtonIndex == MouseButton.WheelUp ? -1 : 1);
@@ -191,14 +193,25 @@ public sealed partial class ItemSlotView : PanelContainer
         if (DragOut == null || Item.IsEmpty) return default;
         var data = DragOut(this);
         if (data.VariantType == Variant.Type.Nil) return default;
-        DragLayer.Show(this, new TextureRect
-        {
-            Texture = ItemData.Icon(Item.ItemId),
-            CustomMinimumSize = new Vector2(DragPreviewSize, DragPreviewSize),
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-        });
+        DragLayer.Show(this, BuildDragPreview());
         return data;
+    }
+
+    private Control BuildDragPreview()
+    {
+        var basis = _icon.GetGlobalTransformWithCanvas();
+        var preview = new Control { MouseFilter = MouseFilterEnum.Ignore };
+        preview.AddChild(new TextureRect
+        {
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = _icon.StretchMode,
+            Texture = _icon.Texture,
+            Size = _icon.Size,
+            Position = -basis.BasisXform(_dragGrabPoint),
+            Rotation = basis.Rotation,
+            Scale = basis.Scale,
+        });
+        return preview;
     }
 
     public override bool _CanDropData(Vector2 atPosition, Variant data) => CanDrop?.Invoke(this, data) ?? false;

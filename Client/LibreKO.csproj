@@ -36,5 +36,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="LibreKO.Tests" />
+    <EmbeddedResource Include="data/anvil_upgrade_settings.json" LogicalName="LibreKO.AnvilUpgradeSettings" />
+    <EmbeddedResource Include="data/anvil_origins.json.gz" LogicalName="LibreKO.AnvilOrigins" />
   </ItemGroup>
 </Project>

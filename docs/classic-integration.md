@@ -2,6 +2,8 @@
 
 Companion theme: [LibreKO-knightonline-ui-classic](https://github.com/canbolayir/LibreKO-knightonline-ui-classic).
 
+The reviewed Anvil extension is documented separately in [Anvil integration](anvil-integration.md), with recipe snapshot maintenance and validation results.
+
 ## Scope and history
 
 This series organizes existing local work into separate feature commits on upstream `9cc436e977347b7aa4067ff7c52c5b9da9b500e5`. It preserves the working source content; it does not recreate original edit dates. Shared plugin interfaces and final bridge wiring span the series, so use the complete tip with the companion plugin.

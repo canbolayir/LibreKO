@@ -50,7 +50,7 @@ public class UpgradeBagChangesTests
     [Fact]
     public void AFailedUpgradeDestroysTheItemAndUsesOneScroll()
     {
-        var changes = Changes(Normal, Failed, Raptor8);
+        var changes = Changes(Normal, Failed, 0);
         Assert.True(changes[0].Slot.IsEmpty);
         Assert.Equal((short)2, changes[1].Slot.Count);
     }
@@ -60,4 +60,18 @@ public class UpgradeBagChangesTests
 
     [Fact]
     public void APreviewLeavesTheBagAlone() => Assert.Empty(Changes(Preview, Succeeded, Raptor9));
+
+    [Theory]
+    [InlineData(Raptor8)]
+    [InlineData(Raptor8 - 1)]
+    public void AProtectedFailureRetainsTheReturnedItemAndConsumesOneMaterial(int returned)
+    {
+        var bag = Bag();
+        bag[ItemAbs].UniqueId = 123;
+        var changes = UpgradeBagChanges.For(Normal, Failed, Reply(returned), bag, _ => Raptor9Durability);
+        Assert.Equal(returned, changes[0].Slot.ItemId);
+        Assert.Equal(7000, changes[0].Slot.Durability);
+        Assert.Equal(123, changes[0].Slot.UniqueId);
+        Assert.Equal(2, changes[1].Slot.Count);
+    }
 }

@@ -28,13 +28,13 @@ public partial class World
             inventory.Layout.Placed += _bagPairing.PlayerTouched;
     }
 
-    private void AttachBagCompanion(BagCompanion companion)
+    private void AttachBagCompanion(BagCompanion companion, bool openInventory = true)
     {
-        var previous = _bagPairing.Attach(companion, CharTabOpen());
+        var previous = _bagPairing.Attach(companion, !openInventory || CharTabOpen());
         _bagCompanion = companion;
         previous?.Close();
         if (CharTabOpen()) ApplyBagFit();
-        else ShowMainWindow("Inventory");
+        else if (openInventory) ShowMainWindow("Inventory");
     }
 
     private void DetachBagCompanion(BagCompanion companion)
@@ -47,6 +47,7 @@ public partial class World
 
     private void RefreshBagFit()
     {
+        if (_upgradeShown) RefreshAnvilInventory();
         if (CharTabOpen()) ApplyBagFit();
     }
 

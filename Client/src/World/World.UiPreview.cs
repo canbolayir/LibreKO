@@ -580,6 +580,8 @@ public partial class World
         StageAnvilUpgrade(PreviewUpgradedWeapon, UpgradeScrollHighBlessed, TrinaPiece);
         OnUpgradeResult(new UpgradeResult(2, UpgradeTypePreview, UpgradeResultSucceeded,
             new[] { new UpgradeSlotResult(PreviewUpgradedResult, 0) }));
+        OnUpgradeResult(new UpgradeResult(2, UpgradeTypePreview, UpgradeResultSucceeded,
+            new[] { new UpgradeSlotResult(PreviewUpgradedResult, 0) }));
         return DetachPreviewControl(_upgradePanel);
     }
 
