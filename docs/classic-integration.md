@@ -2,6 +2,8 @@
 
 Companion theme: [LibreKO-knightonline-ui-classic](https://github.com/canbolayir/LibreKO-knightonline-ui-classic).
 
+The normal, VIP and clan storage controls and quantity/synchronization behavior are documented in [Storage integration](storage-integration.md).
+
 The reviewed Anvil extension is documented separately in [Anvil integration](anvil-integration.md), with recipe snapshot maintenance and validation results.
 
 The NPC services, market history and Under the Castle integration are documented in [NPC and event integration](upstream-npc-events-integration.md). The additional event and compatibility review are documented in [Forgotten Temple integration](forgotten-temple-integration.md).

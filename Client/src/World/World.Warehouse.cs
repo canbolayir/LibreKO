@@ -17,6 +17,10 @@ public partial class World
     private readonly ItemSlot[] _warehouse = new ItemSlot[WhSlots];
     private int _whMoney;
     private int _whPage;
+    private int WhUiPageSize => _whPanel.HasMeta("warehouse_page_size") ? _whPanel.GetMeta("warehouse_page_size").AsInt32() : WhPageSize;
+    private int WhUiPages => WhSlots / WhUiPageSize;
+    private Label _whPageLabel = null!;
+    private readonly ItemSlotView[] _whBagCells = new ItemSlotView[GridCount];
 
     private CanvasLayer _whLayer = null!;
     private HudWindow _whPanel = null!;
@@ -80,6 +84,7 @@ public partial class World
         root.AddChild(_whSearch);
 
         root.AddChild(ServiceKit.Section("Stored items", UiIcons.Get("system/package"), out _whSlotsNote));
+        _whSlotsNote.Name = "storage_used";
 
         var well = ServiceKit.Well();
         root.AddChild(well);
@@ -89,7 +94,7 @@ public partial class World
         well.AddChild(grid);
         for (int i = 0; i < WhPageSize; i++)
         {
-            var cell = new ItemSlotView(WhCellSize) { Index = i };
+            var cell = new ItemSlotView(WhCellSize) { Index = i, Name = "storage_cell_" + i };
             cell.RightClicked += c => WithdrawSlot(WhAbs(c.Index));
             cell.Hovered += c => ShowItemTooltip(-1, c.Item);
             cell.Unhovered += _ => HideItemTooltip();
@@ -113,6 +118,7 @@ public partial class World
         root.AddChild(_whPageTabs);
 
         _whStatus = new StatusLabel { Hint = WhHint };
+        _whStatus.Name = "storage_status";
         root.AddChild(_whStatus);
 
         var footer = new FooterBand();
@@ -125,9 +131,24 @@ public partial class World
         footer.Right.AddChild(_whDepositBtn);
         footer.Right.AddChild(_whWithdrawBtn);
         root.AddChild(footer);
+        var extra = new Control { Name = "warehouse_classic_controls", Visible = false };
+        root.AddChild(extra);
+        _whPageLabel = new Label { Name = "storage_page", Text = "1 / 4" }; extra.AddChild(_whPageLabel);
+        foreach (int step in new[] { -1, 1 })
+        {
+            var button = new Button { Name = step < 0 ? "storage_prev" : "storage_next" };
+            button.Pressed += () => TurnWhPage(step); extra.AddChild(button);
+        }
+        for (int i = 0; i < GridCount; i++)
+        {
+            var cell = StorageBagCell(i, abs => DepositSlot(abs, -1),
+                (abs, data) => CanDropOnWhBag(abs, data), (abs, data) => DropOnWhBag(abs, data));
+            _whBagCells[i] = cell; extra.AddChild(cell);
+        }
+        _whPanel.SetMeta("storage_amount", _whAmount);
     }
 
-    private int WhAbs(int cell) => _whPage * WhPageSize + cell;
+    private int WhAbs(int cell) => _whPage * WhUiPageSize + cell;
 
     private void OnWarehouseOpen()
     {
@@ -143,7 +164,7 @@ public partial class World
     private void OpenWarehouseStorage()
     {
         CloseNpcDialog();
-        _whInFlight = false;
+        if (_whInFlight) return;
         _whPage = 0;
         _whPageTabs.Select(0, notify: false);
         _whSearch.Text = "";
@@ -153,7 +174,7 @@ public partial class World
         System.Array.Clear(_warehouse, 0, _warehouse.Length);
         _whMoney = 0;
         _whCompanion ??= new BagCompanion(WhTakeFromBag, WhBagFit, _ => "", CloseWarehouse, WithdrawInto);
-        AttachBagCompanion(_whCompanion);
+        AttachBagCompanion(_whCompanion, openInventory: !_whPanel.HasMeta("embedded_inventory"));
         Net.I.SendWarehouseOpen();
         RefreshWarehouse();
     }
@@ -177,7 +198,7 @@ public partial class World
 
     private void TurnWhPage(int step)
     {
-        int next = Mathf.Clamp(_whPage + step, 0, WarehouseView.UiPages - 1);
+        int next = Mathf.Clamp(_whPage + step, 0, WhUiPages - 1);
         if (next == _whPage) return;
         _whPage = next;
         _whPageTabs.Select(next, notify: false);
@@ -189,17 +210,27 @@ public partial class World
         var ids = _warehouse.Select(s => s.ItemId).ToArray();
         _whHits = WarehouseView.Matches(ids, _whSearch.Text, ItemData.DisplayName);
         bool searching = !new ItemQuery(_whSearch.Text).IsEmpty;
-        var pages = WarehouseView.PagesWithHits(_whHits);
+        var pages = new bool[WhUiPages];
+        foreach (int abs in _whHits) pages[abs / WhUiPageSize] = true;
+        _whPageTabs.SetTabs(Enumerable.Range(1, WhUiPages).Select(p => p.ToString()).ToArray(), _whPage);
+        _whPageLabel.Text = $"{_whPage + 1} / {WhUiPages}";
+        _whPageLabel.TooltipText = searching
+            ? "Matching pages: " + string.Join(", ", Enumerable.Range(0, pages.Length).Where(p => pages[p]).Select(p => p + 1))
+            : "Storage page";
+        _whPanel.SetMeta("storage_page", _whPage);
+        _whPanel.SetMeta("storage_pages", WhUiPages);
         for (int p = 0; p < pages.Length; p++) _whPageTabs.SetBadge(p, searching && pages[p] ? WhHitBadge : "");
 
         for (int i = 0; i < WhPageSize; i++)
         {
+            if (i >= WhUiPageSize) { _whCells[i].Visible = false; continue; }
             int abs = WhAbs(i);
             _whCells[i].Set(_warehouse[abs]);
             _whCells[i].Look = !searching || _warehouse[abs].IsEmpty ? SlotLook.Normal
                 : _whHits.Contains(abs) ? SlotLook.Selected : SlotLook.Dimmed;
         }
 
+        for (int i = 0; i < GridCount; i++) _whBagCells[i].Set(Inv[GridStart + i]);
         int used = _warehouse.Count(s => !s.IsEmpty);
         _whSlotsNote.Text = $"Slots used {used} / {WhSlots}";
         _whSlotsNote.AddThemeColorOverride("font_color", used >= WhSlots ? UiTheme.Bad : UiTheme.TextDim);
@@ -210,6 +241,7 @@ public partial class World
     private void RefreshWarehouseGold()
     {
         _whStored.Value = _whMoney;
+        _whPanel.SetMeta("storage_money", _whMoney);
         _whDepositBtn.Disabled = Sheet.Gold <= 0;
         _whWithdrawBtn.Disabled = _whMoney <= 0;
     }
@@ -263,10 +295,10 @@ public partial class World
 
     private bool CanDropOnWarehouse(int whIdx, Variant data)
     {
-        if (data.VariantType != Variant.Type.Dictionary) return false;
+        if (StorageTransferBusy || data.VariantType != Variant.Type.Dictionary) return false;
         var d = data.AsGodotDictionary();
-        if (d.ContainsKey("invFrom")) return InMainBag(d["invFrom"].AsInt32());
-        return d.ContainsKey("companionFrom") && d["companionFrom"].AsInt32() != whIdx;
+        if (d.ContainsKey("invFrom")) return InMainBag(d["invFrom"].AsInt32()) && WarehouseStorable(Inv[d["invFrom"].AsInt32()].ItemId) && !Inv[d["invFrom"].AsInt32()].IsLinked;
+        return d.ContainsKey("companionFrom") && d["companionFrom"].AsInt32() is >= 0 and < WhSlots && d["companionFrom"].AsInt32() != whIdx && !_warehouse[d["companionFrom"].AsInt32()].IsEmpty && _warehouse[whIdx].IsEmpty;
     }
 
     private void DropOnWarehouse(int whIdx, Variant data)
@@ -278,27 +310,28 @@ public partial class World
 
     private void DepositSlot(int abs, int target)
     {
-        if (_whInFlight || !InMainBag(abs) || Inv[abs].IsEmpty) return;
+        if (StorageTransferBusy || !InMainBag(abs) || Inv[abs].IsEmpty) return;
         var slot = Inv[abs];
-        if (!WarehouseStorable(slot.ItemId))
+        if (slot.IsLinked || !WarehouseStorable(slot.ItemId))
         {
             _whStatus.Status(ItemData.Text(WarehouseRules.NonStorableText, "This item is non-storable"), bad: true);
             return;
         }
         if (IsStackable(slot.ItemId) && slot.Count > 1)
             _whAmount.Open(ItemData.Icon(slot.ItemId), $"Store {ItemData.DisplayName(slot.ItemId)}",
-                $"You carry {slot.Count:n0}", slot.Count, slot.Count, n => DepositCount(abs, (int)n, target), "Store");
+                $"You carry {slot.Count:n0}", slot.Count, slot.Count, n => { if (_whShown && Inv[abs].Equals(slot)) DepositCount(abs, (int)n, target); }, "Store");
         else
             DepositCount(abs, Mathf.Max(1, (int)slot.Count), target);
     }
 
     private void DepositCount(int abs, int count, int target)
     {
-        if (_whInFlight || !InMainBag(abs) || Inv[abs].IsEmpty || count <= 0) return;
+        if (StorageTransferBusy || !InMainBag(abs) || Inv[abs].IsEmpty || count <= 0) return;
         var slot = Inv[abs];
         count = Mathf.Min(count, slot.Count > 0 ? slot.Count : 1);
         int whIdx;
         bool merge;
+        if (target >= WhSlots) return;
         if (target >= 0)
         {
             if (!FitsInWarehouse(target, slot.ItemId, count)) { _whStatus.Status("That slot is taken.", bad: true); return; }
@@ -326,18 +359,18 @@ public partial class World
 
     private void AskWithdraw(int whIdx, int target)
     {
-        if (_whInFlight || whIdx < 0 || whIdx >= WhSlots || _warehouse[whIdx].IsEmpty) return;
+        if (StorageTransferBusy || whIdx < 0 || whIdx >= WhSlots || _warehouse[whIdx].IsEmpty) return;
         var slot = _warehouse[whIdx];
         if (IsStackable(slot.ItemId) && slot.Count > 1)
             _whAmount.Open(ItemData.Icon(slot.ItemId), $"Take out {ItemData.DisplayName(slot.ItemId)}",
-                $"Stored {slot.Count:n0}", slot.Count, slot.Count, n => WithdrawCount(whIdx, (int)n, target), "Take out");
+                $"Stored {slot.Count:n0}", slot.Count, slot.Count, n => { if (_whShown && _warehouse[whIdx].Equals(slot)) WithdrawCount(whIdx, (int)n, target); }, "Take out");
         else
             WithdrawCount(whIdx, Mathf.Max(1, (int)slot.Count), target);
     }
 
     private void WithdrawCount(int whIdx, int count, int target)
     {
-        if (_whInFlight || whIdx < 0 || whIdx >= WhSlots || _warehouse[whIdx].IsEmpty || count <= 0) return;
+        if (StorageTransferBusy || whIdx < 0 || whIdx >= WhSlots || _warehouse[whIdx].IsEmpty || count <= 0) return;
         var slot = _warehouse[whIdx];
         count = Mathf.Min(count, slot.Count > 0 ? slot.Count : 1);
         int dest;
@@ -361,7 +394,7 @@ public partial class World
 
     private void MoveInsideWarehouse(int from, int to)
     {
-        if (_whInFlight || from == to || from < 0 || to < 0 || from >= WhSlots || to >= WhSlots || _warehouse[from].IsEmpty) return;
+        if (StorageTransferBusy || from == to || from < 0 || to < 0 || from >= WhSlots || to >= WhSlots || _warehouse[from].IsEmpty) return;
         if (!_warehouse[to].IsEmpty) { _whStatus.Status("That slot is taken.", bad: true); return; }
         _whPending = new WhPending { Op = WhOpMove, WhIdx = from, WhTo = to, Count = _warehouse[from].Count };
         _whInFlight = true;
@@ -372,7 +405,7 @@ public partial class World
     private void AskGoldTransfer(bool deposit)
     {
         if (_whInFlight) return;
-        long max = deposit ? Sheet.Gold : _whMoney;
+        long max = System.Math.Min(deposit ? Sheet.Gold : _whMoney, 2_100_000_000 - (deposit ? _whMoney : Sheet.Gold));
         if (max <= 0) return;
         _whAmount.Open(null, deposit ? "Deposit gold" : "Withdraw gold",
             deposit ? $"You carry {max:n0}" : $"Stored {max:n0}", max, max, n => GoldTransfer(deposit, (int)n),
@@ -381,7 +414,7 @@ public partial class World
 
     private void GoldTransfer(bool deposit, int amount)
     {
-        if (_whInFlight || amount <= 0) return;
+        if (StorageTransferBusy || amount <= 0) return;
         if (deposit && amount > Sheet.Gold) { _whStatus.Status("Not enough carried gold.", bad: true); return; }
         if (!deposit && amount > _whMoney) { _whStatus.Status("Not enough stored gold.", bad: true); return; }
 
@@ -393,7 +426,7 @@ public partial class World
 
     private void OnWarehouseResult(byte op, bool ok)
     {
-        if (!_whInFlight) return;
+        if (!_whInFlight || op != _whPending.Op) return;
         _whInFlight = false;
         if (!ok)
         {

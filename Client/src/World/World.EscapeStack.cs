@@ -20,6 +20,9 @@ public partial class World : Node3D
         EscapeCloses(() => _tradePrompt.Visible, () => _tradePrompt.Close());
         EscapeCloses(() => _vendorShown, () => CloseVendor());
         EscapeCloses(() => _repairShown, () => CloseRepair());
+        EscapeCloses(() => _vipWhPinDlg.Visible, () => _vipWhPinDlg.Hide());
+        EscapeCloses(() => _vipWhAmount.Visible, () => _vipWhAmount.Close());
+        EscapeCloses(() => _clanWhAmount.Visible, () => _clanWhAmount.Close());
         EscapeCloses(() => _whAmount.Visible, () => _whAmount.Close());
         EscapeCloses(() => _whShown, () => CloseWarehouse());
         EscapeCloses(() => _upgradeShown, () => CloseUpgrade());

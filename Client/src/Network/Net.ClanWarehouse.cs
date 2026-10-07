@@ -57,6 +57,13 @@ public partial class Net
     public void SendClanWhOutput(int itemId, byte page, byte srcWhPos, byte dstInvPos, int count)
         => SendClanWhMove(3, itemId, page, srcWhPos, dstInvPos, count);
 
+    public void SendClanWhStore(int itemId, byte page, byte source, byte destination)
+    {
+        var packet = new Packet(GameOpcodes.GS_CLAN_WAREHOUSE);
+        packet.WriteByte(4); packet.WriteInt(0); packet.WriteInt(itemId);
+        packet.WriteByte(page); packet.WriteByte(source); packet.WriteByte(destination); _conn.Send(packet);
+    }
+
     private void SendClanWhMove(byte sub, int itemId, byte page, byte srcPos, byte dstPos, int count)
     {
         var p = new Packet(GameOpcodes.GS_CLAN_WAREHOUSE);

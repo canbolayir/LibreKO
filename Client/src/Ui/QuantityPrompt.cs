@@ -116,6 +116,12 @@ public sealed partial class QuantityPrompt : CanvasLayer
         _confirm = null;
     }
 
+    public override void _UnhandledInput(InputEvent ev)
+    {
+        if (!Visible || ev is not InputEventKey { Pressed: true, Echo: false } key || key.Keycode != Key.Escape) return;
+        Close(); GetViewport().SetInputAsHandled();
+    }
+
     private void Refresh()
     {
         _ok.Disabled = _amount.Value <= 0 || _amount.Value > _max;

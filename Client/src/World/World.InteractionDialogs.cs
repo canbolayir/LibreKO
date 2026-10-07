@@ -14,6 +14,7 @@ public partial class World
         InteractionCloses(() => _npcDialogShown, () => CloseNpcDialog());
         InteractionCloses(() => _vendorShown, () => CloseVendor());
         InteractionCloses(() => _repairShown, () => CloseRepair());
+        InteractionCloses(() => _vipWhPinDlg.Visible, () => _vipWhPinDlg.Hide());
         InteractionCloses(() => _whShown, () => CloseWarehouse());
         InteractionCloses(() => _clanWhShown, () => CloseClanWarehouse());
         InteractionCloses(() => _vipWhShown, () => CloseVipWarehouse());

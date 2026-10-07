@@ -21,16 +21,17 @@ public partial class World
     private CanvasLayer _vipWhLayer = null!;
     private HudWindow _vipWhPanel = null!;
     private bool _vipWhShown;
-    private readonly WarehouseCell[] _vipWhCells = new WarehouseCell[VipWhPageSize];
-    private readonly WarehouseCell[] _vipWhBagCells = new WarehouseCell[28];
+    private QuantityPrompt _vipWhAmount = null!;
+    private readonly ItemSlotView[] _vipWhCells = new ItemSlotView[VipWhPageSize];
+    private readonly ItemSlotView[] _vipWhBagCells = new ItemSlotView[28];
     private Label _vipWhPageLbl = null!, _vipWhStatus = null!, _vipWhExpiryLbl = null!;
 
-    private AcceptDialog _vipWhPinDlg = null!;
+    private VipVaultPinPrompt _vipWhPinDlg = null!;
     private LineEdit _vipWhPinEdit = null!;
     private Label _vipWhPinPrompt = null!;
     private byte _vipWhPinSub;
 
-    private struct VipWhPending { public byte Op; public int InvAbs; public int VipIdx; }
+    private struct VipWhPending { public byte Op; public int InvAbs; public int VipIdx; public int To; public int Count; public bool Merge; }
     private VipWhPending _vipWhPending;
     private bool _vipWhInFlight;
 
@@ -62,6 +63,8 @@ public partial class World
             CombatNotice("The vault key could not be used.");
             return;
         }
+        _vipWhExpirySec = remainingSeconds;
+        if (_vipWhShown) RefreshVipWarehouse();
         int days = Mathf.Max(1, Mathf.RoundToInt(remainingSeconds / (float)SecondsPerDay));
         CombatNotice($"Your VIP vault is rented for {days} more day{(days == 1 ? "" : "s")}.");
     }
@@ -74,6 +77,8 @@ public partial class World
         _vipWhPanel = new HudWindow("vipwarehouse", "VIP Vault") { Visible = false };
         _vipWhPanel.Closed += CloseVipWarehouse;
         _vipWhLayer.AddChild(_vipWhPanel);
+        _vipWhAmount = new QuantityPrompt(76); AddChild(_vipWhAmount);
+        _vipWhPanel.SetMeta("storage_amount", _vipWhAmount);
 
         var body = new HBoxContainer();
         body.AddThemeConstantOverride("separation", 14);
@@ -90,23 +95,19 @@ public partial class World
         vipCol.AddChild(vipGrid);
         for (int i = 0; i < VipWhPageSize; i++)
         {
-            var cell = new WarehouseCell(i)
-            {
-                OnActivate = VipWithdrawSlot,
-                OnHover = HoverWarehouseCell,
-                OnHoverEnd = HideItemTooltip,
-            };
+            var cell = VaultCell(true, i);
             _vipWhCells[i] = cell;
             vipGrid.AddChild(cell);
         }
 
         var pageRow = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         pageRow.AddThemeConstantOverride("separation", 8);
-        var prev = new Button { Text = "◀", FocusMode = Control.FocusModeEnum.None };
+        var prev = new Button { Name = "storage_prev", Text = "◀", FocusMode = Control.FocusModeEnum.None };
         prev.Pressed += () => ChangeVipWhPage(-1);
         _vipWhPageLbl = UiTheme.Text($"1 / {VipWhPages}", 12, UiTheme.TextLo, HorizontalAlignment.Center);
+        _vipWhPageLbl.Name = "storage_page";
         _vipWhPageLbl.CustomMinimumSize = new Vector2(60, 0);
-        var next = new Button { Text = "▶", FocusMode = Control.FocusModeEnum.None };
+        var next = new Button { Name = "storage_next", Text = "▶", FocusMode = Control.FocusModeEnum.None };
         next.Pressed += () => ChangeVipWhPage(1);
         pageRow.AddChild(prev); pageRow.AddChild(_vipWhPageLbl); pageRow.AddChild(next);
         vipCol.AddChild(pageRow);
@@ -116,6 +117,7 @@ public partial class World
         var el = UiTheme.Text("Expires in", 12, UiTheme.TextLo); el.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         expiryRow.AddChild(el);
         _vipWhExpiryLbl = UiTheme.Text("—", 13, UiTheme.Gold, HorizontalAlignment.Right);
+        _vipWhExpiryLbl.Name = "storage_expiry";
         expiryRow.AddChild(_vipWhExpiryLbl);
         vipCol.AddChild(expiryRow);
 
@@ -139,43 +141,27 @@ public partial class World
         bagCol.AddChild(bagGrid);
         for (int i = 0; i < 28; i++)
         {
-            var cell = new WarehouseCell(GridStart + i, bag: true)
-            {
-                OnActivate = VipDepositSlot,
-                OnHover = HoverWarehouseCell,
-                OnHoverEnd = HideItemTooltip,
-            };
+            var cell = VaultBagCell(true, i);
             _vipWhBagCells[i] = cell;
             bagGrid.AddChild(cell);
         }
         bagCol.AddChild(new HSeparator());
         _vipWhStatus = UiTheme.Text("Right-click to store / withdraw", 11, new Color(UiTheme.TextLo, 0.7f));
+        _vipWhStatus.Name = "storage_status";
         bagCol.AddChild(_vipWhStatus);
 
-        _vipWhPinDlg = new AcceptDialog { Title = "VIP Vault PIN", Unresizable = true };
-        _vipWhPinDlg.GetOkButton().Text = "Confirm";
-        var pinBox = new VBoxContainer();
-        pinBox.AddThemeConstantOverride("separation", 8);
-        _vipWhPinPrompt = UiTheme.Text("Enter your 4-digit PIN:", 13, UiTheme.TextHi);
-        pinBox.AddChild(_vipWhPinPrompt);
-        _vipWhPinEdit = new LineEdit
-        {
-            PlaceholderText = "1234",
-            MaxLength = 4,
-            Secret = true,
-            CustomMinimumSize = new Vector2(160, 0),
-        };
+        _vipWhPinDlg = new VipVaultPinPrompt();
+        _vipWhPinPrompt = _vipWhPinDlg.Message;
+        _vipWhPinEdit = _vipWhPinDlg.Input;
         _vipWhPinEdit.TextSubmitted += _ => SubmitVipPin();
-        pinBox.AddChild(_vipWhPinEdit);
-        _vipWhPinDlg.AddChild(pinBox);
         _vipWhPinDlg.Confirmed += SubmitVipPin;
-        _vipWhLayer.AddChild(_vipWhPinDlg);
+        AddChild(_vipWhPinDlg);
     }
 
     private void ToggleVipWarehouse()
     {
         if (_vipWhShown) { CloseVipWarehouse(); return; }
-        _vipWhInFlight = false;
+        if (_vipWhInFlight) return;
         _vipWhPage = 0;
         Net.I.SendVipWarehouseOpen();
     }
@@ -190,6 +176,7 @@ public partial class World
 
     private void CloseVipWarehouse()
     {
+        _vipWhAmount.Close();
         if (!_vipWhShown) return;
         _vipWhShown = false;
         _vipWhPanel.Visible = false;
@@ -206,13 +193,17 @@ public partial class World
 
     private void OnVipWarehouseExpired()
     {
+        _vipWhExpirySec = 0;
+        _vipWhAmount.Close();
         ChatStatusNotice("Your VIP vault rental has expired. Renew it with a vault key.");
         if (_vipWhShown) { _vipWhStatus.Text = "Vault rental expired."; RefreshVipWarehouse(); }
     }
 
     private void ChangeVipWhPage(int d)
     {
-        _vipWhPage = ((_vipWhPage + d) % VipWhPages + VipWhPages) % VipWhPages;
+        _vipWhPage = _vipWhPanel.HasMeta("classic_storage")
+            ? Mathf.Clamp(_vipWhPage + d, 0, VipWhPages - 1)
+            : ((_vipWhPage + d) % VipWhPages + VipWhPages) % VipWhPages;
         RefreshVipWarehouse();
     }
 
@@ -222,6 +213,8 @@ public partial class World
             _vipWhCells[i].Set(_vipWh[_vipWhPage * VipWhPageSize + i]);
         for (int i = 0; i < 28; i++)
             _vipWhBagCells[i].Set(GridStart + i < Inv.Length ? Inv[GridStart + i] : default);
+        _vipWhPanel.SetMeta("storage_page", _vipWhPage);
+        _vipWhPanel.SetMeta("storage_pages", VipWhPages);
         _vipWhPageLbl.Text = $"{_vipWhPage + 1} / {VipWhPages}";
         _vipWhExpiryLbl.Text = FormatVipExpiry(_vipWhExpirySec);
     }
@@ -236,56 +229,33 @@ public partial class World
         return $"{seconds / 60}m";
     }
 
-    private int FirstFreeVipWarehouse()
-    {
-        for (int i = 0; i < VipWhSlots; i++) if (_vipWh[i].IsEmpty) return i;
-        return -1;
-    }
-
-    private void VipDepositSlot(int abs)
-    {
-        if (_vipWhInFlight || abs < 0 || abs >= Inv.Length || Inv[abs].IsEmpty) return;
-        int vipIdx = FirstFreeVipWarehouse();
-        if (vipIdx < 0) { _vipWhStatus.Text = "The vault is full."; return; }
-        var slot = Inv[abs];
-        _vipWhPending = new VipWhPending { Op = 2, InvAbs = abs, VipIdx = vipIdx };
-        _vipWhInFlight = true;
-        Net.I.SendVipWarehouseInput(slot.ItemId, (byte)(vipIdx / VipWhPageSize),
-            (byte)(abs - GridStart), (byte)(vipIdx % VipWhPageSize), slot.Count);
-    }
-
-    private void VipWithdrawSlot(int vipIdx)
-    {
-        if (_vipWhInFlight) return;
-        int absVip = _vipWhPage * VipWhPageSize + vipIdx;
-        if (absVip < 0 || absVip >= VipWhSlots || _vipWh[absVip].IsEmpty) return;
-        int free = Inv.FirstFreeGridSlot();
-        if (free < 0) { _vipWhStatus.Text = "Your bags are full."; return; }
-        var slot = _vipWh[absVip];
-        _vipWhPending = new VipWhPending { Op = 3, InvAbs = free, VipIdx = absVip };
-        _vipWhInFlight = true;
-        Net.I.SendVipWarehouseOutput(slot.ItemId, (byte)(absVip / VipWhPageSize),
-            (byte)(absVip % VipWhPageSize), (byte)(free - GridStart), slot.Count);
-    }
+    private void VipDepositSlot(int abs) => AskVaultTransfer(true, true, abs, -1);
+    private void VipWithdrawSlot(int index) => AskVaultTransfer(true, false, _vipWhPage * VipWhPageSize + index, -1);
 
     private void OnVipWarehouseResult(byte op, bool ok)
     {
-        if (!_vipWhInFlight) return;
+        if (!_vipWhInFlight || op != _vipWhPending.Op) return;
         _vipWhInFlight = false;
         if (!ok) { _vipWhStatus.Text = "Transfer failed."; if (_vipWhShown) RefreshVipWarehouse(); return; }
 
         var p = _vipWhPending;
-        if (p.Op == 2)
+        if (p.Op == 4)
         {
-            _vipWh[p.VipIdx] = Inv[p.InvAbs];
-            Inv[p.InvAbs] = default;
+            _vipWh[p.To] = _vipWh[p.VipIdx]; _vipWh[p.VipIdx] = default;
+        }
+        else if (p.Op == 2)
+        {
+            var bag = Inv[p.InvAbs];
+            MoveStack(ref bag, ref _vipWh[p.VipIdx], p.Count, p.Merge);
+            Inv[p.InvAbs] = bag;
             Net.I.MirrorInventorySlot(p.InvAbs, Inv[p.InvAbs]);
             if (CharTabOpen()) RefreshInventoryUI();
         }
         else
         {
-            Inv[p.InvAbs] = _vipWh[p.VipIdx];
-            _vipWh[p.VipIdx] = default;
+            var bag = Inv[p.InvAbs];
+            MoveStack(ref _vipWh[p.VipIdx], ref bag, p.Count, p.Merge);
+            Inv[p.InvAbs] = bag;
             Net.I.MirrorInventorySlot(p.InvAbs, Inv[p.InvAbs]);
             if (CharTabOpen()) RefreshInventoryUI();
         }

@@ -114,6 +114,13 @@ public partial class Net
     public void SendVipWarehouseOutput(int itemId, byte page, byte srcVipPos, byte dstInvPos, int count)
         => SendVipWarehouseMove(VipWhOutput, itemId, page, srcVipPos, dstInvPos, count);
 
+    public void SendVipWarehouseStore(int itemId, byte page, byte source, byte destination)
+    {
+        var packet = new Packet(GameOpcodes.GS_VIP_WAREHOUSE);
+        packet.WriteByte(4); packet.WriteInt(0); packet.WriteInt(itemId);
+        packet.WriteByte(page); packet.WriteByte(source); packet.WriteByte(destination); _conn.Send(packet);
+    }
+
     private void SendVipWarehouseMove(byte sub, int itemId, byte page, byte srcPos, byte dstPos, int count)
     {
         var p = new Packet(GameOpcodes.GS_VIP_WAREHOUSE);
