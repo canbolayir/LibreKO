@@ -13,6 +13,7 @@ public partial class World
     private Label _rebirthLevelLbl = null!, _rebirthPointsLbl = null!, _rebirthStatus = null!;
     private readonly Label[] _rebirthBonusLbls = new Label[RebirthPick.StatCount];
     private readonly Label[] _rebirthPickLbls = new Label[RebirthPick.StatCount];
+    private readonly Label[] _rebirthTotalLbls = new Label[RebirthPick.StatCount];
     private readonly Button[] _rebirthAddBtns = new Button[RebirthPick.StatCount];
     private readonly Button[] _rebirthRemoveBtns = new Button[RebirthPick.StatCount];
     private Button _rebirthBtn = null!;
@@ -20,16 +21,22 @@ public partial class World
     private byte[] _rebirthSent = [];
     private bool _rebirthShown;
     private bool _rebirthInFlight;
+    private Notice? _rebirthNotice;
+    private int _rebirthRevision;
+    private bool _rebirthAvailabilityWarning;
 
     private void RebirthInit()
     {
         BuildRebirthPanel();
         Net.I.RebStatChangeEvent += OnRebirthStatResult;
+        Net.I.RebirthResetEvent += ResetRebirthPicker;
     }
 
     private void RebirthDispose()
     {
         Net.I.RebStatChangeEvent -= OnRebirthStatResult;
+        Net.I.RebirthResetEvent -= ResetRebirthPicker;
+        DismissRebirthConfirmation();
     }
 
     private void BuildRebirthPanel()
@@ -38,6 +45,7 @@ public partial class World
         AddChild(_rebirthLayer);
 
         _rebirthPanel = new HudWindow("rebirth", "Rebirth", bodyMinWidth: 320) { Visible = false };
+        _rebirthPanel.SetMeta("classic_rebirth_controls", 1);
         _rebirthPanel.Closed += CloseRebirth;
         _rebirthLayer.AddChild(_rebirthPanel);
 
@@ -45,11 +53,13 @@ public partial class World
         root.AddThemeConstantOverride("separation", 8);
 
         _rebirthLevelLbl = UiTheme.Text("", 16, UiTheme.GoldBright, HorizontalAlignment.Center);
+        _rebirthLevelLbl.Name = "rebirth_level";
         root.AddChild(_rebirthLevelLbl);
 
         root.AddChild(new HSeparator());
         root.AddChild(UiTheme.SectionTitle("Bonus points"));
         _rebirthPointsLbl = HudStyle.Label(13);
+        _rebirthPointsLbl.Name = "rebirth_points";
         root.AddChild(_rebirthPointsLbl);
 
         for (int row = 0; row < RebirthPick.StatCount; row++)
@@ -61,37 +71,46 @@ public partial class World
 
             var name = HudStyle.Label(13);
             name.Text = RebirthStatLabels[row];
+            name.Name = "rebirth_stat_" + row;
             name.CustomMinimumSize = new Vector2(48, 0);
             line.AddChild(name);
 
             _rebirthBonusLbls[row] = UiTheme.Text("", 12, UiTheme.TextDim);
+            _rebirthBonusLbls[row].Name = "rebirth_current_" + row;
             _rebirthBonusLbls[row].CustomMinimumSize = new Vector2(64, 0);
             line.AddChild(_rebirthBonusLbls[row]);
 
-            _rebirthRemoveBtns[row] = RebirthStepButton("-", () => { _rebirthPick.Remove(index); RefreshRebirthUI(); });
+            _rebirthRemoveBtns[row] = RebirthStepButton("-", () => EditRebirthPoint(index, false));
+            _rebirthRemoveBtns[row].Name = "rebirth_remove_" + row;
             line.AddChild(_rebirthRemoveBtns[row]);
 
             _rebirthPickLbls[row] = HudStyle.Label(13, HorizontalAlignment.Center);
+            _rebirthPickLbls[row].Name = "rebirth_picked_" + row;
             _rebirthPickLbls[row].CustomMinimumSize = new Vector2(28, 0);
             line.AddChild(_rebirthPickLbls[row]);
 
-            _rebirthAddBtns[row] = RebirthStepButton("+", () => { _rebirthPick.Add(index); RefreshRebirthUI(); });
+            _rebirthAddBtns[row] = RebirthStepButton("+", () => EditRebirthPoint(index, true));
+            _rebirthAddBtns[row].Name = "rebirth_add_" + row;
             line.AddChild(_rebirthAddBtns[row]);
+            _rebirthTotalLbls[row] = HudStyle.Label(13, HorizontalAlignment.Center);
+            _rebirthTotalLbls[row].Name = "rebirth_total_" + row;
+            line.AddChild(_rebirthTotalLbls[row]);
         }
 
         root.AddChild(new HSeparator());
         var actionRow = new HBoxContainer();
         actionRow.AddThemeConstantOverride("separation", 8);
         root.AddChild(actionRow);
-        _rebirthBtn = new Button { Text = "Rebirth", FocusMode = Control.FocusModeEnum.None };
+        _rebirthBtn = new Button { Name = "rebirth_accept", Text = "Rebirth", FocusMode = Control.FocusModeEnum.None };
         _rebirthBtn.AddThemeFontSizeOverride("font_size", 13);
         _rebirthBtn.Pressed += OnRebirthPressed;
         actionRow.AddChild(_rebirthBtn);
-        var cancel = new Button { Text = "Not yet", FocusMode = Control.FocusModeEnum.None };
+        var cancel = new Button { Name = "rebirth_cancel", Text = "Not yet", FocusMode = Control.FocusModeEnum.None };
         cancel.AddThemeFontSizeOverride("font_size", 13);
         cancel.Pressed += CloseRebirth;
         actionRow.AddChild(cancel);
         _rebirthStatus = HudStyle.Label(13, HorizontalAlignment.Right);
+        _rebirthStatus.Name = "rebirth_status";
         _rebirthStatus.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         actionRow.AddChild(_rebirthStatus);
     }
@@ -110,8 +129,8 @@ public partial class World
 
     private void OpenRebirthPicker()
     {
+        if (_rebirthInFlight || _rebirthNotice != null || _rebirthShown) return;
         _rebirthPick.Clear();
-        _rebirthInFlight = false;
         SetRebirthStatus("", false);
         RefreshRebirthUI();
         _rebirthPanel.Visible = true;
@@ -123,43 +142,107 @@ public partial class World
         if (!_rebirthShown) return;
         _rebirthShown = false;
         _rebirthPanel.Visible = false;
+        DismissRebirthConfirmation();
     }
 
     private void RefreshRebirthUI()
     {
         int level = Sheet.RebirthLevel;
-        _rebirthLevelLbl.Text = $"Rebirth Lv {level}  →  Lv {level + 1}";
-        _rebirthPointsLbl.Text = $"Place {RebirthPick.PointsPerRebirth} points  ({_rebirthPick.Remaining} left)";
+        bool capped = level >= RebirthPick.MaxRebirthLevel;
+        bool locked = _rebirthInFlight || _rebirthNotice != null || _selfDead || capped || Sheet.Level < CharacterSheet.MaxLevel;
+        _rebirthLevelLbl.Text = capped ? $"Rebirth Lv {level} / {RebirthPick.MaxRebirthLevel}" : $"Rebirth Lv {level}  →  Lv {level + 1}";
+        _rebirthPointsLbl.Text = capped ? "No further bonus points are available."
+            : $"Bonus points: {RebirthPick.PointsPerRebirth}   Remaining: {_rebirthPick.Remaining}";
         for (int row = 0; row < RebirthPick.StatCount; row++)
         {
-            _rebirthBonusLbls[row].Text = $"now +{Sheet.RebirthBonusAtRow(row)}";
-            int picked = _rebirthPick.PickedAt(row);
-            _rebirthPickLbls[row].Text = picked > 0 ? $"+{picked}" : "";
-            _rebirthAddBtns[row].Disabled = _rebirthInFlight || !_rebirthPick.CanAdd(row);
-            _rebirthRemoveBtns[row].Disabled = _rebirthInFlight || !_rebirthPick.CanRemove(row);
+            _rebirthBonusLbls[row].Text = $"+{Sheet.RebirthBonusAtRow(row)}";
+            int picked = capped ? 0 : _rebirthPick.PickedAt(row);
+            _rebirthPickLbls[row].Text = $"+{picked}";
+            _rebirthTotalLbls[row].Text = $"+{Sheet.RebirthBonusAtRow(row) + picked}";
+            _rebirthAddBtns[row].Disabled = locked || !_rebirthPick.CanAdd(row);
+            _rebirthRemoveBtns[row].Disabled = locked || !_rebirthPick.CanRemove(row);
         }
-        _rebirthBtn.Disabled = _rebirthInFlight || !_rebirthPick.Complete;
+        _rebirthBtn.Disabled = locked || !_rebirthPick.Complete;
+        string availability = capped ? "The maximum rebirth level has been reached."
+            : Sheet.Level < CharacterSheet.MaxLevel ? $"Level {CharacterSheet.MaxLevel} is required."
+            : _selfDead ? "You cannot rebirth while dead." : "";
+        if (availability.Length > 0)
+        {
+            SetRebirthStatus(availability, true);
+            _rebirthAvailabilityWarning = true;
+        }
+        else if (_rebirthAvailabilityWarning) SetRebirthStatus("", false);
     }
 
     private void SetRebirthStatus(string text, bool warn)
     {
+        _rebirthAvailabilityWarning = false;
         _rebirthStatus.Text = text;
         _rebirthStatus.AddThemeColorOverride("font_color", warn ? UiTheme.Bad : Colors.White);
     }
 
     private void OnRebirthPressed()
     {
-        if (_rebirthInFlight || _selfDead) return;
+        if (!_rebirthShown || _rebirthInFlight || _rebirthNotice != null || _selfDead
+            || Sheet.Level < CharacterSheet.MaxLevel || Sheet.RebirthLevel >= RebirthPick.MaxRebirthLevel) return;
         if (!_rebirthPick.Complete)
         {
             SetRebirthStatus($"Place all {RebirthPick.PointsPerRebirth} points first.", true);
             return;
         }
+        int revision = ++_rebirthRevision;
+        var picks = _rebirthPick.Payload();
+        _rebirthNotice = Notice.Confirm(_rebirthLayer,
+            $"Your {ItemData.DisplayName(900579000).Trim()} will be used.\nApply {RebirthPick.PointsPerRebirth} bonus points?\nRebirth Lv {Sheet.RebirthLevel} → Lv {Sheet.RebirthLevel + 1}",
+            "Rebirth", "Cancel", () => SendRebirth(revision, picks),
+            () => CancelRebirthConfirmation(revision), title: "Rebirth");
+        RefreshRebirthUI();
+    }
+
+    private void SendRebirth(int revision, byte[] picks)
+    {
+        if (revision != _rebirthRevision || !_rebirthShown || _rebirthInFlight || _rebirthNotice == null) return;
+        _rebirthNotice = null;
+        if (_selfDead || Sheet.Level < CharacterSheet.MaxLevel || Sheet.RebirthLevel >= RebirthPick.MaxRebirthLevel)
+        { RefreshRebirthUI(); return; }
         _rebirthInFlight = true;
-        _rebirthSent = _rebirthPick.Payload();
+        _rebirthSent = (byte[])picks.Clone();
         SetRebirthStatus("Reincarnating…", false);
         RefreshRebirthUI();
-        Net.I.SendRebirthStatChange(_rebirthSent);
+        if (!Net.I.SendRebirthStatChange(_rebirthSent)) OnRebirthStatResult(Net.ClassChangeRebirthStat, 0);
+    }
+
+    private void EditRebirthPoint(int row, bool add)
+    {
+        if (!_rebirthShown || _rebirthInFlight || _rebirthNotice != null || _selfDead
+            || Sheet.Level < CharacterSheet.MaxLevel || Sheet.RebirthLevel >= RebirthPick.MaxRebirthLevel) return;
+        if (add) _rebirthPick.Add(row); else _rebirthPick.Remove(row);
+        SetRebirthStatus("", false);
+        RefreshRebirthUI();
+    }
+
+    private void CancelRebirthConfirmation(int revision)
+    {
+        if (revision != _rebirthRevision || _rebirthInFlight || _rebirthNotice == null) return;
+        _rebirthNotice = null;
+        RefreshRebirthUI();
+    }
+
+    private void DismissRebirthConfirmation()
+    {
+        _rebirthRevision++;
+        if (_rebirthNotice is { } notice && GodotObject.IsInstanceValid(notice)) notice.Close();
+        _rebirthNotice = null;
+    }
+
+    private void ResetRebirthPicker()
+    {
+        DismissRebirthConfirmation();
+        _rebirthInFlight = false;
+        _rebirthSent = [];
+        _rebirthPick.Clear();
+        CloseRebirth();
+        RefreshRebirthUI();
     }
 
     private void OnRebirthStatResult(int sub, int code)
@@ -169,15 +252,19 @@ public partial class World
             CombatNotice(code == 1 ? "Rebirth bonus points redistributed." : "The rebirth bonus points were not changed.");
             return;
         }
+        if (!_rebirthInFlight || code is not 0 and not 1) return;
         _rebirthInFlight = false;
         if (code == 1)
         {
             Sheet.ApplyRebirth(_rebirthSent);
             CombatNotice($"Rebirth Lv {Sheet.RebirthLevel}");
             CloseRebirth();
+            _rebirthSent = [];
             return;
         }
+        _rebirthSent = [];
         SetRebirthStatus("Mekin refused the rebirth.", true);
         if (_rebirthShown) RefreshRebirthUI();
+        else ChatStatusNotice("Mekin refused the rebirth.");
     }
 }

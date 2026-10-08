@@ -1,6 +1,7 @@
 ﻿using FluentAssertions;
 using LibreKO.Common.Domain.Entities.GameData;
 using LibreKO.Common.Domain.Services;
+using LibreKO.Common.Enums;
 using LibreKO.Common.Infrastructure.Network;
 using LibreKO.Game.Protocol;
 using LibreKO.Game.World;
@@ -21,6 +22,7 @@ public class RebirthTests
         client.Id.Returns(Guid.NewGuid());
         var session = sessions.CreateSession(client, 1, 1);
         session.Level = level;
+        session.Hp = 100;
         session.RebirthLevel = rebirthLevel;
         var slot = session.Inventory[InventoryConstants.SlotMax];
         slot.ItemId = QualificationOfRebirth;
@@ -102,5 +104,62 @@ public class RebirthTests
         session.RebirthLevel.Should().Be(RebirthBonus.MaxRebirthLevel);
         session.Inventory[InventoryConstants.SlotMax].Count.Should().Be(1);
         await progression.DidNotReceive().CompleteRebirthAsync(Arg.Any<UserSession>());
+    }
+
+    [Theory]
+    [InlineData("dead")]
+    [InlineData("trade")]
+    [InlineData("merchant")]
+    [InlineData("preparing")]
+    [InlineData("gathering")]
+    [InlineData("nation-transfer")]
+    public async Task ConflictingActionsCannotConsumeARebirthQualification(string state)
+    {
+        var (coordinator, session, client, progression) = Arrange(ProgressionTable.MaxLevel);
+        switch (state)
+        {
+            case "dead": session.Hp = 0; break;
+            case "trade": session.Trade.ExchangeUser = 999; break;
+            case "merchant": session.Trade.MerchantState = MerchantMode.Selling; break;
+            case "preparing": session.Trade.IsSellingMerchantPreparing = true; break;
+            case "gathering": session.IsMining = true; break;
+            case "nation-transfer": session.NationTransferCommitted = true; break;
+        }
+        await coordinator.HandleClassChangeAsync(client, RebirthRequest(2, 0, 0, 0, 0));
+        session.RebirthLevel.Should().Be(0);
+        session.RebStr.Should().Be(0);
+        session.Inventory[InventoryConstants.SlotMax].Count.Should().Be(1);
+        await progression.DidNotReceive().CompleteRebirthAsync(Arg.Any<UserSession>());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(6)]
+    public async Task MalformedAllocationCannotConsumeTheQualification(int length)
+    {
+        var (coordinator, session, client, progression) = Arrange(ProgressionTable.MaxLevel);
+        var packet = new Packet(GameOpcodes.GS_CLASS_CHANGE);
+        packet.WriteByte((byte)ClassChangeSubOpcode.RebirthStatChange);
+        for (int index = 0; index < length; index++) packet.WriteByte((byte)(index == 0 ? 2 : 0));
+        packet.ResetOffset();
+        await coordinator.HandleClassChangeAsync(client, packet);
+        session.RebirthLevel.Should().Be(0);
+        session.Inventory[InventoryConstants.SlotMax].Count.Should().Be(1);
+        await progression.DidNotReceive().CompleteRebirthAsync(Arg.Any<UserSession>());
+    }
+
+    [Fact]
+    public async Task AConsumedQualificationCannotCompleteTheSameAllocationTwice()
+    {
+        var (coordinator, session, client, progression) = Arrange(ProgressionTable.MaxLevel);
+        await coordinator.HandleClassChangeAsync(client, RebirthRequest(2, 0, 0, 0, 0));
+        await coordinator.HandleClassChangeAsync(client, RebirthRequest(2, 0, 0, 0, 0));
+        session.RebirthLevel.Should().Be(1);
+        session.RebStr.Should().Be(2);
+        await progression.Received(1).CompleteRebirthAsync(session);
     }
 }
