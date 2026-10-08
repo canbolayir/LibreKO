@@ -14,6 +14,7 @@ public partial class World
     private Label _clanCreateMessage = null!;
     private LineEdit _clanCreateName = null!;
     private bool _clanCreateShown;
+    private Notice? _clanCreateNotice;
 
     private void ClanCreateInit()
     {
@@ -22,18 +23,21 @@ public partial class World
 
         _clanCreatePanel = new HudWindow("creat_clan", "Create a Clan", bodyMinWidth: ClanCreatePanelWidth)
         { Visible = false };
+        _clanCreatePanel.SetMeta("classic_identity_controls", 1);
         _clanCreatePanel.Closed += CloseClanCreate;
         _clanCreateLayer.AddChild(_clanCreatePanel);
         var root = _clanCreatePanel.Body;
         root.AddThemeConstantOverride("separation", 8);
 
         _clanCreateMessage = UiTheme.Text("", 13, UiTheme.TextHi);
+        _clanCreateMessage.Name = "clan_create_message";
         _clanCreateMessage.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _clanCreateMessage.CustomMinimumSize = new Vector2(1, 0);
         root.AddChild(_clanCreateMessage);
 
         _clanCreateName = new LineEdit
         {
+            Name = "clan_create_name",
             PlaceholderText = "clan name",
             MaxLength = ClanNameMaxLength,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
@@ -45,10 +49,10 @@ public partial class World
         buttons.AddThemeConstantOverride("separation", 8);
         root.AddChild(buttons);
         buttons.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
-        var yes = new Button { Text = "Create", FocusMode = Control.FocusModeEnum.None };
+        var yes = new Button { Name = "clan_create_accept", Text = "Create", FocusMode = Control.FocusModeEnum.None };
         yes.Pressed += SubmitClanCreate;
         buttons.AddChild(yes);
-        var no = new Button { Text = "Cancel", FocusMode = Control.FocusModeEnum.None };
+        var no = new Button { Name = "clan_create_cancel", Text = "Cancel", FocusMode = Control.FocusModeEnum.None };
         no.Pressed += CloseClanCreate;
         buttons.AddChild(no);
     }
@@ -92,16 +96,36 @@ public partial class World
         if (!_clanCreateShown) return;
         _clanCreateShown = false;
         _clanCreatePanel.Visible = false;
+        _clanCreateNotice?.Close();
+        _clanCreateNotice = null;
     }
 
     private void SubmitClanCreate()
     {
+        if (!_clanCreateShown || _clanCreateNotice != null) return;
         string name = _clanCreateName.Text.Trim();
         if (name.Length < ClanNameMinLength)
         {
             _clanCreateMessage.Text = $"A clan name needs {ClanNameMinLength} to {ClanNameMaxLength} characters.";
             return;
         }
-        Net.I.SendClanCreate(name);
+        if (!_clanCreatePanel.GetMeta("classic_identity", false).AsBool())
+        {
+            Net.I.SendClanCreate(name);
+            return;
+        }
+        // Capture the name before opening the original second-stage fee confirmation.
+        _clanCreateNotice = Notice.Confirm(this,
+            $"Creating a clan costs {ClanTypes.CreationCoins:n0} coins. Do you want to create this clan?", "Yes", "No", () =>
+            {
+                _clanCreateNotice = null;
+                if (!_clanCreateShown) return;
+                Net.I.SendClanCreate(name);
+                CloseClanCreate();
+            }, () =>
+            {
+                _clanCreateNotice = null;
+                if (_clanCreateShown) _clanCreateName.GrabFocus();
+            }, title: "Create a Clan");
     }
 }

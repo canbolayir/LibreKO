@@ -137,13 +137,16 @@ public partial class World
         _siegeTaxRatePanel = ServiceWindow(_siegeLayer, "siegetaxrate", ChangeTaxLabel, SiegeTaxRateWidth, CloseSiegeTaxRate);
         var body = _siegeTaxRatePanel.Body;
         _siegeTaxRatePrompt = SpeechLabel(UiTheme.TextHi);
+        _siegeTaxRatePrompt.Name = "taxrate_prompt";
         _siegeTaxRatePrompt.HorizontalAlignment = HorizontalAlignment.Center;
         body.AddChild(_siegeTaxRatePrompt);
         body.AddChild(TaxArrows(out _siegeTaxRateValue, () => StepSiegeTaxRate(false), () => StepSiegeTaxRate(true)));
 
         var ok = UiTheme.ActionButton(KingText(KingElection.OkText, "OK"), "");
+        ok.Name = "taxrate_accept";
         ok.Pressed += SubmitSiegeTaxRate;
         var cancel = UiTheme.SmallButton(CancelLabel, "");
+        cancel.Name = "taxrate_cancel";
         cancel.Pressed += CloseSiegeTaxRate;
         body.AddChild(FooterButtons(ok, cancel));
     }

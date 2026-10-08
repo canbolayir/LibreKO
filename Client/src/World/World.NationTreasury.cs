@@ -147,14 +147,17 @@ public partial class World
         _nationTaxRatePanel = ServiceWindow(_kingLayer, "nationtaxrate", ChangeTaxRateLabel, NationTaxRateWidth, CloseNationTaxRate);
         var body = _nationTaxRatePanel.Body;
         var prompt = SpeechLabel(UiTheme.TextHi);
+        prompt.Name = "taxrate_prompt";
         prompt.HorizontalAlignment = HorizontalAlignment.Center;
         prompt.Text = TaxRatePrompt;
         body.AddChild(prompt);
         body.AddChild(TaxArrows(out _nationTaxRateValue, () => StepNationTaxRate(-1), () => StepNationTaxRate(1)));
 
         var ok = UiTheme.ActionButton(KingText(KingElection.OkText, "OK"), "");
+        ok.Name = "taxrate_accept";
         ok.Pressed += SubmitNationTaxRate;
         var cancel = UiTheme.SmallButton(CancelLabel, "");
+        cancel.Name = "taxrate_cancel";
         cancel.Pressed += CloseNationTaxRate;
         body.AddChild(FooterButtons(ok, cancel));
     }
@@ -164,6 +167,7 @@ public partial class World
         var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         row.AddThemeConstantOverride("separation", 10);
         var less = UiTheme.SmallButton("<", "");
+        less.Name = "taxrate_down";
         less.CustomMinimumSize = new Vector2(TaxArrowWidth, TaxArrowHeight);
         less.Pressed += down;
         row.AddChild(less);
@@ -171,8 +175,10 @@ public partial class World
         frame.CustomMinimumSize = new Vector2(TaxValueWidth, 0);
         row.AddChild(frame);
         value = UiTheme.Text("", 15, UiTheme.GoldBright, HorizontalAlignment.Center);
+        value.Name = "taxrate_value";
         frame.AddChild(value);
         var more = UiTheme.SmallButton(">", "");
+        more.Name = "taxrate_up";
         more.CustomMinimumSize = new Vector2(TaxArrowWidth, TaxArrowHeight);
         more.Pressed += up;
         row.AddChild(more);
@@ -189,6 +195,7 @@ public partial class World
         }
         _nationTaxRate = tariff.Tariff;
         _nationTaxRateBusy = false;
+        _nationTaxRatePanel.SetMeta("council_rate_pending", false);
         RefreshNationTaxRate();
         _nationTaxRateShown = true;
         _nationTaxRatePanel.Visible = true;
@@ -196,6 +203,7 @@ public partial class World
 
     private void StepNationTaxRate(int delta)
     {
+        if (_nationTaxRateBusy) return;
         _nationTaxRate = NationTreasury.StepTaxRate(_nationTaxRate, delta);
         RefreshNationTaxRate();
     }
@@ -206,6 +214,7 @@ public partial class World
     {
         if (_nationTaxRateBusy) return;
         _nationTaxRateBusy = true;
+        _nationTaxRatePanel.SetMeta("council_rate_pending", true);
         Net.I.SendKingTariff(_nationTaxRate);
     }
 
@@ -213,12 +222,14 @@ public partial class World
     {
         _nationTaxRateBusy = false;
         _nationTaxRateShown = false;
+        _nationTaxRatePanel.SetMeta("council_rate_pending", false);
         _nationTaxRatePanel.Visible = false;
     }
 
     private void OnKingTariffSet(KingTariff tariff)
     {
         _nationTaxRateBusy = false;
+        _nationTaxRatePanel.SetMeta("council_rate_pending", false);
         if (tariff.Result != KingElection.Success)
         {
             KingResultMessage(KingReply.TariffSet, tariff.Result, NationTreasuryTitle);

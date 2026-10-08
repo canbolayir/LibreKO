@@ -86,6 +86,7 @@ public partial class World
     private static HudWindow ServiceWindow(CanvasLayer layer, string id, string title, int width, Action closed)
     {
         var window = new HudWindow(id, title, bodyMinWidth: width) { Visible = false };
+        window.SetMeta("classic_council_controls", 1);
         window.Closed += closed;
         layer.AddChild(window);
         window.Body.AddThemeConstantOverride("separation", 8);

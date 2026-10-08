@@ -35,6 +35,7 @@ public partial class World
         AddChild(_nameChangeLayer);
 
         _nameChangePanel = new HudWindow("namechange", "Change Name") { Visible = false };
+        _nameChangePanel.SetMeta("classic_identity_controls", 1);
         _nameChangePanel.Closed += CloseNameChange;
         _nameChangeLayer.AddChild(_nameChangePanel);
 
@@ -44,6 +45,7 @@ public partial class World
         r.AddChild(UiTheme.SectionTitle("Rename Character"));
 
         var hint = HudStyle.Label(12);
+        hint.Name = "name_change_hint";
         hint.Text = "Requires a Scroll of Identity. 3-20 characters.";
         r.AddChild(hint);
 
@@ -51,18 +53,23 @@ public partial class World
         row.AddThemeConstantOverride("separation", 6);
         _nameChangeEdit = new LineEdit
         {
+            Name = "name_change_name",
             PlaceholderText = "new name",
             MaxLength = 20,
             CustomMinimumSize = new Vector2(200, 0),
         };
         _nameChangeEdit.TextSubmitted += _ => SubmitNameChange();
         row.AddChild(_nameChangeEdit);
-        _nameChangeBtn = new Button { Text = "Rename", FocusMode = Control.FocusModeEnum.None };
+        _nameChangeBtn = new Button { Name = "name_change_accept", Text = "Rename", FocusMode = Control.FocusModeEnum.None };
         _nameChangeBtn.Pressed += SubmitNameChange;
         row.AddChild(_nameChangeBtn);
         r.AddChild(row);
+        var cancel = new Button { Name = "name_change_cancel", Text = "Cancel", FocusMode = Control.FocusModeEnum.None };
+        cancel.Pressed += CloseNameChange;
+        r.AddChild(cancel);
 
         _nameChangeStatus = HudStyle.Label(13);
+        _nameChangeStatus.Name = "name_change_status";
         r.AddChild(_nameChangeStatus);
     }
 

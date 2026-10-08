@@ -52,6 +52,7 @@ public partial class World
         _disguiseLayer = new CanvasLayer { Layer = 74 };
         AddChild(_disguiseLayer);
         _disguisePanel = new HudWindow("disguise", "Transformation", bodyMinWidth: (int)DisguiseWidth) { Visible = false };
+        _disguisePanel.SetMeta("classic_identity_controls", 1);
         _disguisePanel.Closed += CloseDisguise;
         _disguiseLayer.AddChild(_disguisePanel);
 
@@ -59,10 +60,13 @@ public partial class World
         body.AddThemeConstantOverride("separation", 6);
         body.AddChild(UiTheme.SectionTitle("Level"));
         _disguiseGroupRows = DisguiseList(body, DisguiseGroupHeight);
+        _disguiseGroupRows.Name = "disguise_groups";
         body.AddChild(UiTheme.SectionTitle("Form"));
         _disguiseFormRows = DisguiseList(body, DisguiseFormHeight);
+        _disguiseFormRows.Name = "disguise_forms";
 
         _disguiseNote = UiTheme.Text("", 12, UiTheme.Warning);
+        _disguiseNote.Name = "disguise_note";
         _disguiseNote.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _disguiseNote.CustomMinimumSize = new Vector2(DisguiseWidth, 0);
         body.AddChild(_disguiseNote);
@@ -71,10 +75,12 @@ public partial class World
         footer.AddThemeConstantOverride("separation", 8);
         body.AddChild(footer);
         var ok = UiTheme.ActionButton("OK", "Transform into the selected form");
+        ok.Name = "disguise_accept";
         ok.CustomMinimumSize = new Vector2(100, 28);
         ok.Pressed += ConfirmDisguise;
         footer.AddChild(ok);
         var close = UiTheme.SmallButton("Close", "Close");
+        close.Name = "disguise_cancel";
         close.CustomMinimumSize = new Vector2(100, 28);
         close.Pressed += CloseDisguise;
         footer.AddChild(close);
@@ -152,11 +158,13 @@ public partial class World
         var button = new Button
         {
             Text = text,
+            TooltipText = text,
             FocusMode = Control.FocusModeEnum.None,
             Alignment = HorizontalAlignment.Left,
             CustomMinimumSize = new Vector2(0, 26),
         };
         button.AddThemeFontSizeOverride("font_size", 13);
+        button.SetMeta("identity_selected", selected);
         button.AddThemeColorOverride("font_color", selected ? UiTheme.GoldBright : UiTheme.TextLo);
         button.AddThemeStyleboxOverride("normal", UiTheme.ListRow(selected));
         button.AddThemeStyleboxOverride("hover", UiTheme.ListRow(true));
