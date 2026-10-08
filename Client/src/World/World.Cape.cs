@@ -8,7 +8,7 @@ public partial class World
     private CanvasLayer _capeLayer = null!;
     private HudWindow _capePanel = null!;
     private const int CapePanelWidth = 460;
-    private const int CapeColourColumns = 9;
+    private const int CapeColourColumns = 3;
     private const int CapeSwatchSize = 46;
     private const int NoCape = -1;
     private const int CapePatternSampleColour = 1;
@@ -26,6 +26,15 @@ public partial class World
     private Button _capeBuyBtn = null!;
     private bool _capeShown;
     private bool _capeRequestInFlight;
+    private LookPreview _capeLook = null!;
+    private readonly Button[] _capePatterns = new Button[4], _capeColours = new Button[6];
+    private readonly List<int> _capePatternIds = new(), _capeColourIds = new();
+    private int _capePatternPage, _capeColourPage;
+    private Label _capePatternPageLabel = null!, _capeColourPageLabel = null!;
+    private Button _capePatternPrevious = null!, _capePatternNext = null!, _capeColourPrevious = null!, _capeColourNext = null!;
+    private Notice? _capeNotice;
+    private int _capeRevision;
+    private bool CapeEditing => _capeShown && !_capeRequestInFlight && _capeNotice == null;
 
     private bool CapeImChief => MyClan.IsChief;
 
@@ -36,6 +45,7 @@ public partial class World
         Net.I.MyClanChangedEvent += OnCapeMyClan;
         Net.I.ClanCapeUpdateEvent += OnClanCapeUpdate;
         Net.I.ClanCapeNpcEvent += OnCapeNpc;
+        Net.I.CapeResetEvent += ResetCapePicker;
     }
 
     private void CapeDispose()
@@ -44,6 +54,8 @@ public partial class World
         Net.I.MyClanChangedEvent -= OnCapeMyClan;
         Net.I.ClanCapeUpdateEvent -= OnClanCapeUpdate;
         Net.I.ClanCapeNpcEvent -= OnCapeNpc;
+        Net.I.CapeResetEvent -= ResetCapePicker;
+        DismissCapeConfirmation();
     }
 
     private void BuildCapePanel()
@@ -54,16 +66,32 @@ public partial class World
         _capePanel = new HudWindow("cape", "Clan Cape", bodyMinWidth: CapePanelWidth)
         { Visible = false };
         _capePanel.Closed += CloseCape;
+        _capePanel.SetMeta("classic_cape_controls", 1);
         _capeLayer.AddChild(_capePanel);
 
         var r = _capePanel.Body;
         r.AddThemeConstantOverride("separation", 8);
 
+        _capeLook = new LookPreview(165, 217) { Name = "cape_preview" }; r.AddChild(_capeLook);
+        var turn = new HBoxContainer(); r.AddChild(turn);
+        foreach (int direction in new[] { -1, 1 })
+        {
+            var arrow = new Button { Name = direction < 0 ? "cape_turn_left" : "cape_turn_right", Text = direction < 0 ? "◀" : "▶", FocusMode = Control.FocusModeEnum.None };
+            arrow.Pressed += () => _capeLook.Turn(direction * 30); turn.AddChild(arrow);
+        }
         r.AddChild(UiTheme.SectionTitle("Pattern"));
-        _capePatternRow = new GridContainer { Columns = CapeColourColumns };
+        _capePatternRow = new GridContainer { Columns = 2 };
         _capePatternRow.AddThemeConstantOverride("h_separation", 4);
         _capePatternRow.AddThemeConstantOverride("v_separation", 4);
         r.AddChild(_capePatternRow);
+        for (int i = 0; i < _capePatterns.Length; i++)
+        {
+            int slot = i;
+            var button = CapeCell("cape_pattern_" + i); _capePatterns[i] = button;
+            button.Pressed += () => { int index = _capePatternPage * 4 + slot; if (CapeEditing && index < _capePatternIds.Count) { ShowCapePattern(_capePatternIds[index]); UpdateCapeGate(); } };
+            _capePatternRow.AddChild(button);
+        }
+        BuildCapePages(r, true);
 
         r.AddChild(UiTheme.SectionTitle("Colour"));
         var colourScroll = new ScrollContainer
@@ -81,6 +109,13 @@ public partial class World
         _capeColourGrid.AddThemeConstantOverride("h_separation", 4);
         _capeColourGrid.AddThemeConstantOverride("v_separation", 4);
         colourScroll.AddChild(_capeColourGrid);
+        for (int i = 0; i < _capeColours.Length; i++)
+        {
+            int slot = i; var button = CapeCell("cape_colour_" + i); _capeColours[i] = button;
+            button.Pressed += () => { int index = _capeColourPage * 6 + slot; if (CapeEditing && index < _capeColourIds.Count) SelectCape(_capeColourIds[index]); };
+            _capeColourGrid.AddChild(button);
+        }
+        BuildCapePages(r, false);
 
         var chosen = UiTheme.Section();
         chosen.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
@@ -96,6 +131,7 @@ public partial class World
         _capeReqLbl = UiTheme.Text("Every cape has a clan rank it needs.", 12, UiTheme.TextLo);
         chosenCol.AddChild(_capeReqLbl);
         _capePriceLbl = UiTheme.Text("Dyeing the one you own costs clan points.", 12, UiTheme.TextLo);
+        _capeChosenLbl.Name = "cape_chosen"; _capeReqLbl.Name = "cape_requirement"; _capePriceLbl.Name = "cape_price";
         chosenCol.AddChild(_capePriceLbl);
         chosen.SizeFlagsVertical = Control.SizeFlags.ShrinkBegin;
 
@@ -106,17 +142,23 @@ public partial class World
         _capeB = BuildColorRow(r, "B", out _capeBVal);
 
         _capeTicket = new CheckBox { Text = "Pay with a castellan ticket", FocusMode = Control.FocusModeEnum.None };
+        _capeTicket.Name = "cape_ticket"; _capeTicket.Toggled += _ => UpdateCapeGate();
         r.AddChild(_capeTicket);
 
         var actionRow = new HBoxContainer(); actionRow.AddThemeConstantOverride("separation", 8);
         _capeBuyBtn = new Button { Text = "Buy / Apply", FocusMode = Control.FocusModeEnum.None };
+        _capeBuyBtn.Name = "cape_buy";
         _capeBuyBtn.Pressed += OnCapeBuyPressed;
         actionRow.AddChild(_capeBuyBtn);
+        var cancel = new Button { Name = "cape_cancel", Text = "Cancel", FocusMode = Control.FocusModeEnum.None };
+        cancel.Pressed += CloseCape; actionRow.AddChild(cancel);
         r.AddChild(actionRow);
 
         _capeHint = UiTheme.Text("", 12, UiTheme.TextLo);
+        _capeHint.Name = "cape_hint"; _capeHint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         r.AddChild(_capeHint);
         _capeStatus = HudStyle.Label(13);
+        _capeStatus.Name = "cape_status"; _capeStatus.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         r.AddChild(_capeStatus);
 
         OnCapeDyeChanged();
@@ -130,6 +172,7 @@ public partial class World
         row.AddChild(lbl);
         var slider = new HSlider
         {
+            Name = "cape_dye_" + channel,
             MinValue = 0, MaxValue = 255, Step = 1, Value = 0,
             CustomMinimumSize = new Vector2(160, 0),
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
@@ -137,6 +180,7 @@ public partial class World
         slider.ValueChanged += _ => { OnCapeDyeChanged(); };
         row.AddChild(slider);
         valLbl = UiTheme.Text("0", 12, UiTheme.GoldBright);
+        valLbl.Name = "cape_value_" + channel;
         valLbl.CustomMinimumSize = new Vector2(34, 0);
         row.AddChild(valLbl);
         parent.AddChild(row);
@@ -152,9 +196,9 @@ public partial class World
     private void ToggleCape()
     {
         if (_capeShown) { CloseCape(); return; }
+        if (_capeRequestInFlight) return;
         _capePanel.Visible = true;
         _capeShown = true;
-        _capeRequestInFlight = false;
         SetCapeStatus("", false);
 
         var worn = Net.I.LastEnter;
@@ -164,6 +208,8 @@ public partial class World
         _capeR.Value = worn.CapeR;
         _capeG.Value = worn.CapeG;
         _capeB.Value = worn.CapeB;
+        _capeTicket.SetPressedNoSignal(false);
+        _capeLook.ShowCape(worn.Race, worn.Face, (worn.Hair >> 24) & 0xFF, new Color((worn.Hair >> 16 & 255) / 255f, (worn.Hair >> 8 & 255) / 255f, (worn.Hair & 255) / 255f), SelfGear());
 
         BuildCapeCatalogue();
         UpdateCapeGate();
@@ -175,11 +221,13 @@ public partial class World
         _capeShown = false;
         _capePanel.Visible = false;
         RevertCapePreview();
+        DismissCapeConfirmation();
+        _capeLook.Clear();
     }
 
     private void OnCapeBuyPressed()
     {
-        if (_capeRequestInFlight) return;
+        if (!CapeEditing) return;
         if (!CapeImChief) { SetCapeStatus("Only the clan chief can change the cape.", true); return; }
 
         int capeId = _capeChoice;
@@ -190,26 +238,43 @@ public partial class World
             return;
         }
 
+        if (!CapeCanApply()) { UpdateCapeGate(); return; }
         byte op = _capeTicket.ButtonPressed ? Net.CapeOpTicket : Net.CapeOpBuy;
+        int revision = ++_capeRevision;
+        string name = capeId >= 0 && Cape.TryGet(capeId, out var chosen) ? chosen.Name : "Current cape";
+        _capeNotice = Notice.Confirm(_capeLayer, $"Apply {name}?\n{CapeCostText()}", "Buy", "Cancel",
+            () => SubmitCape(revision, op, capeId, rr, gg, bb), () => CancelCapeConfirmation(revision), title: "Clan Cape");
+        UpdateCapeGate();
+    }
+
+    private void SubmitCape(int revision, byte op, int capeId, byte rr, byte gg, byte bb)
+    {
+        if (revision != _capeRevision || !_capeShown || _capeRequestInFlight || _capeNotice == null) return;
+        _capeNotice = null;
+        if (!CapeCanApply()) { UpdateCapeGate(); return; }
         _capeRequestInFlight = true;
-        _capeBuyBtn.Disabled = true;
         SetCapeStatus("Requesting…", false);
-        Net.I.SendCapeBuy(op, capeId, rr, gg, bb);
+        UpdateCapeGate();
+        if (!Net.I.SendCapeBuy(op, capeId, rr, gg, bb)) OnCapeResult(false, -1, 0, 0, 0, 0);
     }
 
     private void OnCapeResult(bool ok, int a, int capeId, int rr, int gg, int bb)
     {
+        if (!_capeRequestInFlight) return;
         _capeRequestInFlight = false;
         UpdateCapeGate();
 
         if (ok)
         {
-            if (capeId >= 0) SelectCape(capeId);
-            _capeR.Value = rr; _capeG.Value = gg; _capeB.Value = bb;
-            OnCapeDyeChanged();
+            if (_capeShown)
+            {
+                if (capeId >= 0) { if (Cape.TryGet(capeId, out var selected)) ShowCapePattern(selected.M); SelectCape(capeId); }
+                _capeR.Value = rr; _capeG.Value = gg; _capeB.Value = bb;
+                OnCapeDyeChanged();
+            }
             var me = Net.I.LastEnter;
             DressCape(_selfVisual, capeId >= 0 ? capeId : me.CapeId, rr, gg, bb, false, me.Race);
-            _capePreviewing = true;
+            _capePreviewing = _capeShown;
             _capeCurrent = capeId >= 0 ? capeId : _capeCurrent;
             string what = capeId >= 0 ? $"cape #{capeId}" : "cape dye";
             SetCapeStatus($"Applied {what}.", false);
@@ -229,6 +294,7 @@ public partial class World
                 _ => "The cape change was refused (chief-only, promoted clan, and not while busy).",
             }, true);
         }
+        UpdateCapeGate();
     }
 
     private void OnCapeMyClan(MyClanInfo info)
@@ -293,80 +359,27 @@ public partial class World
 
     private void BuildCapeCatalogue()
     {
-        foreach (var c in _capePatternRow.GetChildren()) c.QueueFree();
-
         var patterns = new SortedSet<int>();
-        foreach (var (_, def) in Cape.Catalogue)
-            if (def.Price > 0 || def.Points > 0) patterns.Add(def.M);
-
-        foreach (int pattern in patterns)
-        {
-            int which = pattern;
-            var button = new Button
-            {
-                ToggleMode = true,
-                FocusMode = Control.FocusModeEnum.None,
-                CustomMinimumSize = new Vector2(CapeSwatchSize, CapeSwatchSize),
-                TooltipText = pattern == 0 ? "Plain" : $"Pattern {pattern}",
-            };
-            var art = CapeSwatch(CapePatternSampleColour, pattern, Colors.White, locked: false);
-            art.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-            button.AddChild(art);
-            button.Pressed += () => ShowCapePattern(which);
-            _capePatternRow.AddChild(button);
-        }
-
-        ShowCapePattern(patterns.Count > 0 ? (patterns.Contains(_capePattern) ? _capePattern : 0) : -1);
+        foreach (var (id, def) in Cape.Catalogue)
+            if (CapeSoldHere(id, def)) patterns.Add(def.M);
+        _capePatternIds.Clear(); _capePatternIds.AddRange(patterns);
+        _capePatternPage = 0;
+        ShowCapePattern(patterns.Count > 0 ? (patterns.Contains(_capePattern) ? _capePattern : patterns.Min) : -1);
     }
 
     private void ShowCapePattern(int pattern)
     {
         _capePattern = pattern;
-        int index = 0;
-        foreach (var child in _capePatternRow.GetChildren())
-        {
-            if (child is Button b) b.ButtonPressed = index == pattern || (pattern < 0 && index == 0);
-            index++;
-        }
-
-        foreach (var c in _capeColourGrid.GetChildren()) c.QueueFree();
-
-        var ids = new List<int>();
+        _capeColourPage = 0;
+        _capeColourIds.Clear();
         foreach (var (id, def) in Cape.Catalogue)
-            if (def.M == pattern && (def.Price > 0 || def.Points > 0)) ids.Add(id);
-        ids.Sort();
-
-        foreach (int id in ids)
-        {
-            if (!Cape.TryGet(id, out var def)) continue;
-            bool locked = MyClan.InClan && !CapeAllowed(def);
-            int which = id;
-
-            var cell = new Button
-            {
-                ToggleMode = true,
-                FocusMode = Control.FocusModeEnum.None,
-                CustomMinimumSize = new Vector2(CapeSwatchSize, CapeSwatchSize),
-                TooltipText = CapeCellTip(def, locked),
-            };
-            var art = CapeSwatch(def.C, def.M, Colors.White, locked);
-            art.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-            cell.AddChild(art);
-            if (locked)
-            {
-                var bar = UiTheme.Text("locked", 10, UiTheme.TextDim);
-                bar.MouseFilter = Control.MouseFilterEnum.Ignore;
-                bar.HorizontalAlignment = HorizontalAlignment.Center;
-                bar.VerticalAlignment = VerticalAlignment.Bottom;
-                bar.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-                cell.AddChild(bar);
-            }
-            cell.Pressed += () => SelectCape(which);
-            _capeColourGrid.AddChild(cell);
-        }
-
-        if (_capeChoice >= 0 && Cape.TryGet(_capeChoice, out var chosen) && chosen.M == pattern)
-            SelectCape(_capeChoice);
+            if (def.M == pattern && CapeSoldHere(id, def)) _capeColourIds.Add(id);
+        _capeColourIds.Sort();
+        // The visible pattern and the submitted cape must always belong to the same family.
+        if (_capeChoice >= 0 && (!Cape.TryGet(_capeChoice, out var chosen) || chosen.M != pattern)) _capeChoice = NoCape;
+        RefreshCapePages();
+        if (_capeChoice >= 0) SelectCape(_capeChoice);
+        else { _capeChosenLbl.Text = "Select a colour"; _capeReqLbl.Text = ""; _capePriceLbl.Text = ""; RefreshCapePreview(); }
     }
 
     private string CapeCellTip(Cape.CapeDef def, bool locked)
@@ -384,26 +397,19 @@ public partial class World
         if (!Cape.TryGet(capeId, out var def)) return;
         _capeChoice = capeId;
 
-        int index = 0;
-        var ids = new List<int>();
-        foreach (var (id, d) in Cape.Catalogue)
-            if (d.M == def.M && (d.Price > 0 || d.Points > 0)) ids.Add(id);
-        ids.Sort();
-        foreach (var child in _capeColourGrid.GetChildren())
-        {
-            if (child is Button b && index < ids.Count) b.ButtonPressed = ids[index] == capeId;
-            index++;
-        }
+        if (_capePattern != def.M) ShowCapePattern(def.M);
+        int index = _capeColourIds.IndexOf(capeId);
+        if (index >= 0) _capeColourPage = index / 6;
+        RefreshCapePages();
 
         _capeChosenLbl.Text = def.M > 0 ? $"{def.Name} (pattern {def.M})" : def.Name;
-        _capeReqLbl.Text = $"Requires {CapeNeedName(def)}";
-        _capePriceLbl.Text = def.Points > 0
-            ? $"{def.Points:n0} clan points"
-            : $"{def.Price:n0} gold";
+        _capeReqLbl.Text = CapeNeedName(def).Replace(" grade ", "\nGrade ");
+        _capePriceLbl.Text = CapeCostText();
 
         bool locked = MyClan.InClan && !CapeAllowed(def);
         _capeReqLbl.AddThemeColorOverride("font_color", locked ? UiTheme.Bad : UiTheme.TextLo);
         RefreshCapePreview();
+        UpdateCapeGate();
     }
 
     private void OnCapeDyeChanged()
@@ -413,19 +419,20 @@ public partial class World
         _capeGVal.Text = gg.ToString();
         _capeBVal.Text = bb.ToString();
         RefreshCapePreview();
+        if (_capeBuyBtn != null && _capeTicket != null) UpdateCapeGate();
     }
 
     private void RefreshCapePreview()
     {
         if (_capeBuyBtn != null)
-            _capeBuyBtn.Text = _capeChoice >= 0 ? "Buy cape" : "Apply dye";
+            _capeBuyBtn.Text = _capePanel.HasMeta("classic_cape") ? (_capeChoice >= 0 ? "Buy" : "Apply") : (_capeChoice >= 0 ? "Buy cape" : "Apply dye");
 
-        if (!_capeShown || _selfVisual == null) return;
+        if (!_capeShown) return;
 
         int previewId = _capeChoice >= 0 ? _capeChoice : _capeCurrent;
-        if (!Cape.IsRenderable(previewId)) return;
-
         var me = Net.I.LastEnter;
+        _capeLook.SetCape(previewId, new Color((float)_capeR.Value / 255f, (float)_capeG.Value / 255f, (float)_capeB.Value / 255f), me.Race);
+        if (_selfVisual == null) return;
         DressCape(_selfVisual, previewId, (int)_capeR.Value, (int)_capeG.Value, (int)_capeB.Value,
             false, me.Race, highDetail: true);
         _capePreviewing = true;
@@ -441,13 +448,25 @@ public partial class World
     private void UpdateCapeGate()
     {
         bool chief = CapeImChief;
-        _capeBuyBtn.Disabled = !chief || _capeRequestInFlight;
+        _capeBuyBtn.Disabled = !CapeEditing || !CapeCanApply();
+        foreach (var slider in new[] { _capeR, _capeG, _capeB }) slider.Editable = CapeEditing;
+        _capeTicket.Disabled = !CapeEditing;
+        RefreshCapePages();
+        if (_capeChoice >= 0)
+        {
+            _capePriceLbl.Text = CapeCostText();
+            if (Cape.TryGet(_capeChoice, out var def)) _capeReqLbl.AddThemeColorOverride("font_color", CapeAllowed(def) ? UiTheme.TextLo : UiTheme.Bad);
+        }
         if (!MyClan.InClan)
             _capeHint.Text = "Join a clan to buy a cape.";
         else if (!chief)
             _capeHint.Text = "Only the clan chief can change the cape.";
         else if (MyClan.Flag < ClanTypes.Promoted)
             _capeHint.Text = "Your clan must be promoted (Official) before buying a cape.";
+        else if (_selfDead)
+            _capeHint.Text = "You cannot change a cape while dead.";
+        else if (_capeTicket.ButtonPressed)
+            _capeHint.Text = "A castellan ticket is required. Only eligible capes can be purchased.";
         else
             _capeHint.Text = "Custom dye costs 36,000 clan points.";
     }
