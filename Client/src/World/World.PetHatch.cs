@@ -33,9 +33,6 @@ public partial class World
     private ServiceTabs _petHatchTabs = null!;
     private VBoxContainer _petHatchPage = null!;
     private VBoxContainer _petTransformPage = null!;
-    private HBoxContainer _petHatchEggs = null!;
-    private HBoxContainer _petTransformPets = null!;
-    private HBoxContainer _petTransformScrolls = null!;
     private Label _petHatchEggPick = null!;
     private Label _petTransformPetPick = null!;
     private Label _petTransformScrollPick = null!;
@@ -48,6 +45,9 @@ public partial class World
     private int _petScrollSlot = NoPetPick;
     private bool _petHatchInFlight;
     private bool _petHatchShown;
+    private Notice? _petHatchNotice;
+    private int _petHatchRevision;
+    private bool PetHatchEditing => _petHatchShown && !_petHatchInFlight && _petHatchNotice == null && !_selfDead;
 
     private void PetHatchInit()
     {
@@ -56,6 +56,9 @@ public partial class World
         Net.I.PetHatchFailedEvent += OnPetHatchFailed;
         Net.I.PetTransformedEvent += OnPetTransformed;
         Net.I.PetTransformFailedEvent += OnPetTransformFailed;
+        Net.I.PetResetEvent += ResetPetHatch;
+        Net.I.InventorySlotEvent += OnPetHatchInventorySlot;
+        Net.I.InventoryGridRefreshEvent += OnPetHatchInventoryGrid;
     }
 
     private void PetHatchDispose()
@@ -64,97 +67,63 @@ public partial class World
         Net.I.PetHatchFailedEvent -= OnPetHatchFailed;
         Net.I.PetTransformedEvent -= OnPetTransformed;
         Net.I.PetTransformFailedEvent -= OnPetTransformFailed;
+        Net.I.PetResetEvent -= ResetPetHatch;
+        Net.I.InventorySlotEvent -= OnPetHatchInventorySlot;
+        Net.I.InventoryGridRefreshEvent -= OnPetHatchInventoryGrid;
+        DismissPetHatchConfirmation();
     }
 
     private void BuildPetHatchPanel()
     {
-        _petHatchLayer = new CanvasLayer { Layer = 74 };
-        AddChild(_petHatchLayer);
-
-        _petHatchPanel = new HudWindow("pethatch", "Familiar Hatching and Transform", bodyMinWidth: 320) { Visible = false };
-        _petHatchPanel.Closed += ClosePetHatch;
-        _petHatchLayer.AddChild(_petHatchPanel);
-
-        var root = _petHatchPanel.Body;
-        root.AddThemeConstantOverride("separation", 8);
-
-        _petHatchTabs = new ServiceTabs();
+        _petHatchLayer = new CanvasLayer { Layer = 74 }; AddChild(_petHatchLayer);
+        _petHatchPanel = new HudWindow("pethatch", "Familiar", bodyMinWidth: 344) { Visible = false };
+        _petHatchPanel.SetMeta("classic_pet_hatch_controls", 1);
+        _petHatchPanel.Closed += ClosePetHatch; _petHatchLayer.AddChild(_petHatchPanel);
+        var root = _petHatchPanel.Body; root.AddThemeConstantOverride("separation", 8);
+        _petHatchTabs = new ServiceTabs { Name = "pet_hatch_tabs" };
         _petHatchTabs.SetTabs(new[] { "Hatch", "Transform" }, PetHatchTab);
-        _petHatchTabs.Selected += _ => ShowPetHatchTab();
-        root.AddChild(_petHatchTabs);
-
-        _petHatchPage = PetHatchPage(root);
-        _petHatchPage.AddChild(UiTheme.Text("Would you like to incubate the egg?", 14, UiTheme.GoldBright));
-        _petHatchPage.AddChild(UiTheme.SectionTitle("Egg"));
-        _petHatchEggs = PetPickRow(_petHatchPage, out _petHatchEggPick);
-        _petHatchPage.AddChild(UiTheme.SectionTitle("Bestow a name to the Familiar"));
-        _petHatchName = new LineEdit
-        {
-            MaxLength = PetNameMaxLength,
-            PlaceholderText = "Name",
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
+        _petHatchTabs.Selected += _ => ShowPetHatchTab(); root.AddChild(_petHatchTabs);
+        _petHatchDescription = UiTheme.Text("", 13, UiTheme.TextHi); _petHatchDescription.Name = "pet_hatch_description";
+        _petHatchDescription.AutowrapMode = TextServer.AutowrapMode.WordSmart; root.AddChild(_petHatchDescription);
+        _petHatchPage = new VBoxContainer { Name = "pet_hatch_page" }; root.AddChild(_petHatchPage);
+        BuildPetHatchStage(_petHatchPage, 0, "Egg", out _petHatchEggPick);
+        _petHatchNameCaption = UiTheme.Text("Familiar name", 13, UiTheme.GoldBright); _petHatchNameCaption.Name = "pet_hatch_name_caption";
+        _petHatchPage.AddChild(_petHatchNameCaption);
+        _petHatchName = new LineEdit { Name = "pet_hatch_name", MaxLength = PetNameMaxLength, PlaceholderText = "Name", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _petHatchName.TextChanged += _ => RefreshPetHatchUI();
-        _petHatchName.TextSubmitted += _ => OnPetHatchPressed();
-        _petHatchPage.AddChild(_petHatchName);
-
-        _petTransformPage = PetHatchPage(root);
-        _petTransformPage.AddChild(UiTheme.Text("Would you like to transform a familiar?", 14, UiTheme.GoldBright));
-        _petTransformPage.AddChild(UiTheme.SectionTitle("Familiar"));
-        _petTransformPets = PetPickRow(_petTransformPage, out _petTransformPetPick);
-        _petTransformPage.AddChild(UiTheme.SectionTitle("Transformation scroll"));
-        _petTransformScrolls = PetPickRow(_petTransformPage, out _petTransformScrollPick);
-        var note = UiTheme.Text("The scroll is used up and decides the familiar's new form.", 12, UiTheme.TextDim);
-        note.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        _petTransformPage.AddChild(note);
-
-        root.AddChild(UiTheme.Rule());
-        var actions = new HBoxContainer();
-        actions.AddThemeConstantOverride("separation", 8);
-        root.AddChild(actions);
-        _petHatchBtn = UiTheme.ActionButton("Hatch", "");
-        _petHatchBtn.Pressed += OnPetHatchPressed;
-        actions.AddChild(_petHatchBtn);
-        var close = UiTheme.ActionButton("Close", "");
-        close.Pressed += ClosePetHatch;
-        actions.AddChild(close);
-
-        _petHatchStatus = HudStyle.Label(12);
-        _petHatchStatus.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        root.AddChild(_petHatchStatus);
-    }
-
-    private static VBoxContainer PetHatchPage(VBoxContainer root)
-    {
-        var page = new VBoxContainer();
-        page.AddThemeConstantOverride("separation", 8);
-        root.AddChild(page);
-        return page;
-    }
-
-    private static HBoxContainer PetPickRow(VBoxContainer page, out Label pick)
-    {
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 6);
-        page.AddChild(row);
-        pick = UiTheme.Text("", 12, UiTheme.TextHi);
-        page.AddChild(pick);
-        return row;
+        _petHatchName.TextSubmitted += _ => OnPetHatchPressed(); _petHatchPage.AddChild(_petHatchName);
+        _petTransformPage = new VBoxContainer { Name = "pet_transform_page" }; root.AddChild(_petTransformPage);
+        var stages = new HBoxContainer(); _petTransformPage.AddChild(stages);
+        BuildPetHatchStage(stages, 1, "Familiar", out _petTransformPetPick);
+        BuildPetHatchStage(stages, 2, "Transformation scroll", out _petTransformScrollPick);
+        _petTransformNote = UiTheme.Text("The scroll is used up to change the familiar's form.", 13, UiTheme.TextDim);
+        _petTransformNote.Name = "pet_transform_note"; _petTransformNote.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _petTransformPage.AddChild(_petTransformNote);
+        _petHatchInventoryHeading = UiTheme.SectionTitle("Inventory"); _petHatchInventoryHeading.Name = "pet_hatch_inventory_heading";
+        root.AddChild(_petHatchInventoryHeading); BuildPetHatchInventory(root);
+        _petHatchStatus = HudStyle.Label(13); _petHatchStatus.Name = "pet_hatch_status";
+        _petHatchStatus.AutowrapMode = TextServer.AutowrapMode.WordSmart; root.AddChild(_petHatchStatus);
+        var actions = new HBoxContainer(); root.AddChild(actions);
+        _petHatchBtn = UiTheme.ActionButton("Hatch", ""); _petHatchBtn.Name = "pet_hatch_accept";
+        _petHatchBtn.Pressed += OnPetHatchPressed; actions.AddChild(_petHatchBtn);
+        var close = UiTheme.ActionButton("Close", ""); close.Name = "pet_hatch_cancel"; close.Pressed += ClosePetHatch; actions.AddChild(close);
     }
 
     private void OpenPetHatch(int npcId)
     {
+        if (_petHatchInFlight || _petHatchNotice != null || _petHatchShown)
+        { _petHatchPanel.Visible = true; _petHatchShown = true; RefreshPetHatchUI(); return; }
         _petHatchNpc = npcId;
-        _petHatchInFlight = false;
         _petHatchName.Text = "";
         SetPetHatchStatus("", false);
         _petHatchSlot = _petTransformSlot = _petScrollSlot = NoPetPick;
         RebuildPetPicks();
-        bool transform = _petHatchSlot < 0 && _petTransformSlot >= 0;
+        bool transform = FirstPetPick(IsPetEgg) < 0 && FirstPetPick(IsFamiliarItem) >= 0;
         _petHatchTabs.Select(transform ? PetTransformTab : PetHatchTab, notify: false);
         ShowPetHatchTab();
         _petHatchPanel.Visible = true;
         _petHatchShown = true;
+        RefreshPetHatchUI();
     }
 
     private void ClosePetHatch()
@@ -162,6 +131,7 @@ public partial class World
         if (!_petHatchShown) return;
         _petHatchShown = false;
         _petHatchPanel.Visible = false;
+        DismissPetHatchConfirmation();
         HideItemTooltip();
     }
 
@@ -171,12 +141,13 @@ public partial class World
     {
         _petHatchPage.Visible = !PetTransforming;
         _petTransformPage.Visible = PetTransforming;
+        _petHatchDescription.Text = PetTransforming ? "Transform your familiar with a scroll." : "Incubate your familiar egg.";
         _petHatchBtn.Text = PetTransforming ? "Transform" : "Hatch";
         _petHatchBtn.TooltipText = PetTransforming
             ? "Transform the chosen familiar with the chosen scroll"
             : "Hatch the chosen egg";
         SetPetHatchStatus("", false);
-        RefreshPetHatchUI();
+        RefreshPetPickLooks(); RefreshPetHatchUI();
     }
 
     private int FirstPetPick(Func<ItemSlot, bool> matches)
@@ -187,13 +158,16 @@ public partial class World
     }
 
     private static bool IsPetEgg(ItemSlot slot) =>
-        !slot.IsEmpty && ItemData.Get(slot.ItemId) is { Kind: PetEggKind };
+        PetPickAllowed(slot) && !slot.IsLinked && ItemData.Get(slot.ItemId) is { Kind: PetEggKind };
 
     private static bool IsFamiliarItem(ItemSlot slot) =>
-        !slot.IsEmpty && slot.UniqueId != 0 && ItemData.Get(slot.ItemId) is { Kind: PetFamiliarKind };
+        PetPickAllowed(slot) && slot.UniqueId != 0 && ItemData.Get(slot.ItemId) is { Kind: PetFamiliarKind };
 
     private static bool IsTransformScroll(ItemSlot slot) =>
-        !slot.IsEmpty && ItemData.Get(slot.ItemId) is { Kind: PetScrollKind, Effect2: PetScrollEffect };
+        PetPickAllowed(slot) && ItemData.Get(slot.ItemId) is { Kind: PetScrollKind, Effect2: PetScrollEffect };
+
+    private static bool PetPickAllowed(ItemSlot slot) => !slot.IsEmpty && slot.Count > 0
+        && slot.State is not (ItemFlag.Sealed or ItemFlag.Duplicate or ItemFlag.Rented);
 
     private void RebuildPetPicks()
     {
@@ -201,47 +175,23 @@ public partial class World
         _petHatchSlot = KeepPetPick(_petHatchSlot, IsPetEgg);
         _petTransformSlot = KeepPetPick(_petTransformSlot, IsFamiliarItem);
         _petScrollSlot = KeepPetPick(_petScrollSlot, IsTransformScroll);
-        FillPetPicks(_petHatchEggs, IsPetEgg, "You have no familiar egg.", abs => _petHatchSlot = abs);
-        FillPetPicks(_petTransformPets, IsFamiliarItem, "You have no familiar in your bag.", abs => _petTransformSlot = abs);
-        FillPetPicks(_petTransformScrolls, IsTransformScroll, "You have no transformation scroll.", abs => _petScrollSlot = abs);
+        for (int i = 0; i < _petHatchInventory.Length; i++) _petHatchInventory[i].Set(GridStart + i < Inv.Length ? Inv[GridStart + i] : default);
         RefreshPetPickLooks();
     }
 
     private int KeepPetPick(int abs, Func<ItemSlot, bool> matches) =>
-        abs >= 0 && abs < Inv.Length && matches(Inv[abs]) ? abs : FirstPetPick(matches);
-
-    private void FillPetPicks(HBoxContainer row, Func<ItemSlot, bool> matches, string empty, Action<int> pick)
-    {
-        foreach (var child in row.GetChildren())
-            child.QueueFree();
-
-        bool any = false;
-        for (int abs = GridStart; abs < GridStart + GridCount && abs < Inv.Length; abs++)
-        {
-            if (!matches(Inv[abs])) continue;
-            any = true;
-            var cell = new ItemSlotView(PetPickSlotSize) { Index = abs };
-            cell.Set(Inv[abs]);
-            cell.Clicked += c =>
-            {
-                pick(c.Index);
-                RefreshPetPickLooks();
-                RefreshPetHatchUI();
-            };
-            cell.Hovered += c => ShowItemTooltip(c.Index, Inv[c.Index]);
-            cell.Unhovered += _ => HideItemTooltip();
-            row.AddChild(cell);
-        }
-
-        if (!any)
-            row.AddChild(UiTheme.Text(empty, 12, UiTheme.TextDim));
-    }
+        abs >= GridStart && abs < GridStart + GridCount && abs < Inv.Length && matches(Inv[abs]) ? abs : NoPetPick;
 
     private void RefreshPetPickLooks()
     {
-        PetPickLooks(_petHatchEggs, _petHatchSlot);
-        PetPickLooks(_petTransformPets, _petTransformSlot);
-        PetPickLooks(_petTransformScrolls, _petScrollSlot);
+        int[] selected = { _petHatchSlot, _petTransformSlot, _petScrollSlot };
+        for (int i = 0; i < selected.Length; i++)
+        {
+            _petHatchStage[i].Index = selected[i];
+            _petHatchStage[i].Set(selected[i] >= GridStart && selected[i] < Inv.Length ? Inv[selected[i]] : default);
+        }
+        foreach (var cell in _petHatchInventory)
+            cell.Look = (PetTransforming ? cell.Index == _petTransformSlot || cell.Index == _petScrollSlot : cell.Index == _petHatchSlot) ? SlotLook.Selected : SlotLook.Normal;
         _petHatchEggPick.Text = _petHatchSlot >= 0 ? ItemData.DisplayName(Inv[_petHatchSlot].ItemId) : "";
         _petTransformPetPick.Text = _petTransformSlot >= 0 ? FamiliarCaption(Inv[_petTransformSlot]) : "";
         _petTransformScrollPick.Text = _petScrollSlot >= 0 ? ItemData.DisplayName(Inv[_petScrollSlot].ItemId) : "";
@@ -253,21 +203,28 @@ public partial class World
         return Net.I.PetItems.TryGetValue(slot.UniqueId, out var info) ? $"{info.Name} ({kind}), level {info.Level}" : kind;
     }
 
-    private static void PetPickLooks(HBoxContainer row, int selected)
-    {
-        foreach (var child in row.GetChildren())
-            if (child is ItemSlotView cell)
-                cell.Look = cell.Index == selected ? SlotLook.Selected : SlotLook.Normal;
-    }
-
     private void RefreshPetHatchUI()
     {
         bool ready = PetTransforming
             ? _petTransformSlot >= 0 && IsFamiliarItem(Inv[_petTransformSlot])
               && _petScrollSlot >= 0 && IsTransformScroll(Inv[_petScrollSlot])
             : _petHatchSlot >= 0 && IsPetEgg(Inv[_petHatchSlot]) && IsValidPetName(_petHatchName.Text);
-        _petHatchBtn.Disabled = _petHatchInFlight || !ready;
-        _petHatchName.Editable = !_petHatchInFlight;
+        _petHatchBtn.Disabled = !PetHatchEditing || !ready;
+        _petHatchName.Editable = PetHatchEditing;
+        _petHatchTabs.SetDisabled(!PetHatchEditing);
+    }
+
+    private bool HandlePetHatchKey(InputEventKey key)
+    {
+        if (!_petHatchShown || !_petHatchPanel.IsVisibleInTree()
+            || key.Keycode is not (Key.Enter or Key.KpEnter or Key.Escape)) return false;
+        // A modal owns its own input; an unrelated text editor keeps its focus.
+        if (_petHatchNotice != null) return false;
+        var focus = GetViewport().GuiGetFocusOwner();
+        if (focus is LineEdit or TextEdit or SpinBox && !_petHatchPanel.IsAncestorOf(focus)) return false;
+        if (key.Keycode == Key.Escape) ClosePetHatch();
+        else OnPetHatchPressed();
+        return true;
     }
 
     private static bool IsValidPetName(string name)
@@ -280,14 +237,56 @@ public partial class World
 
     private void OnPetHatchPressed()
     {
-        if (_petHatchBtn.Disabled) return;
+        RefreshPetHatchUI();
+        if (_petHatchBtn.Disabled || !PetHatchEditing) return;
+        bool transform = PetTransforming;
+        int slot = transform ? _petTransformSlot : _petHatchSlot;
+        int scroll = _petScrollSlot, npc = _petHatchNpc;
+        var item = Inv[slot]; var material = transform ? Inv[scroll] : default;
+        string name = _petHatchName.Text;
+        int revision = ++_petHatchRevision;
+        _petHatchNotice = Notice.Confirm(_petHatchLayer,
+            transform ? "Would you like to transform this familiar?\nThe transformation scroll will be used."
+                : $"Would you like to incubate the egg?\nFamiliar name: {name}",
+            "Yes", "No", () => SubmitPetHatch(revision, transform, npc, slot, item, scroll, material, name),
+            () => CancelPetHatchConfirmation(revision), title: transform ? "Familiar Transformation" : "Familiar Hatching");
+        RefreshPetHatchUI();
+    }
+
+    private void SubmitPetHatch(int revision, bool transform, int npc, int slot, ItemSlot item, int scroll, ItemSlot material, string name)
+    {
+        if (revision != _petHatchRevision || !_petHatchShown || _petHatchNotice == null || _petHatchInFlight) return;
+        _petHatchNotice = null;
+        bool same = slot >= GridStart && slot < Inv.Length && Inv[slot].Equals(item)
+            && (transform ? IsFamiliarItem(Inv[slot]) && scroll >= GridStart && scroll < Inv.Length
+                && Inv[scroll].Equals(material) && IsTransformScroll(Inv[scroll]) : IsPetEgg(Inv[slot]) && IsValidPetName(name));
+        if (_selfDead || !same)
+        { RebuildPetPicks(); SetPetHatchStatus("Your selection changed. Please choose the items again.", true); RefreshPetHatchUI(); return; }
         _petHatchInFlight = true;
-        SetPetHatchStatus("", false);
-        if (PetTransforming)
-            Net.I.SendPetTransform(_petHatchNpc, Inv[_petTransformSlot].ItemId, _petTransformSlot - GridStart,
-                Inv[_petScrollSlot].ItemId, _petScrollSlot - GridStart);
-        else
-            Net.I.SendPetHatch(_petHatchNpc, Inv[_petHatchSlot].ItemId, _petHatchSlot - GridStart, _petHatchName.Text);
+        bool sent = transform ? Net.I.SendPetTransform(npc, item.ItemId, slot - GridStart, material.ItemId, scroll - GridStart)
+            : Net.I.SendPetHatch(npc, item.ItemId, slot - GridStart, name);
+        if (!sent) { _petHatchInFlight = false; SetPetHatchStatus("Not connected. Please try again after reconnecting.", true); }
+        else SetPetHatchStatus(transform ? "Transforming…" : "Hatching…", false);
+        RefreshPetHatchUI();
+    }
+
+    private void CancelPetHatchConfirmation(int revision)
+    {
+        if (revision != _petHatchRevision || _petHatchNotice == null) return;
+        _petHatchNotice = null; RefreshPetHatchUI();
+    }
+
+    private void DismissPetHatchConfirmation()
+    {
+        _petHatchRevision++;
+        if (_petHatchNotice is { } notice && GodotObject.IsInstanceValid(notice)) notice.Close();
+        _petHatchNotice = null;
+    }
+
+    private void ResetPetHatch()
+    {
+        ClosePetHatch(); DismissPetHatchConfirmation(); _petHatchInFlight = false;
+        _petHatchSlot = _petTransformSlot = _petScrollSlot = NoPetPick;
         RefreshPetHatchUI();
     }
 

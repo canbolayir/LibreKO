@@ -15,6 +15,7 @@ public class FramedConn
     private NetworkStream? _stream;
     private CancellationTokenSource? _cts;
     private readonly object _sendLock = new();
+    private readonly object _receiveLock = new();
     private int _attempt;
 
     private const int ConnectTimeoutMs = 5000;
@@ -42,30 +43,40 @@ public class FramedConn
                 if (!tcp.ConnectAsync(host, port).Wait(ConnectTimeoutMs, ct))
                 {
                     try { tcp.Close(); } catch { }
-                    if (!IsCurrent(attempt)) return;
-                    LastError = $"connection to {host}:{port} timed out";
-                    ConnectFailed = true;
+                    lock (_receiveLock)
+                    {
+                        if (!IsCurrent(attempt)) return;
+                        LastError = $"connection to {host}:{port} timed out";
+                        ConnectFailed = true;
+                    }
                     return;
                 }
-                if (!IsCurrent(attempt))
+                NetworkStream stream;
+                lock (_receiveLock)
                 {
-                    try { tcp.Close(); } catch { }
-                    return;
+                    if (!IsCurrent(attempt))
+                    {
+                        try { tcp.Close(); } catch { }
+                        return;
+                    }
+                    _tcp = tcp;
+                    _stream = stream = tcp.GetStream();
+                    Connected = true;
                 }
-                _tcp = tcp;
-                _stream = tcp.GetStream();
-                Connected = true;
-                ReceiveLoop(ct, attempt);
+                ReceiveLoop(stream, ct, attempt);
             }
             catch (Exception e)
             {
                 try { tcp.Close(); } catch { }
-                if (!IsCurrent(attempt)) return;
                 var cause = e.InnerException ?? e;
-                Godot.GD.Print($"[net] connection to {host}:{port} failed: {cause.Message}");
-                LastError = ConnectErrorText(cause);
-                ConnectFailed = true;
-                Connected = false;
+                lock (_receiveLock)
+                {
+                    if (!IsCurrent(attempt)) return;
+                    Godot.GD.Print($"[net] connection to {host}:{port} failed: {cause.Message}");
+                    LastError = ConnectErrorText(cause);
+                    ConnectFailed = true;
+                    Connected = false;
+                }
             }
         }, ct);
     }
@@ -104,13 +115,13 @@ public class FramedConn
         }
     }
 
-    private void ReceiveLoop(CancellationToken ct, int attempt)
+    private void ReceiveLoop(NetworkStream stream, CancellationToken ct, int attempt)
     {
         var two = new byte[2];
         try
         {
-            var s = _stream!;
-            while (!ct.IsCancellationRequested && Connected)
+            var s = stream;
+            while (!ct.IsCancellationRequested && IsCurrent(attempt) && Connected)
             {
                 s.ReadExactly(two, 0, 2);
                 if (two[0] != Header[0] || two[1] != Header[1])
@@ -128,17 +139,22 @@ public class FramedConn
                 if (body.Length == 0) continue;
 
                 var packet = BuildIncoming(body);
-                if (packet != null) Incoming.Enqueue(packet);
+                lock (_receiveLock)
+                {
+                    if (packet != null && IsCurrent(attempt) && !ct.IsCancellationRequested)
+                        Incoming.Enqueue(packet);
+                }
             }
         }
         catch (Exception e)
         {
-            if (!ct.IsCancellationRequested && IsCurrent(attempt))
-                LastError = e.Message;
+            lock (_receiveLock)
+                if (!ct.IsCancellationRequested && IsCurrent(attempt)) LastError = e.Message;
         }
         finally
         {
-            if (IsCurrent(attempt)) Connected = false;
+            lock (_receiveLock)
+                if (IsCurrent(attempt)) Connected = false;
         }
     }
 
@@ -159,8 +175,12 @@ public class FramedConn
 
     public void Close()
     {
-        Interlocked.Increment(ref _attempt);
-        Connected = false;
+        lock (_receiveLock)
+        {
+            Interlocked.Increment(ref _attempt);
+            Connected = false;
+            while (Incoming.TryDequeue(out _)) { }
+        }
         try { _cts?.Cancel(); } catch { }
         try { _stream?.Dispose(); } catch { }
         try { _tcp?.Close(); } catch { }

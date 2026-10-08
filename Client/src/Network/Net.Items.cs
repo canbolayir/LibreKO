@@ -13,6 +13,15 @@ public partial class Net
     private PendingItemMove? _pendingItemMove;
     private int _pendingRemoveSlot = -1;
 
+    private void ResetInventoryRequests()
+    {
+        bool moving = _pendingItemMove.HasValue;
+        _pendingItemMove = null;
+        _pendingRemoveSlot = -1;
+        // Release the World move queue without applying an acknowledgement from the old session.
+        if (moving) ItemMoveResultEvent?.Invoke(false);
+    }
+
     private void HandleItemMove(Packet p)
     {
         if (p.RemainingBytes < 1) return;

@@ -9,6 +9,11 @@ public partial class World : Node3D
     private void InventoryContext(int absSlot)
     {
         if (absSlot < 0 || absSlot >= Inv.Length || Inv[absSlot].IsEmpty) return;
+        if (_repairShown && _repairPanel.GetMeta("classic_inventory_repair", false).AsBool())
+        {
+            RepairTakeFromBag(absSlot);
+            return;
+        }
         if (!LibreKO.Plugins.PluginHost.Ui.HudHidden(LibreKO.Plugins.HudPart.Chat)
             && Input.IsKeyPressed(Key.Shift) && Chat.InsertItemLink(Inv[absSlot].ItemId)) return;
         if (_bagCompanion != null && _bagCompanion.Take(absSlot)) return;
@@ -239,7 +244,9 @@ public partial class World : Node3D
 
     private void EnqueuePetMove(byte dir, int itemId, byte src, byte dst, int bagAbs, int petPos)
     {
-        _moveQueue.Enqueue(new MoveStep { Dir = dir, ItemId = itemId, Src = src, Dst = dst, From = bagAbs, To = bagAbs, PetPos = petPos });
+        if (Net.I.Pet is not { } pet || petPos < 0 || petPos >= pet.Items.Length) return;
+        _moveQueue.Enqueue(new MoveStep { Dir = dir, ItemId = itemId, Src = src, Dst = dst, From = bagAbs, To = bagAbs,
+            PetPos = petPos, PetIndex = pet.Index, PetBagItem = Inv[bagAbs], PetItem = pet.Items[petPos] });
         PumpMoves();
     }
 
@@ -264,8 +271,11 @@ public partial class World : Node3D
 
         if (_moveCur.PetPos != NoPetSlot)
         {
-            if (Net.I.Pet is { } pet && _moveCur.PetPos < pet.Items.Length)
-                (Inv[_moveCur.From], pet.Items[_moveCur.PetPos]) = (pet.Items[_moveCur.PetPos], Inv[_moveCur.From]);
+            // A stat-changing familiar item can arrive in a new summon sheet before this acknowledgement.
+            Inv.ApplySlotUpdate(_moveCur.From, _moveCur.PetItem);
+            Net.I.MirrorInventorySlot(_moveCur.From, _moveCur.PetItem);
+            if (Net.I.Pet is { } pet && pet.Index == _moveCur.PetIndex && _moveCur.PetPos < pet.Items.Length)
+                pet.Items[_moveCur.PetPos] = _moveCur.PetBagItem;
             PumpMoves();
             RefreshInventoryUI();
             RefreshPetUI();

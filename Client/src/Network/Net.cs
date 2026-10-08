@@ -130,6 +130,12 @@ public partial class Net : Node
         AutoReconnect = true;
         _reconnectKickSent = false;
         ResetGenieSystem();
+        ResetChangeHair();
+        ResetNationTransfer();
+        ResetRebirth();
+        ResetCape();
+        ResetPet();
+        ResetInventoryRequests();
         MyCharId = 0;
         PingMs = -1;
         _pingOutstanding = false;
@@ -152,6 +158,12 @@ public partial class Net : Node
             _conn.Send(logout);
         }
         ResetGenieSystem();
+        ResetChangeHair();
+        ResetNationTransfer();
+        ResetRebirth();
+        ResetCape();
+        ResetPet();
+        ResetInventoryRequests();
         _conn.Close();
         PingMs = -1;
         _pingOutstanding = false;
@@ -167,6 +179,12 @@ public partial class Net : Node
             _conn.Send(logout);
         }
         ResetGenieSystem();
+        ResetChangeHair();
+        ResetNationTransfer();
+        ResetRebirth();
+        ResetCape();
+        ResetPet();
+        ResetInventoryRequests();
         MyCharId = 0;
     }
 
@@ -198,7 +216,14 @@ public partial class Net : Node
         }
         if (!_conn.Connected && _connectedFired)
         {
+            _conn.Close();
             ResetGenieSystem();
+            ResetChangeHair();
+            ResetNationTransfer();
+            ResetRebirth();
+            ResetCape();
+            ResetPet();
+            ResetInventoryRequests();
             _connectedFired = false;
             PingMs = -1;
             _pingOutstanding = false;

@@ -27,9 +27,13 @@ public partial class World : Node3D
         EscapeCloses(() => _whShown, () => CloseWarehouse());
         EscapeCloses(() => _upgradeShown, () => CloseUpgrade());
         EscapeCloses(() => _upgradeChoicePanel is { Visible: true }, () => _upgradeChoicePanel.Visible = false);
+        EscapeCloses(() => _sealPad is { Visible: true }, () => _sealPad.Visible = false);
+        EscapeCloses(() => _sealShown, CloseSealWindow);
+        EscapeCloses(() => _pieceShown, ClosePieceChange);
         EscapeCloses(() => _classChangeShown, () => CloseClassChange());
         EscapeCloses(() => _genderShown, CloseGenderChange);
         EscapeCloses(() => _transferShown, CancelNationTransfer);
+        EscapeCloses(() => _nameChangeShown, CloseNameChange);
         EscapeCloses(() => _merchantSearchShown, CloseMerchantSearch);
         EscapeCloses(() => _exFinalPending, CloseExchangeFinal);
         EscapeCloses(() => _exAmountShown, () => CloseExchangeAmount());
@@ -50,6 +54,7 @@ public partial class World : Node3D
         EscapeCloses(() => _characterClanDetails is { Visible: true }, () => _characterClanDetails!.Visible = false);
         EscapeCloses(() => _warpShown, () => CloseWarp());
         EscapeCloses(() => _rankShown, () => ToggleRank());
+        EscapeCloses(() => _petHatchShown, ClosePetHatch);
         EscapeCloses(() => _petShown, () => TogglePet());
         EscapeCloses(() => _pusShown && _pusModal != PusModal.None, ClosePusModal);
         EscapeCloses(() => _pusShown, CloseShoppingMall);
@@ -74,9 +79,12 @@ public partial class World : Node3D
         EscapeCloses(() => _clanWhShown, () => CloseClanWarehouse());
         EscapeCloses(() => _vipWhShown, () => CloseVipWarehouse());
         EscapeCloses(() => _reportShown, () => CloseReport());
+        EscapeCloses(() => _equipViewShown, CloseEquipView);
         EscapeCloses(() => _changeHairShown, () => CloseChangeHair());
         EscapeCloses(() => _achShown, () => CloseAchievements());
-        EscapeCloses(() => _mailShown, () => CloseMail());
+        EscapeCloses(() => _mailComposeShown, CloseMailCompose);
+        EscapeCloses(() => _mailReadWindow is { Visible: true }, () => { _mailReadWindow.Visible = false; _mailSelectedId = -1; });
+        EscapeCloses(() => _mailShown, CloseMail);
         EscapeCloses(() => _lotteryShown, () => CloseLottery());
         EscapeCloses(() => _specialAuctionShown, () => CloseSpecialAuction());
         EscapeCloses(() => _attendanceShown, () => CloseAttendance());
@@ -85,6 +93,8 @@ public partial class World : Node3D
         EscapeCloses(() => _disguiseShown, () => CloseDisguise());
         EscapeCloses(() => _presetShown, () => ClosePreset());
         EscapeCloses(() => _titleShown, () => CloseTitlePicker());
+        EscapeCloses(() => _chatPalette is { Visible: true }, () => _chatPalette?.Hide());
+        EscapeCloses(() => _chatColorsWindow is { Visible: true }, CloseChatColors);
         EscapeCloses(() => _msgrShown, () => CloseMessenger());
         EscapeCloses(() => _forcesShown, () => CloseForces());
         EscapeCloses(() => _chatRoomShown, () => CloseChatRoom());

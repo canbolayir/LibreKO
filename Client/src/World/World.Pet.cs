@@ -53,6 +53,7 @@ public partial class World
         AddChild(_petLayer);
 
         _petPanel = new HudWindow("pet", "Familiar", new Vector2(90, 140), 280) { Visible = false };
+        _petPanel.SetMeta("classic_pet_controls", 1);
         _petPanel.Closed += ClosePet;
         _petLayer.AddChild(_petPanel);
 
@@ -63,15 +64,19 @@ public partial class World
         header.AddThemeConstantOverride("separation", 8);
         root.AddChild(header);
         _petNameLbl = UiTheme.Text("", 16, UiTheme.GoldBright);
+        _petNameLbl.Name = "pet_name";
         _petNameLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         header.AddChild(_petNameLbl);
         _petLevelLbl = UiTheme.Text("", 13, UiTheme.TextLo, HorizontalAlignment.Right);
+        _petLevelLbl.Name = "pet_level";
         header.AddChild(_petLevelLbl);
 
         _petHpBar = PetBar(root, "HP", UiTheme.Hp);
         _petMpBar = PetBar(root, "MP", UiTheme.Mp);
         _petExpBar = PetBar(root, "EXP", UiTheme.Gold);
         _petSatBar = PetBar(root, "Satisfaction", UiTheme.Good);
+        _petHpBar.Name = "pet_hp"; _petMpBar.Name = "pet_mp";
+        _petExpBar.Name = "pet_exp"; _petSatBar.Name = "pet_satisfaction";
 
         root.AddChild(UiTheme.Rule());
         root.AddChild(UiTheme.SectionTitle("Mode"));
@@ -81,6 +86,7 @@ public partial class World
         _petAttackBtn = PetModeButton(modes, "Attack", PetSheet.ModeAttack);
         _petDefendBtn = PetModeButton(modes, "Defend", PetSheet.ModeDefence);
         _petLootBtn = PetModeButton(modes, "Loot", PetSheet.ModeLooting);
+        _petAttackBtn.Name = "pet_attack"; _petDefendBtn.Name = "pet_defend"; _petLootBtn.Name = "pet_loot";
 
         root.AddChild(UiTheme.Rule());
         root.AddChild(UiTheme.SectionTitle("Bag"));
@@ -89,8 +95,10 @@ public partial class World
         root.AddChild(bag);
         for (int i = 0; i < _petBagCells.Length; i++)
         {
-            var cell = new ItemSlotView(PetBagCellSize) { Index = i, CanDrop = CanDropOnPetBag, Dropped = DropOnPetBag };
+            var cell = new ItemSlotView(PetBagCellSize) { Name = "pet_item_" + i, Index = i, CanDrop = CanDropOnPetBag, Dropped = DropOnPetBag };
             cell.RightClicked += c => TakeFromPetBag(c.Index);
+            cell.Hovered += c => { if (Net.I.Pet is { } pet && !pet.Items[c.Index].IsEmpty) ShowItemTooltip(-1, pet.Items[c.Index]); };
+            cell.Unhovered += _ => HideItemTooltip();
             _petBagCells[i] = cell;
             bag.AddChild(cell);
         }
@@ -103,12 +111,15 @@ public partial class World
         _petFeedBtn.Pressed += FeedPet;
         actions.AddChild(_petFeedBtn);
         _petDismissBtn = UiTheme.ActionButton("Dismiss", "Send your familiar away");
+        _petFeedBtn.Name = "pet_feed"; _petDismissBtn.Name = "pet_dismiss";
         _petDismissBtn.Pressed += DismissPet;
         actions.AddChild(_petDismissBtn);
 
         _petStatus = HudStyle.Label(12);
+        _petStatus.Name = "pet_status";
         _petStatus.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         root.AddChild(_petStatus);
+        BuildPetDetails(root);
 
         RefreshPetUI();
     }
@@ -152,6 +163,7 @@ public partial class World
         if (!_petShown) return;
         _petShown = false;
         _petPanel.Visible = false;
+        HideItemTooltip();
     }
 
     private void RequestPetMode(int mode)
@@ -166,7 +178,7 @@ public partial class World
 
     private void FeedPet()
     {
-        if (Net.I.Pet is not { } pet) return;
+        if (_selfDead || Net.I.Pet is not { } pet) return;
         if (pet.Satisfaction >= PetSheet.MaxSatisfaction)
         {
             SetPetStatus("Your familiar is already full.", false);
@@ -187,7 +199,7 @@ public partial class World
         int best = -1, bestValue = -1;
         for (int abs = GridStart; abs < GridStart + GridCount && abs < Inv.Length; abs++)
         {
-            if (Inv[abs].IsEmpty || Inv[abs].Count <= 0) continue;
+            if (Inv[abs].IsEmpty || Inv[abs].Count <= 0 || Inv[abs].State == ItemFlag.Duplicate) continue;
             if (ItemData.Get(Inv[abs].ItemId) is not { Kind: PetFoodKind } food) continue;
             if (food.Damage <= bestValue) continue;
             bestValue = food.Damage;
@@ -259,9 +271,11 @@ public partial class World
         _petLootBtn.Disabled = !out_;
         _petFeedBtn.Disabled = !out_;
         _petDismissBtn.Disabled = pet == null;
+        RefreshPetDetails(pet);
 
         if (pet == null)
         {
+            foreach (var cell in _petBagCells) cell.Set(default);
             var equipped = InventoryConstants.Pet < Inv.Length ? Inv[InventoryConstants.Pet] : default;
             if (equipped.IsLinked && Net.I.PetItems.TryGetValue(equipped.UniqueId, out var info))
             {
@@ -297,11 +311,11 @@ public partial class World
 
     private bool CanDropOnPetBag(ItemSlotView cell, Variant data)
     {
-        if (Net.I.Pet is not { } pet || data.VariantType != Variant.Type.Dictionary) return false;
+        if (_selfDead || Net.I.Pet is not { } pet || data.VariantType != Variant.Type.Dictionary) return false;
         var d = data.AsGodotDictionary();
-        if (!d.ContainsKey("invFrom")) return false;
+        if (cell.Index < 0 || cell.Index >= pet.Items.Length || !d.ContainsKey("invFrom") || d["invFrom"].VariantType != Variant.Type.Int) return false;
         int abs = d["invFrom"].AsInt32();
-        return abs >= GridStart && abs < GridStart + GridCount && abs < Inv.Length && !Inv[abs].IsEmpty
+        return abs >= GridStart && abs < GridStart + GridCount && abs < Inv.Length && !Inv[abs].IsEmpty && !Inv[abs].IsLinked
                && ItemData.Get(Inv[abs].ItemId) is { } item
                && PetBag.Fits(pet.Items, cell.Index, item, ItemData.Get);
     }
@@ -315,7 +329,7 @@ public partial class World
 
     private void TakeFromPetBag(int petPos)
     {
-        if (Net.I.Pet is not { } pet || petPos >= pet.Items.Length || pet.Items[petPos].IsEmpty) return;
+        if (_selfDead || Net.I.Pet is not { } pet || petPos < 0 || petPos >= pet.Items.Length || pet.Items[petPos].IsEmpty) return;
         if (_moveInFlight || _moveQueue.Count > 0) return;
         int free = Inv.FirstFreeGridSlot();
         if (free < 0)

@@ -37,11 +37,15 @@ public partial class World : Node3D
         _itemTipPanel.AddThemeStyleboxOverride("panel", bg);
         _itemTipLayer.AddChild(_itemTipPanel);
 
-        var margin = new MarginContainer();
+        var margin = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         UiTheme.Margins(margin, 10, 8, 10, 9);
         _itemTipPanel.AddChild(margin);
 
-        _itemTipLines = new VBoxContainer { CustomMinimumSize = new Vector2(232, 0) };
+        _itemTipLines = new VBoxContainer
+        {
+            CustomMinimumSize = new Vector2(232, 0),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
         _itemTipLines.AddThemeConstantOverride("separation", 1);
         margin.AddChild(_itemTipLines);
     }
@@ -129,7 +133,7 @@ public partial class World : Node3D
     private void UpdateInventoryTooltip()
     {
         if (_itemTipPanel == null || !_itemTipPanel.Visible) return;
-        var vp = GetViewport();
+        var vp = _itemTipPanel.GetViewport();
         if (vp == null) return;
         var viewport = vp.GetVisibleRect().Size;
         var p = vp.GetMousePosition() + new Vector2(16, 16);

@@ -22,6 +22,9 @@ public partial class World
     private List<int> _petBarSkills = new();
     private int _petBarPage;
     private readonly Dictionary<int, double> _petSkillReadyAt = new();
+    private int _petSkillGeneration;
+    private int _petSkillCastSerial;
+    private readonly Dictionary<int, (int CasterId, int Serial)> _petSkillCasts = new();
 
     private void PetBarInit()
     {
@@ -32,6 +35,7 @@ public partial class World
         Net.I.PetGoneEvent += HidePetBar;
         Net.I.PetVitalsEvent += RefreshPetBar;
         Net.I.PetExpEvent += OnPetBarExp;
+        PetSkillObserveInit();
         if (Net.I.Pet is { } sheet) OnPetBarSummoned(sheet);
     }
 
@@ -41,38 +45,55 @@ public partial class World
         Net.I.PetGoneEvent -= HidePetBar;
         Net.I.PetVitalsEvent -= RefreshPetBar;
         Net.I.PetExpEvent -= OnPetBarExp;
+        PetSkillObserveDispose();
+    }
+
+    private void PetSkillObserveInit() => Net.I.MagicEvent += OnPetSkillMagic;
+    private void PetSkillObserveDispose()
+    { Net.I.MagicEvent -= OnPetSkillMagic; _petSkillGeneration++; _petSkillCasts.Clear(); }
+
+    private void OnPetSkillMagic(int sub, int skillId, int casterId, int targetId, short[] data)
+    {
+        if (sub is not (MagicSub.Fail or MagicSub.Cancel)) return;
+        bool pending = _petSkillCasts.TryGetValue(skillId, out var cast) && cast.CasterId == casterId;
+        bool current = MyPetEntity() is { } actor && actor.Id == casterId && _petSkillReadyAt.ContainsKey(skillId);
+        if (!pending && !current) return;
+        _petSkillCasts.Remove(skillId); _petSkillReadyAt.Remove(skillId); RefreshPetDetailCooldowns(Now());
     }
 
     private void BuildPetBar()
     {
-        _petBar = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Stop };
+        _petBar = new PanelContainer { Name = "pet_skill_bar", Visible = false, MouseFilter = Control.MouseFilterEnum.Stop };
+        _petBar.SetMeta("pet_bar_controls", 1);
         _petBar.AddThemeStyleboxOverride("panel", UiTheme.Chip());
         _petBarLayer.AddChild(_petBar);
 
-        var row = new HBoxContainer();
+        var row = new HBoxContainer { Name = "pet_bar_native_row" };
         row.AddThemeConstantOverride("separation", PetBarGap);
         _petBar.AddChild(row);
 
         var grip = new HotGrip
         {
+            Name = "pet_bar_grip",
             TooltipText = "Drag to move the familiar bar",
             CustomMinimumSize = new Vector2(HotGripThickness, PetBarSlotSize),
         };
         row.AddChild(grip);
 
-        _petAttackCell = new PetSkillCell(PetBarSlotSize) { OnUse = UsePetSkill };
+        _petAttackCell = new PetSkillCell(PetBarSlotSize) { Name = "pet_bar_attack", OnUse = UsePetSkill };
         _petAttackCell.Set(PetSkills.DesignatedAttack, locked: false, dim: false, "Send your familiar at your target");
         row.AddChild(_petAttackCell);
         row.AddChild(UiTheme.Rule(vertical: true));
 
         for (int i = 0; i < PetSkills.SlotsPerPage; i++)
         {
-            var cell = new PetSkillCell(PetBarSlotSize) { OnUse = UsePetSkill };
+            var cell = new PetSkillCell(PetBarSlotSize) { Name = "pet_bar_skill_" + i, OnUse = UsePetSkill };
             _petCells.Add(cell);
             row.AddChild(cell);
         }
 
         _petPageBtn = UiTheme.SmallButton("1", "Next page of familiar skills");
+        _petPageBtn.Name = "pet_bar_page";
         _petPageBtn.CustomMinimumSize = new Vector2(22, PetBarSlotSize);
         _petPageBtn.Pressed += () =>
         {
@@ -81,11 +102,14 @@ public partial class World
         };
         row.AddChild(_petPageBtn);
 
-        HudLayout.Attach(_petBar, PetBarLayoutId, grip, PetBarDefaultPosition);
+        PluginHost.Ui.ApplyHudExtensions(LibreKO.Plugins.HudPart.FamiliarBar, _petBar);
+        HudLayout.Attach(_petBar, PetBarLayoutId, grip, PetBarDefaultPosition, moveGripOverlay: !_petBar.HasMeta("native_drag_handle_only"));
+        PluginHudSeam(_petBarLayer, LibreKO.Plugins.HudPart.FamiliarBar);
     }
 
     private Vector2 PetBarDefaultPosition()
     {
+        if (_petBar.HasMeta("hud_default_position")) return _petBar.GetMeta("hud_default_position").AsCallable().Call().AsVector2();
         var size = _petBar.GetCombinedMinimumSize();
         if (_hotbarBox != null && GodotObject.IsInstanceValid(_hotbarBox))
             return new Vector2(_hotbarBox.Position.X, Mathf.Max(0f, _hotbarBox.Position.Y - size.Y - PetBarGap * 2));
@@ -108,8 +132,11 @@ public partial class World
 
     private void HidePetBar()
     {
-        _petBar.Visible = false;
+        _petSkillGeneration++;
+        if (GodotObject.IsInstanceValid(_petBar)) _petBar.Visible = false;
         _petSkillReadyAt.Clear();
+        _petSkillCasts.Clear();
+        RefreshPetDetailCooldowns(Now());
     }
 
     private void RefreshPetBar()
@@ -134,7 +161,8 @@ public partial class World
 
     private void PetBarTick(double now)
     {
-        if (!_petBar.Visible) return;
+        if (_petShown) { RefreshPetPortrait(); RefreshPetDetailCooldowns(now); }
+        if (!GodotObject.IsInstanceValid(_petBar) || !_petBar.Visible) return;
         _petAttackCell.SetCooldown(PetCooldown(PetSkills.DesignatedAttack, now));
         foreach (var cell in _petCells)
             cell.SetCooldown(cell.SkillId == 0 ? 0f : PetCooldown(cell.SkillId, now));
@@ -157,6 +185,7 @@ public partial class World
 
     private void UsePetSkill(int skillId)
     {
+        if (!Alive || !IsInsideTree() || _selfDead || !Net.I.Connected) return;
         if (Net.I.Pet is not { } sheet || MyPetEntity() is not { } pet)
         {
             CombatNotice(SystemText(TextPetNotSummoned, "Familiar has not been summoned."));
@@ -191,19 +220,31 @@ public partial class World
         }
 
         int casterId = pet.Id, x = (int)pet.KoX, y = (int)pet.KoY, z = (int)pet.KoZ;
-        _petSkillReadyAt[skillId] = now + Mathf.Max(s.RecastSeconds, s.CastSeconds);
         if (s.CastSeconds <= 0f)
         {
-            Net.I.SendPetSkill(PetSkills.StageEffecting, skillId, casterId, target, x, y, z);
+            if (Net.I.TrySendPetSkill(PetSkills.StageEffecting, skillId, casterId, target, x, y, z))
+            { _petSkillReadyAt[skillId] = now + Mathf.Max(s.RecastSeconds, s.CastSeconds); RefreshPetDetailCooldowns(now); }
             return;
         }
 
-        Net.I.SendPetSkill(PetSkills.StageCasting, skillId, casterId, target, x, y, z);
+        if (!Net.I.TrySendPetSkill(PetSkills.StageCasting, skillId, casterId, target, x, y, z)) return;
+        _petSkillReadyAt[skillId] = now + Mathf.Max(s.RecastSeconds, s.CastSeconds); RefreshPetDetailCooldowns(now);
+        int petIndex = sheet.Index, generation = _petSkillGeneration;
+        int serial = ++_petSkillCastSerial;
+        _petSkillCasts[skillId] = (casterId, serial);
         GetTree().CreateTimer(s.CastSeconds).Timeout += () =>
         {
-            if (Net.I.Pet != null) Net.I.SendPetSkill(PetSkills.StageEffecting, skillId, casterId, target, x, y, z);
+            if (!Alive || !_petSkillCasts.TryGetValue(skillId, out var pending) || pending != (casterId, serial)) return;
+            _petSkillCasts.Remove(skillId);
+            if (CanFinishPetSkill(petIndex, casterId, generation))
+                Net.I.SendPetSkill(PetSkills.StageEffecting, skillId, casterId, target, x, y, z);
         };
     }
+
+    private bool CanFinishPetSkill(int petIndex, int casterId, int generation) =>
+        Alive && IsInsideTree() && !_selfDead && generation == _petSkillGeneration
+        && Net.I.Connected && Net.I.Pet is { } sheet && sheet.Index == petIndex
+        && MyPetEntity() is { } caster && caster.Id == casterId;
 
     private sealed partial class PetSkillCell : PanelContainer
     {
@@ -227,6 +268,7 @@ public partial class World
 
             _icon = new TextureRect
             {
+                Name = "pet_bar_icon",
                 ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
                 StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
                 MouseFilter = MouseFilterEnum.Ignore,
@@ -234,7 +276,7 @@ public partial class World
             AddChild(_icon);
 
             _coolMat = new ShaderMaterial { Shader = Shaders.Get("cooldown") };
-            _cool = new ColorRect { Material = _coolMat, MouseFilter = MouseFilterEnum.Ignore, Visible = false };
+            _cool = new ColorRect { Name = "pet_bar_cooldown", Material = _coolMat, MouseFilter = MouseFilterEnum.Ignore, Visible = false };
             AddChild(_cool);
         }
 
@@ -244,7 +286,8 @@ public partial class World
             TooltipText = tooltip;
             _icon.Texture = skillId == 0 ? null : locked ? SkillData.EnigmaIcon() : SkillData.Icon(skillId);
             _icon.Modulate = dim ? DimColor : Colors.White;
-            AddThemeStyleboxOverride("panel", UiTheme.Slot(locked: locked));
+            var frame = HasMeta("slot_frame") ? GetMeta("slot_frame").AsGodotObject() as StyleBox : null;
+            AddThemeStyleboxOverride("panel", frame ?? UiTheme.Slot(locked: locked));
         }
 
         public void SetCooldown(float frac)
@@ -264,5 +307,9 @@ public partial class World
             OnUse?.Invoke(SkillId);
             AcceptEvent();
         }
+
+        public override GodotObject _MakeCustomTooltip(string forText) =>
+            HasMeta("tooltip_builder") && GetMeta("tooltip_builder").AsCallable().Call(forText).AsGodotObject() is Control tooltip
+                ? tooltip : base._MakeCustomTooltip(forText);
     }
 }

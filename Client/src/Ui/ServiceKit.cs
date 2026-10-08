@@ -152,6 +152,12 @@ public sealed partial class ServiceTabs : HBoxContainer
         _buttons[index].Text = badge.Length > 0 ? $"{_labels[index]}  {badge}" : _labels[index];
     }
 
+    public void SetDisabled(bool disabled)
+    {
+        // Themes may reparent the buttons while retaining their native callbacks.
+        foreach (var button in _buttons) button.Disabled = disabled;
+    }
+
     public void Select(int index, bool notify = true)
     {
         if (index < 0 || index >= _labels.Length) return;

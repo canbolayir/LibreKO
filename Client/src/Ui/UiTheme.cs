@@ -348,14 +348,13 @@ public static class UiTheme
     }
 
     public static Button SmallButton(string text, string tooltip)
+        => SmallButton(text, tooltip, new Button());
+
+    public static Button SmallButton(string text, string tooltip, Button button)
     {
-        var b = new Button
-        {
-            Text = text,
-            TooltipText = tooltip,
-            FocusMode = Control.FocusModeEnum.None,
-            CustomMinimumSize = new Vector2(0, 26),
-        };
+        var b = button;
+        b.Text = text; b.TooltipText = tooltip; b.FocusMode = Control.FocusModeEnum.None;
+        b.CustomMinimumSize = new Vector2(0, 26);
         b.AddThemeFontSizeOverride("font_size", 12);
         b.AddThemeColorOverride("font_color", Gold);
         b.AddThemeColorOverride("font_hover_color", GoldBright);
@@ -376,8 +375,11 @@ public static class UiTheme
     }
 
     public static Button ActionButton(string text, string tooltip)
+        => ActionButton(text, tooltip, new Button());
+
+    public static Button ActionButton(string text, string tooltip, Button button)
     {
-        var b = SmallButton(text, tooltip);
+        var b = SmallButton(text, tooltip, button);
         b.AddThemeColorOverride("font_color", Ink);
         b.AddThemeColorOverride("font_hover_color", Ink);
         b.AddThemeColorOverride("font_pressed_color", GoldDark);

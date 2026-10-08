@@ -218,6 +218,8 @@ public partial class World : Node3D, IWorldContext
             }
             if (k.Keycode == Key.Escape && TryMinimizeFocusedWhisper())
             { GetViewport().SetInputAsHandled(); return; }
+            if (HandlePetHatchKey(k))
+            { GetViewport().SetInputAsHandled(); return; }
             if (GetViewport().GuiGetFocusOwner() is LineEdit or TextEdit or SpinBox) return;
             if (k.Keycode is Key.Enter or Key.KpEnter)
             {

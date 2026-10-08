@@ -1362,22 +1362,10 @@ public partial class World
     {
         ItemData.EnsureLoaded();
         BuildPetHatchPanel();
-        if (transform)
-        {
-            Net.I.PetItems[PreviewPetIndex] = new PetItemInfo(PreviewPetIndex, "Kauly", 101, 12, 4200, 7300);
-            Inv.ApplySlotUpdate(GridStart + 1, new ItemSlot
-            {
-                ItemId = PreviewKaulItem, Count = 1, Durability = 1, UniqueId = PreviewPetIndex,
-            });
-            Inv.ApplySlotUpdate(GridStart + 4, new ItemSlot { ItemId = PreviewImageChange, Count = 1, Durability = 1 });
-            Inv.ApplySlotUpdate(GridStart + 9, new ItemSlot { ItemId = PreviewEtarothScroll, Count = 1, Durability = 1 });
-        }
-        else
-        {
-            Inv.ApplySlotUpdate(GridStart + 2, new ItemSlot { ItemId = PreviewEggItem, Count = 1, Durability = 1 });
-            Inv.ApplySlotUpdate(GridStart + 6, new ItemSlot { ItemId = PreviewEggItem, Count = 1, Durability = 1 });
-        }
+        SeedFamiliarHatchPreview(transform);
         OpenPetHatch(PreviewTrainerNpc);
+        if (transform) { SelectPetHatchItem(GridStart + 1); SelectPetHatchItem(GridStart + 9); }
+        else SelectPetHatchItem(GridStart + 2);
         _petHatchName.Text = "Kauly";
         RefreshPetHatchUI();
         return DetachPreviewControl(_petHatchPanel);

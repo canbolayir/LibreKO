@@ -17,6 +17,7 @@ public enum HudPart
     AchievementsIcon,
     AttendanceIcon,
     PowerUpStoreIcon,
+    FamiliarBar,
 }
 
 public sealed class WindowHost
@@ -115,6 +116,7 @@ public sealed class PluginUi
 
     private readonly Dictionary<string, WindowRule> _windows = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<HudPart, (bool Hidden, Func<Control>? Replacement)> _hud = new();
+    private readonly Dictionary<HudPart, List<Action<Control>>> _hudExtenders = new();
     private readonly List<Func<Control>> _extraHud = new();
 
     internal Func<DialogRequest, Control>? DialogBuilder { get; private set; }
@@ -144,6 +146,18 @@ public sealed class PluginUi
 
     public void ReplaceHud(HudPart part, Func<Control> build) => _hud[part] = (false, build);
 
+    public void ExtendHud(HudPart part, Action<Control> extend)
+    {
+        if (!_hudExtenders.TryGetValue(part, out var extenders)) _hudExtenders[part] = extenders = new();
+        extenders.Add(extend);
+    }
+
+    internal void ApplyHudExtensions(HudPart part, Control control)
+    {
+        if (_hudExtenders.TryGetValue(part, out var extenders))
+            foreach (var extend in extenders) extend(control);
+    }
+
     public void ReplaceDialogs(Func<DialogRequest, Control> build) => DialogBuilder = build;
 
     public bool IsWindowOverridden(string id) =>
@@ -159,6 +173,7 @@ public sealed class PluginUi
     {
         _windows.Clear();
         _hud.Clear();
+        _hudExtenders.Clear();
         _extraHud.Clear();
         DialogBuilder = null;
         WhisperStyler = null;
