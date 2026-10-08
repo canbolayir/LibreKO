@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using Godot;
+using System.Linq;
 using LibreKO.Domain;
 using LibreKO.Network;
 
@@ -35,6 +36,9 @@ public partial class World
     private NationTransferCandidate? _transferSelected;
     private int _transferNation;
     private bool _transferShown, _transferInFlight;
+    private bool _transferCompleted;
+    private int _transferRevision;
+    private Notice? _transferNotice;
 
     private void NationTransferInit()
     {
@@ -43,6 +47,7 @@ public partial class World
         Net.I.NationTransferRefusedEvent += OnNationTransferRefused;
         Net.I.NationTransferDoneEvent += OnNationTransferDone;
         Net.I.NationTransferWarEvent += OnNationTransferWar;
+        Net.I.NationTransferResetEvent += OnNationTransferReset;
     }
 
     private void NationTransferDispose()
@@ -51,6 +56,7 @@ public partial class World
         Net.I.NationTransferRefusedEvent -= OnNationTransferRefused;
         Net.I.NationTransferDoneEvent -= OnNationTransferDone;
         Net.I.NationTransferWarEvent -= OnNationTransferWar;
+        Net.I.NationTransferResetEvent -= OnNationTransferReset;
     }
 
     private void BuildNationTransferPanel()
@@ -59,10 +65,12 @@ public partial class World
         AddChild(_transferLayer);
 
         _transferPanel = new HudWindow("nationtransfer", "Nation Transfer") { Visible = false };
+        _transferPanel.SetMeta("classic_appearance_controls", 1);
         _transferPanel.Closed += CancelNationTransfer;
         _transferLayer.AddChild(_transferPanel);
 
         _transferHeader = HudStyle.Label(13);
+        _transferHeader.Name = "transfer_header";
         _transferHeader.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _transferPanel.Body.AddChild(_transferHeader);
 
@@ -72,23 +80,27 @@ public partial class World
 
         var listColumn = new VBoxContainer { CustomMinimumSize = new Vector2(170, 0) };
         listColumn.AddThemeConstantOverride("separation", 4);
-        listColumn.AddChild(UiTheme.SectionTitle("Characters"));
-        _transferList = new VBoxContainer();
+        var listTitle = UiTheme.SectionTitle("Characters"); listTitle.Name = "transfer_characters_heading";
+        listColumn.AddChild(listTitle);
+        var listScroll = new ScrollContainer { Name = "transfer_scroll", CustomMinimumSize = new Vector2(180, 300),
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, VerticalScrollMode = ScrollContainer.ScrollMode.Auto };
+        _transferList = new VBoxContainer { Name = "transfer_characters", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _transferList.AddThemeConstantOverride("separation", 4);
-        listColumn.AddChild(_transferList);
+        listScroll.AddChild(_transferList); listColumn.AddChild(listScroll);
         row.AddChild(listColumn);
 
-        _transferPreview = new LookPreview(LookPreviewWidth, LookPreviewHeight);
+        _transferPreview = new LookPreview(LookPreviewWidth, LookPreviewHeight) { Name = "look_preview" };
         row.AddChild(LookPreviewColumn(_transferPreview));
 
         var form = new VBoxContainer();
         form.AddThemeConstantOverride("separation", 8);
         row.AddChild(form);
-        _transferEditor = new LookEditor();
+        _transferEditor = new LookEditor { Name = "look_editor" };
         _transferEditor.Changed += OnTransferLookChanged;
         form.AddChild(_transferEditor);
 
         _transferStatus = HudStyle.Label(12);
+        _transferStatus.Name = "look_status";
         _transferStatus.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _transferStatus.CustomMinimumSize = new Vector2(230, 0);
         form.AddChild(_transferStatus);
@@ -97,8 +109,10 @@ public partial class World
         actions.AddThemeConstantOverride("separation", 8);
         form.AddChild(actions);
         _transferConfirm = LookActionButton("Transfer", OnTransferPressed);
+        _transferConfirm.Name = "look_accept";
         actions.AddChild(_transferConfirm);
-        actions.AddChild(LookActionButton("Cancel", CancelNationTransfer));
+        var cancel = LookActionButton("Cancel", CancelNationTransfer); cancel.Name = "look_cancel";
+        actions.AddChild(cancel);
     }
 
     private void OnNationTransferOpen(IReadOnlyList<NationTransferCandidate> candidates)
@@ -109,26 +123,50 @@ public partial class World
 
     private void OpenNationTransfer(IReadOnlyList<NationTransferCandidate> candidates)
     {
+        if (_transferInFlight || _transferNotice != null || _transferCompleted || _transferShown) return;
+        _transferRevision++;
         foreach (var (_, button) in _transferRows)
+        {
+            _transferList.RemoveChild(button);
             button.QueueFree();
+        }
         _transferRows.Clear();
         _transferPicks.Clear();
         _transferSelected = null;
-        _transferInFlight = false;
-        if (candidates.Count == 0) return;
+        _transferEditor.SetLocked(false);
+        _transferList.GetParent<ScrollContainer>().ScrollVertical = 0;
+        if (candidates.Count == 0)
+        {
+            _transferHeader.Text = "No characters are available for nation transfer.";
+            _transferEditor.Visible = false;
+            _transferPreview.Clear();
+            SetTransferPreviewAvailable(false);
+            SetTransferStatus("", false);
+            _transferConfirm.Disabled = true;
+            _transferPanel.Visible = _transferShown = true;
+            return;
+        }
+        _transferEditor.Visible = true;
+        SetTransferPreviewAvailable(true);
 
         _transferNation = candidates[0].Nation;
         _transferHeader.Text = $"Every character of your account moves to {Nations.Name(_transferNation)}. Choose how each one will look.";
-        foreach (var candidate in candidates)
+        foreach (var candidate in candidates.OrderBy(candidate => candidate.Slot))
         {
-            _transferPicks[candidate.Slot] = new NationTransferPick(candidate.Slot, candidate.Name, candidate.Race, candidate.Face, candidate.Hair);
-            var button = UiTheme.TopTabButton($"{candidate.Name}  ·  {CharacterClassCatalog.DisplayName(candidate.Class)}", 13);
+            int faces = CharacterPreview.FaceCount(candidate.Race), hairs = CharacterPreview.HairCount(candidate.Race);
+            int face = faces > 0 ? Mathf.Clamp(candidate.Face, 0, faces - 1) : candidate.Face;
+            int style = hairs > 0 ? Mathf.Clamp(HairCode.StyleOf(candidate.Hair), 0, hairs - 1) : HairCode.StyleOf(candidate.Hair);
+            _transferPicks[candidate.Slot] = new NationTransferPick(candidate.Slot, candidate.Name, candidate.Race, face,
+                (style << 24) | (candidate.Hair & 0xffffff));
+            var button = UiTheme.TopTabButton($"{candidate.Name}\n{CharacterClassCatalog.DisplayName(candidate.Class)}", 13);
+            button.Name = "transfer_character_" + candidate.Slot;
+            button.TooltipText = $"{candidate.Name} · {CharacterClassCatalog.DisplayName(candidate.Class)}";
             var picked = candidate;
             button.Pressed += () => SelectTransferCharacter(picked);
             _transferList.AddChild(button);
             _transferRows.Add((candidate, button));
         }
-        SelectTransferCharacter(candidates[0]);
+        SelectTransferCharacter(candidates.OrderBy(candidate => candidate.Slot).First());
         SetTransferStatus("", false);
         _transferConfirm.Disabled = false;
         _transferPanel.Visible = true;
@@ -137,16 +175,20 @@ public partial class World
 
     private void SelectTransferCharacter(NationTransferCandidate candidate)
     {
+        if (_transferInFlight || _transferNotice != null || !_transferPicks.ContainsKey(candidate.Slot)) return;
         _transferSelected = candidate;
         foreach (var (row, button) in _transferRows)
             button.SetPressedNoSignal(row.Slot == candidate.Slot);
         var pick = _transferPicks[candidate.Slot];
         _transferEditor.Load(GenderChange.AllowedRaces(candidate.Class), pick.Race, pick.Face, pick.Hair);
+        _transferPicks[candidate.Slot] = new NationTransferPick(candidate.Slot, candidate.Name,
+            _transferEditor.Race, _transferEditor.Face, _transferEditor.Hair);
         ShowTransferLook();
     }
 
     private void OnTransferLookChanged()
     {
+        if (_transferInFlight || _transferNotice != null) return;
         if (_transferSelected is not { } selected) return;
         _transferPicks[selected.Slot] = new NationTransferPick(selected.Slot, selected.Name,
             _transferEditor.Race, _transferEditor.Face, _transferEditor.Hair);
@@ -155,26 +197,59 @@ public partial class World
 
     private void ShowTransferLook()
     {
+        _transferEditor.SetColourAvailable(CharacterPreview.HairCount(_transferEditor.Race) > 0);
         _transferEditor.Refresh();
         _transferPreview.Show(_transferEditor.Race, _transferEditor.Face, _transferEditor.HairStyle, _transferEditor.HairColour);
     }
 
-    private void OnTransferPressed()
+    private void SetTransferPreviewAvailable(bool available)
     {
-        if (_transferInFlight || _transferPicks.Count == 0) return;
-        Notice.Confirm(this,
-            $"All {_transferPicks.Count} characters of your account move to {Nations.Name(_transferNation)} and your {ItemData.DisplayName(NationTransferCertificate).Trim()} is used. You return to the character screen afterwards.",
-            "Transfer", "Cancel", SendNationTransfer, title: "Nation Transfer");
+        _transferPreview.Visible = available;
+        foreach (string name in new[] { "look_turn_left", "look_turn_right" })
+            if (_transferPanel.FindChild(name, true, false) is Button button) button.Visible = available;
     }
 
-    private void SendNationTransfer()
+    private void OnTransferPressed()
     {
+        if (!_transferShown || _transferInFlight || _transferNotice != null || _transferPicks.Count == 0 || _selfDead) return;
+        int revision = ++_transferRevision;
+        var picks = _transferPicks.Values.OrderBy(pick => pick.Slot).ToArray();
+        SetTransferLocked(true);
+        _transferNotice = Notice.Confirm(_transferLayer,
+            $"All {picks.Length} characters move to {Nations.Name(_transferNation)}.\nYour {ItemData.DisplayName(NationTransferCertificate).Trim()} will be used.\nYou will return to character selection.",
+            "Transfer", "Cancel", () => SendNationTransfer(revision, picks),
+            () => CancelTransferConfirmation(revision), title: "Nation Transfer");
+    }
+
+    private void SendNationTransfer(int revision, IReadOnlyList<NationTransferPick> picks)
+    {
+        if (revision != _transferRevision || !_transferShown || _transferInFlight || _transferNotice == null) return;
+        _transferNotice = null;
+        if (_selfDead) { SetTransferLocked(false); return; }
         _transferInFlight = true;
-        _transferConfirm.Disabled = true;
         SetTransferStatus("Transferring…", false);
-        var picks = new List<NationTransferPick>(_transferPicks.Values);
-        picks.Sort((a, b) => a.Slot.CompareTo(b.Slot));
-        Net.I.SendNationTransfer(picks);
+        if (!Net.I.SendNationTransfer(picks)) OnNationTransferRefused(0);
+    }
+
+    private void CancelTransferConfirmation(int revision)
+    {
+        if (revision != _transferRevision || _transferInFlight || _transferNotice == null) return;
+        _transferNotice = null;
+        SetTransferLocked(false);
+    }
+
+    private void SetTransferLocked(bool locked)
+    {
+        _transferEditor.SetLocked(locked);
+        foreach (var (_, button) in _transferRows) button.Disabled = locked;
+        _transferConfirm.Disabled = locked || _transferPicks.Count == 0;
+    }
+
+    private void DismissTransferConfirmation()
+    {
+        _transferRevision++;
+        if (_transferNotice is { } notice && GodotObject.IsInstanceValid(notice)) notice.Close();
+        _transferNotice = null;
     }
 
     private void CancelNationTransfer()
@@ -182,25 +257,32 @@ public partial class World
         if (!_transferShown) return;
         _transferShown = false;
         _transferPanel.Visible = false;
+        DismissTransferConfirmation();
+        _transferEditor.CloseColourPicker();
         _transferPreview.Clear();
         if (!_transferInFlight) Net.I.SendNationTransferCancel();
     }
 
     private void OnNationTransferRefused(int result)
     {
+        DismissTransferConfirmation();
         _transferInFlight = false;
-        _transferConfirm.Disabled = false;
+        SetTransferLocked(false);
+        if (!_transferShown) Net.I.SendNationTransferCancel();
         string text = ItemData.Text(
             NationTransferRefusalTexts.TryGetValue(result, out int id) ? id : NationTransferFailedText,
             "Transfer failed");
+        text = text.Replace("nation tranfer item is notavailable", "A Nation Transfer Certificate is required.", System.StringComparison.OrdinalIgnoreCase);
         if (_transferShown) SetTransferStatus(text, true);
         else ChatStatusNotice(text);
     }
 
     private void OnNationTransferWar(int karus, int elmorad)
     {
+        DismissTransferConfirmation();
         _transferInFlight = false;
-        _transferConfirm.Disabled = false;
+        SetTransferLocked(false);
+        if (!_transferShown) Net.I.SendNationTransferCancel();
         var text = new System.Text.StringBuilder(ItemData.Text(NationTransferWarText,
             "Currently nation transfer is not available. current war status Karus %d : El Morad %d"));
         foreach (int score in new[] { karus, elmorad })
@@ -209,20 +291,36 @@ public partial class World
             if (at >= 0) text.Remove(at, 2).Insert(at, score.ToString());
         }
         if (_transferShown) SetTransferStatus(text.ToString(), true);
-        else Notice.Show(this, text.ToString(), "Nation Transfer");
+        else Notice.Show(_transferLayer, text.ToString(), "Nation Transfer");
     }
 
     private void OnNationTransferDone()
     {
+        if (!_transferInFlight || _transferCompleted) return;
+        _transferInFlight = false;
+        _transferCompleted = true;
+        DismissTransferConfirmation();
         _transferShown = false;
         _transferPanel.Visible = false;
+        _transferEditor.CloseColourPicker();
         _transferPreview.Clear();
-        Notice.Show(this, ItemData.Text(NationTransferDoneText, "Character transfer was successful. Please connect again"),
+        Notice.Show(_transferLayer, ItemData.Text(NationTransferDoneText, "Character transfer was successful. Please connect again"),
             "Nation Transfer", () =>
             {
                 Net.I.ReturnToCharSelect();
                 GetTree().ChangeSceneToFile("res://scenes/CharSelect.tscn");
             });
+    }
+
+    private void OnNationTransferReset()
+    {
+        _transferInFlight = false;
+        DismissTransferConfirmation();
+        _transferShown = false;
+        _transferPanel.Visible = false;
+        _transferEditor.CloseColourPicker();
+        _transferPreview.Clear();
+        SetTransferLocked(false);
     }
 
     private void SetTransferStatus(string text, bool warn)

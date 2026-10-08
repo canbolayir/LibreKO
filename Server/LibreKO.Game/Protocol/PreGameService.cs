@@ -243,6 +243,13 @@ public class PreGameService(
         character.Hair = hair;
         await characterRepository.UpdateAsync(character);
 
+        var session = sessionManager.GetByCharacterId(character.Id);
+        if (session != null && session.AccountId == accountId)
+        {
+            session.Face = face;
+            session.Hair = hair;
+        }
+
         return PreGamePacketWriter.ChangeHairResult(ChangeHairSucceeded);
     }
 

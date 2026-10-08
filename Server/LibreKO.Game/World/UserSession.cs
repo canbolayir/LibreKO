@@ -42,6 +42,9 @@ public class UserSession
     public IClient Client { get; }
     public int CharacterId { get; }
     public int AccountId { get; }
+    public SemaphoreSlim CharacterPersistenceGate { get; } = new(1, 1);
+    // Logout must retain the committed destination while departure uses the old world coordinates.
+    public bool NationTransferCommitted { get; set; }
     public string Name { get; set; } = string.Empty;
     public AccountNation Nation { get; set; }
     public byte Race { get; set; }

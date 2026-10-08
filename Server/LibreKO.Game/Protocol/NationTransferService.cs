@@ -1,11 +1,15 @@
 ﻿using LibreKO.Common.Domain.Entities;
 using LibreKO.Common.Domain.Services;
+using System.Text;
+using LibreKO.Common.Domain.Entities.GameData;
+using LibreKO.Common.Infrastructure.Persistence;
 using LibreKO.Common.Enums;
 using LibreKO.Common.Infrastructure.Network;
 using LibreKO.Game.Protocol.Writers;
 using LibreKO.Game.World;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 
 namespace LibreKO.Game.Protocol;
 
@@ -22,6 +26,7 @@ public class NationTransferService(
     IMagicItemUsageService magicItemUsageService,
     IKingSystemRuntimeService kingSystemRuntimeService,
     ISessionTerminationService sessionTermination,
+    IUserNotificationService userNotificationService,
     ILogger<NationTransferService> logger) : INationTransferService
 {
     public const int NationTransferItem = 810096000;
@@ -67,10 +72,10 @@ public class NationTransferService(
 
         switch (packet.ReadByte())
         {
-            case NationTransferPacketWriter.OpenBox:
+            case NationTransferPacketWriter.OpenBox when packet.RemainingBytes == 0:
                 await OpenAsync(session);
                 break;
-            case NationTransferPacketWriter.Submit when packet.RemainingBytes >= 2
+            case NationTransferPacketWriter.Submit when packet.RemainingBytes >= 1
                                                        && packet.ReadByte() == NationTransferPacketWriter.Accepted:
                 await SubmitAsync(session, ReadRequests(packet));
                 break;
@@ -79,19 +84,29 @@ public class NationTransferService(
 
     private static List<Request>? ReadRequests(Packet packet)
     {
+        if (packet.RemainingBytes == 0)
+            return null;
         var count = packet.ReadByte();
+        if (count == 0)
+            return null;
         var requests = new List<Request>(count);
+        var slots = new HashSet<short>();
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < count; index++)
         {
-            if (packet.RemainingBytes < 2)
+            if (packet.RemainingBytes < 4)
                 return null;
             var slot = packet.ReadShort();
-            var name = packet.ReadString();
-            if (packet.RemainingBytes < RequestTailLength)
+            var nameLength = packet.ReadShort();
+            if (slot < 0 || !slots.Add(slot) || nameLength is <= 0 or > 20
+                || packet.RemainingBytes < nameLength + RequestTailLength)
+                return null;
+            var name = Encoding.ASCII.GetString(packet.ReadBytes(nameLength));
+            if (!names.Add(name))
                 return null;
             requests.Add(new Request(slot, name, packet.ReadByte(), packet.ReadByte(), packet.ReadInt()));
         }
-        return requests;
+        return packet.RemainingBytes == 0 ? requests : null;
     }
 
     private async Task<bool> RefusedDuringWarAsync(UserSession session)
@@ -120,22 +135,54 @@ public class NationTransferService(
         var oldNation = session.Nation;
         var newNation = NationTransferRules.OtherNation(oldNation);
         var bySlot = requests!.ToDictionary(request => request.Slot);
-        var playing = characters.FirstOrDefault(character => character.Id == session.CharacterId);
-
-        await magicItemUsageService.TryConsumeItemAsync(session, NationTransferItem);
-        session.Nation = newNation;
-        session.Class = NationTransferRules.NewClass(session.Class);
-        if (playing != null && bySlot.TryGetValue(playing.Slot, out var own))
+        var playing = characters.Single(character => character.Id == session.CharacterId);
+        var own = bySlot[playing.Slot];
+        byte result = NationTransferPacketWriter.Failed;
+        await session.CharacterPersistenceGate.WaitAsync();
+        try
         {
-            session.Race = own.Race;
-            session.Face = own.Face;
-            session.Hair = own.Hair;
+            if (session.NationTransferCommitted || sessionManager.GetByClientId(session.Client.Id) != session)
+                return;
+            // The connection processes packets serially; serialize autosaves with this account migration too.
+            var before = session.SerializeItems();
+            try
+            {
+                if (!await magicItemUsageService.TryConsumeItemAsync(session, NationTransferItem))
+                    result = NationTransferPacketWriter.NoItem;
+                else if (await PersistAsync(session, newNation, characters, bySlot))
+                {
+                    session.WithLock(active =>
+                    {
+                        active.Nation = newNation;
+                        active.Class = NationTransferRules.NewClass(active.Class);
+                        active.Race = own.Race;
+                        active.Face = own.Face;
+                        active.Hair = own.Hair;
+                        active.Quest.BindPoint = -1;
+                        active.NationTransferCommitted = true;
+                    });
+                    result = NationTransferPacketWriter.Accepted;
+                }
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Could not persist nation transfer for account {Account}", session.AccountId);
+            }
+            if (result != NationTransferPacketWriter.Accepted)
+                await RestoreCertificateAsync(session, before);
         }
-        session.Quest.BindPoint = -1;
+        finally
+        {
+            session.CharacterPersistenceGate.Release();
+        }
 
-        await session.Client.SendPacket(NationTransferPacketWriter.Result(NationTransferPacketWriter.Submit, NationTransferPacketWriter.Accepted));
+        if (result != NationTransferPacketWriter.Accepted)
+        {
+            await session.Client.SendPacket(NationTransferPacketWriter.Result(NationTransferPacketWriter.Submit, result));
+            return;
+        }
         await sessionTermination.LogoutAsync(session.Client);
-        await PersistAsync(session.AccountId, newNation, characters, bySlot);
+        await session.Client.SendPacket(NationTransferPacketWriter.Result(NationTransferPacketWriter.Submit, result));
 
         logger.LogInformation("Nation transfer for account {Account}: {Count} characters {Old}→{New}",
             session.AccountId, characters.Count, oldNation, newNation);
@@ -151,13 +198,17 @@ public class NationTransferService(
 
     private async Task<(byte Refusal, IReadOnlyList<Character> Characters)> CheckAsync(UserSession session)
     {
+        if (session.Hp <= 0 || session.Trade.IsTrading || session.Trade.IsMerchanting
+            || session.Trade.IsMerchantPreparing || session.IsGathering || session.NationTransferCommitted)
+            return (NationTransferPacketWriter.Failed, []);
         if (!magicItemUsageService.CanUseItem(session, NationTransferItem))
             return (NationTransferPacketWriter.NoItem, []);
 
         using var scope = scopeFactory.CreateScope();
         var characters = (await scope.ServiceProvider.GetRequiredService<ICharacterRepository>()
             .GetCharactersByAccount(session.AccountId)).ToList();
-        if (characters.Count == 0)
+        if (characters.Count == 0 || characters.Count > byte.MaxValue
+            || characters.All(character => character.Id != session.CharacterId))
             return (NationTransferPacketWriter.NoCharacter, characters);
         if (session.KnightsId > 0 || characters.Any(character => character.KnightsId > 0))
             return (NationTransferPacketWriter.InClan, characters);
@@ -168,21 +219,30 @@ public class NationTransferService(
         return (NationTransferPacketWriter.Accepted, characters);
     }
 
-    private async Task PersistAsync(int accountId, AccountNation newNation, IReadOnlyList<Character> characters,
+    private async Task<bool> PersistAsync(UserSession session, AccountNation newNation, IReadOnlyList<Character> characters,
         IReadOnlyDictionary<short, Request> bySlot)
     {
         using var scope = scopeFactory.CreateScope();
-        var characterRepository = scope.ServiceProvider.GetRequiredService<ICharacterRepository>();
-        var accountRepository = scope.ServiceProvider.GetRequiredService<IAccountRepository>();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var account = await db.Accounts.FindAsync(session.AccountId);
+        var current = await db.Characters.Where(character => character.AccountId == session.AccountId).ToListAsync();
+        if (account == null || account.Nation != session.Nation || current.Count != characters.Count
+            || current.Any(character => character.KnightsId > 0
+                || !characters.Any(listed => listed.Id == character.Id && listed.Slot == character.Slot
+                    && listed.Class == character.Class && listed.Name == character.Name))
+            || !Matches(current, bySlot.Values.ToList()))
+            return false;
+        var active = current.SingleOrDefault(character => character.Id == session.CharacterId);
+        if (active == null)
+            return false;
+        scope.ServiceProvider.GetRequiredService<IUserSessionCharacterMapper>().ApplyToCharacter(session, active);
         var start = gameDataService.GetStartPosition(Moradon);
 
-        foreach (var listed in characters)
+        foreach (var character in current)
         {
-            var character = await characterRepository.GetById(listed.Id);
-            if (character == null || !bySlot.TryGetValue(character.Slot, out var request))
-                continue;
+            var request = bySlot[character.Slot];
             var (x, z) = start?.RandomSpawn(newNation) ?? (MoradonTownX, MoradonTownZ);
-            character.Class = NationTransferRules.NewClass(listed.Class);
+            character.Class = NationTransferRules.NewClass(character.Class);
             character.Race = request.Race;
             character.Face = request.Face;
             character.Hair = request.Hair;
@@ -190,14 +250,37 @@ public class NationTransferService(
             character.X = x;
             character.Z = z;
             character.Bind = -1;
-            await characterRepository.UpdateAsync(character);
         }
 
-        var account = await accountRepository.GetById(accountId);
-        if (account != null)
+        account.Nation = newNation;
+        // One SaveChanges commits the certificate, every character and account nation together.
+        await db.SaveChangesAsync();
+        return true;
+    }
+
+    private async Task RestoreCertificateAsync(UserSession session, byte[] before)
+    {
+        var original = Enumerable.Range(0, session.Inventory.Length).Select(_ => new ItemSlot()).ToArray();
+        UserSessionBinaryState.LoadItems(original, before);
+        for (var index = InventoryConstants.InventoryStart; index < original.Length; index++)
         {
-            account.Nation = newNation;
-            await accountRepository.UpdateAsync(account);
+            var item = original[index];
+            if (item.ItemId != NationTransferItem)
+                continue;
+            var target = session.Inventory[index];
+            if (target.ItemId == item.ItemId && target.Count == item.Count && target.Durability == item.Durability)
+                continue;
+            target.ItemId = item.ItemId;
+            target.Count = item.Count;
+            target.Durability = item.Durability;
+            target.Flag = item.Flag;
+            target.ExpiresAt = item.ExpiresAt;
+            target.UniqueId = item.UniqueId;
+            await userNotificationService.SendStackChangeAsync(session, (byte)index, item.ItemId, item.Count, item.Durability);
         }
+        var coefficient = gameDataService.GetCoefficient(session.Class);
+        if (coefficient != null)
+            session.RecalculateStats(coefficient, gameDataService);
+        await userNotificationService.SendWeightChangeAsync(session);
     }
 }
