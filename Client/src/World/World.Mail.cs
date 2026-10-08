@@ -81,6 +81,7 @@ public partial class World
         AddChild(_mailLayer);
 
         _mailWindow = new HudWindow("mail", "Mail", new Vector2(180, 110), bodyMinWidth: MailBodyWidth) { Visible = false };
+        _mailWindow.SetMeta("classic_mail_controls", 1);
         _mailWindow.Closed += () => _mailShown = false;
         _mailLayer.AddChild(_mailWindow);
 
@@ -91,12 +92,15 @@ public partial class World
         head.AddThemeConstantOverride("separation", 6);
         body.AddChild(head);
         var compose = UiTheme.SmallButton("New mail", "Write a mail to another character");
+        compose.Name = "mail_compose";
         compose.Pressed += OpenMailCompose;
         head.AddChild(compose);
         var refresh = UiTheme.IconButton(UiIcons.Get("system/refresh"), "Refresh the inbox");
+        refresh.Name = "mail_refresh";
         refresh.Pressed += () => Net.I.SendMailList();
         head.AddChild(refresh);
         _mailUnreadOnly = new CheckButton { Text = "Unread", FocusMode = Control.FocusModeEnum.None };
+        _mailUnreadOnly.Name = "mail_unread_only";
         _mailUnreadOnly.AddThemeFontSizeOverride("font_size", 12);
         _mailUnreadOnly.Toggled += _ =>
         {
@@ -107,6 +111,7 @@ public partial class World
         var spacer = new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         head.AddChild(spacer);
         _mailUnreadPill = UiTheme.Text("", 12, UiTheme.GoldBright);
+        _mailUnreadPill.Name = "mail_unread_count";
         head.AddChild(_mailUnreadPill);
 
         var scroll = new ScrollContainer
@@ -115,12 +120,15 @@ public partial class World
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
         _mailListScroll = scroll;
+        scroll.Name = "mail_list_scroll";
         body.AddChild(scroll);
         _mailList = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        _mailList.Name = "mail_list";
         _mailList.AddThemeConstantOverride("separation", 3);
         scroll.AddChild(_mailList);
 
         _mailStatus = UiTheme.Text("", 12, UiTheme.TextLo);
+        _mailStatus.Name = "mail_status";
         _mailStatus.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         body.AddChild(_mailStatus);
 
@@ -130,30 +138,37 @@ public partial class World
     private void BuildMailReadWindow()
     {
         _mailReadWindow = new HudWindow("mailread", "Mail", new Vector2(640, 110), bodyMinWidth: MailBodyWidth) { Visible = false };
+        _mailReadWindow.SetMeta("classic_mail_controls", 1);
         _mailReadWindow.Closed += () => _mailSelectedId = -1;
         _mailLayer.AddChild(_mailReadWindow);
 
         var pane = _mailReadWindow.Body;
         pane.AddThemeConstantOverride("separation", 4);
         _mailReadSubject = UiTheme.Text("", 14, UiTheme.GoldBright);
+        _mailReadSubject.Name = "mail_read_subject";
         _mailReadSubject.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         pane.AddChild(_mailReadSubject);
         _mailReadMeta = UiTheme.Text("", 11, UiTheme.TextDim);
+        _mailReadMeta.Name = "mail_read_meta";
         pane.AddChild(_mailReadMeta);
         pane.AddChild(new HSeparator());
         _mailReadBody = UiTheme.Text("", 13, UiTheme.TextHi);
+        _mailReadBody.Name = "mail_read_body";
         _mailReadBody.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _mailReadBody.CustomMinimumSize = new Vector2(MailBodyWidth, 0);
         pane.AddChild(_mailReadBody);
         _mailReadAttachmentTitle = UiTheme.SectionTitle("");
+        _mailReadAttachmentTitle.Name = "mail_read_attachment_title";
         pane.AddChild(_mailReadAttachmentTitle);
         _mailReadAttachmentScroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        _mailReadAttachmentScroll.Name = "mail_read_attachment_scroll";
         UiTheme.ThinScrollbar(_mailReadAttachmentScroll.GetVScrollBar());
         pane.AddChild(_mailReadAttachmentScroll);
         var gutter = new MarginContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         gutter.AddThemeConstantOverride("margin_right", MailAttachmentScrollGutter);
         _mailReadAttachmentScroll.AddChild(gutter);
         _mailReadAttachments = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        _mailReadAttachments.Name = "mail_read_attachments";
         _mailReadAttachments.AddThemeConstantOverride("separation", MailAttachmentRowGap);
         gutter.AddChild(_mailReadAttachments);
 
@@ -164,9 +179,11 @@ public partial class World
         actions.AddThemeConstantOverride("separation", 6);
         actionsMargin.AddChild(actions);
         _mailClaimBtn = UiTheme.ActionButton("Claim attachments", "Move the attached items and gold into your inventory");
+        _mailClaimBtn.Name = "mail_claim";
         _mailClaimBtn.Pressed += () => { if (_mailSelectedId > 0) Net.I.SendMailClaim(_mailSelectedId); };
         actions.AddChild(_mailClaimBtn);
         _mailDeleteBtn = UiTheme.SmallButton("Delete", "Delete this mail");
+        _mailDeleteBtn.Name = "mail_delete";
         _mailDeleteBtn.Pressed += () => { if (_mailSelectedId > 0) Net.I.SendMailDelete(_mailSelectedId); };
         actions.AddChild(_mailDeleteBtn);
     }
@@ -184,6 +201,7 @@ public partial class World
     private void FitMailList()
     {
         if (!_mailWindow.IsInsideTree()) return;
+        if (_mailWindow.HasMeta("classic_mail")) return;
         var height = Mathf.Clamp(_mailWindow.GetViewportRect().Size.Y * MailListScreenShare, MailListHeight, MailListHeightMax);
         _mailListScroll.CustomMinimumSize = new Vector2(MailBodyWidth, height);
         Callable.From(_mailWindow.ResetSize).CallDeferred();
@@ -245,6 +263,11 @@ public partial class World
     {
         var store = mail.Kind == MailKind.Store;
         var panel = UiTheme.RowPanel(mail.Id == _mailSelectedId, mail.Read && !store);
+        panel.SetMeta("mail_row", true);
+        panel.SetMeta("mail_read", mail.Read);
+        panel.SetMeta("mail_selected", mail.Id == _mailSelectedId);
+        panel.SetMeta("mail_store", store);
+        panel.TooltipText = $"{mail.Subject}\nFrom {mail.Sender}\n{mail.SentAt.ToLocalTime():dd MMM yyyy HH:mm}";
         if (store) panel.AddThemeStyleboxOverride("panel", MailStoreRow(mail.Id == _mailSelectedId));
         panel.MouseFilter = Control.MouseFilterEnum.Stop;
         var margin = new MarginContainer();
@@ -254,16 +277,20 @@ public partial class World
         row.AddThemeConstantOverride("separation", 8);
         margin.AddChild(row);
 
-        row.AddChild(UiTheme.Text(mail.Read ? MailReadGlyph : MailUnreadGlyph, 12, mail.Read ? UiTheme.TextDim : UiTheme.GoldBright));
+        var readMarker = UiTheme.Text(mail.Read ? MailReadGlyph : MailUnreadGlyph, 12, mail.Read ? UiTheme.TextDim : UiTheme.GoldBright);
+        readMarker.Name = "mail_row_marker"; row.AddChild(readMarker);
         var text = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         text.AddThemeConstantOverride("separation", 0);
         row.AddChild(text);
-        text.AddChild(UiTheme.Text(mail.Subject, 13, mail.Read ? UiTheme.TextLo : UiTheme.TextHi));
-        text.AddChild(UiTheme.Text($"from {mail.Sender}", 11, UiTheme.TextDim));
+        var subject = UiTheme.Text(mail.Subject, 13, mail.Read ? UiTheme.TextLo : UiTheme.TextHi);
+        subject.Name = "mail_row_subject"; text.AddChild(subject);
+        var sender = UiTheme.Text($"from {mail.Sender}", 11, UiTheme.TextDim); sender.Name = "mail_row_sender";
+        text.AddChild(sender);
         if (store || mail.Attachments == MailAttachmentState.Pending)
         {
             var marker = new TextureRect
             {
+                Name = "mail_row_attachment",
                 Texture = UiIcons.Get(store ? "system/gem" : "system/gift"),
                 CustomMinimumSize = new Vector2(MailRowIconSize, MailRowIconSize),
                 ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
@@ -275,7 +302,7 @@ public partial class World
             };
             row.AddChild(marker);
         }
-        row.AddChild(UiTheme.Text(MailDate(mail.SentAt), 11, UiTheme.TextDim));
+        var date = UiTheme.Text(MailDate(mail.SentAt), 11, UiTheme.TextDim); date.Name = "mail_row_date"; row.AddChild(date);
 
         var mailId = mail.Id;
         panel.GuiInput += e =>
@@ -336,10 +363,12 @@ public partial class World
                 ? $"{attachment.Remaining:n0} of {attachment.Count:n0} left"
                 : $"{attachment.Count:n0}";
             var row = QuestItemRow(displayId, QuestRewardName(displayId), value, done ? UiTheme.TextDim : UiTheme.GoldBright);
+            row.SetMeta("mail_attachment_claimed", done);
             _mailReadAttachments.AddChild(done ? row : MailClaimableRow(row, mail.Id, index));
         }
         var rows = Math.Min(count, MailAttachmentRowsVisible);
-        _mailReadAttachmentScroll.CustomMinimumSize = new Vector2(0, rows * QuestRowIconSide + (rows - 1) * MailAttachmentRowGap);
+        if (!_mailReadWindow.HasMeta("classic_mail"))
+            _mailReadAttachmentScroll.CustomMinimumSize = new Vector2(0, rows * QuestRowIconSide + (rows - 1) * MailAttachmentRowGap);
     }
 
     private Control MailClaimableRow(Control row, int mailId, int index)

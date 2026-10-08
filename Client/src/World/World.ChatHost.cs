@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Godot;
 using LibreKO.Domain;
@@ -136,7 +136,14 @@ public partial class World
         if (_chatColorsWindow == null) BuildChatColors();
         _chatColorsDraft = ChatColors.Parse(Chat.Colors.Format());
         RefreshChatSwatches();
+        _chatPalette?.Hide();
         _chatColorsWindow!.Visible = true;
+    }
+
+    private void CloseChatColors()
+    {
+        _chatPalette?.Hide();
+        if (_chatColorsWindow != null) _chatColorsWindow.Visible = false;
     }
 
     private void BuildChatColors()
@@ -144,7 +151,8 @@ public partial class World
         _chatColorsLayer = new CanvasLayer { Layer = ChatColorsLayer };
         AddChild(_chatColorsLayer);
         _chatColorsWindow = new HudWindow("chat_colors", "Chat Colours") { Visible = false };
-        _chatColorsWindow.Closed += () => _chatColorsWindow.Visible = false;
+        _chatColorsWindow.SetMeta("classic_chat_colours_controls", 1);
+        _chatColorsWindow.Closed += CloseChatColors;
         _chatColorsLayer.AddChild(_chatColorsWindow);
 
         var root = _chatColorsWindow.Body;
@@ -152,15 +160,18 @@ public partial class World
         for (int i = 0; i < ChatColors.SlotCount; i++)
         {
             int slot = i;
-            var row = new HBoxContainer();
+            var row = new HBoxContainer { Name = "chat_colour_row_" + i };
             row.AddThemeConstantOverride("separation", 10);
             var label = UiTheme.Text(ChatColors.SlotLabels[i], 12, UiTheme.TextHi);
+            label.Name = "chat_colour_label_" + i;
             label.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             row.AddChild(label);
             var button = UiTheme.SmallButton("", "Pick a colour");
+            button.Name = "chat_colour_pick_" + i;
             button.CustomMinimumSize = new Vector2(SwatchWidth + 12, 0);
             var swatch = new ColorRect
             {
+                Name = "chat_colour_swatch_" + i,
                 CustomMinimumSize = new Vector2(SwatchWidth, SwatchHeight),
                 MouseFilter = Control.MouseFilterEnum.Ignore,
                 AnchorLeft = 0.5f, AnchorRight = 0.5f, AnchorTop = 0.5f, AnchorBottom = 0.5f,
@@ -176,19 +187,19 @@ public partial class World
 
         var foot = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
         foot.AddThemeConstantOverride("separation", 6);
-        var reset = UiTheme.SmallButton("Default", "Restore the default colours");
+        var reset = UiTheme.SmallButton("Default", "Restore the default colours"); reset.Name = "chat_colour_default";
         reset.Pressed += () =>
         {
             _chatColorsDraft.Reset();
             RefreshChatSwatches();
         };
         foot.AddChild(reset);
-        var apply = UiTheme.ActionButton("Apply", "Use these colours");
+        var apply = UiTheme.ActionButton("Apply", "Use these colours"); apply.Name = "chat_colour_apply";
         apply.Pressed += () => Chat.ApplyColors(ChatColors.Parse(_chatColorsDraft.Format()));
         foot.AddChild(apply);
         root.AddChild(foot);
 
-        _chatPalette = new PopupPanel();
+        _chatPalette = new PopupPanel { Name = "chat_colour_palette" };
         var grid = new GridContainer { Columns = SwatchColumns };
         grid.AddThemeConstantOverride("h_separation", 4);
         grid.AddThemeConstantOverride("v_separation", 4);
@@ -199,6 +210,7 @@ public partial class World
             var fill = new StyleBoxFlat { BgColor = colour, BorderColor = new Color(0, 0, 0, 0.6f) };
             fill.SetBorderWidthAll(1);
             fill.SetCornerRadiusAll(3);
+            pick.SetMeta("chat_palette_colour", colour);
             pick.AddThemeStyleboxOverride("normal", fill);
             var hot = (StyleBoxFlat)fill.Duplicate();
             hot.BorderColor = UiTheme.GoldBright;
@@ -221,8 +233,25 @@ public partial class World
         _chatPaletteSlot = slot;
         _chatPalette.ResetSize();
         var at = anchor.GetScreenPosition() + new Vector2(0, anchor.Size.Y + 2);
+        if (_chatColorsWindow?.HasMeta("classic_chat_colours") == true)
+        {
+            at.X += anchor.Size.X - _chatPalette.Size.X;
+            if (at.Y + _chatPalette.Size.Y > _chatColorsWindow.GetScreenPosition().Y + _chatColorsWindow.Size.Y - 16)
+                at.Y = anchor.GetScreenPosition().Y - _chatPalette.Size.Y - 2;
+        }
         _chatPalette.Position = (Vector2I)at;
         _chatPalette.Popup();
+        if (_chatColorsWindow?.HasMeta("classic_chat_colours") == true)
+        {
+            Button? focus = null;
+            foreach (var node in _chatPalette.GetChild(0).GetChildren())
+                if (node is Button pick)
+                {
+                    focus ??= pick;
+                    if (pick.GetMeta("chat_palette_colour").AsColor() == _chatColorsDraft[(ChatColorSlot)slot]) { focus = pick; break; }
+                }
+            focus?.GrabFocus();
+        }
     }
 
     private void RefreshChatSwatches()

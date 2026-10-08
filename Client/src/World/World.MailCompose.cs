@@ -39,11 +39,13 @@ public partial class World
     private readonly SortedSet<string> _mailContacts = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<(int Slot, int Count)> _mailAttachments = [];
     private bool _mailComposeShown;
+    private bool _mailSending;
 
     private void BuildMailComposeWindow()
     {
         _mailComposeWindow = new HudWindow("mailcompose", "New mail", new Vector2(640, 110), bodyMinWidth: MailComposeWidth) { Visible = false };
-        _mailComposeWindow.Closed += () => _mailComposeShown = false;
+        _mailComposeWindow.SetMeta("classic_mail_controls", 1);
+        _mailComposeWindow.Closed += CloseMailCompose;
         _mailLayer.AddChild(_mailComposeWindow);
 
         var body = _mailComposeWindow.Body;
@@ -51,6 +53,7 @@ public partial class World
 
         body.AddChild(UiTheme.Text("To", 12, UiTheme.TextLo));
         _mailTo = new LineEdit { PlaceholderText = "character name", MaxLength = 20 };
+        _mailTo.Name = "mail_to";
         _mailTo.TextChanged += _ => _mailToDebounce.Start();
         _mailTo.FocusEntered += () => _mailToDebounce.Start();
         _mailTo.FocusExited += () => Callable.From(() => { if (!_mailTo.HasFocus()) _mailToSuggest.Visible = false; }).CallDeferred();
@@ -59,11 +62,13 @@ public partial class World
         _mailToDebounce.Timeout += RefreshMailRecipientSuggestions;
         _mailTo.AddChild(_mailToDebounce);
         _mailToSuggest = new VBoxContainer { Visible = false };
+        _mailToSuggest.Name = "mail_to_suggest";
         _mailToSuggest.AddThemeConstantOverride("separation", 2);
         body.AddChild(_mailToSuggest);
 
         body.AddChild(UiTheme.Text("Subject", 12, UiTheme.TextLo));
         _mailSubject = new LineEdit { PlaceholderText = "subject", MaxLength = Net.MailSubjectMax };
+        _mailSubject.Name = "mail_subject";
         body.AddChild(_mailSubject);
 
         var messageHead = new HBoxContainer();
@@ -72,9 +77,11 @@ public partial class World
         messageLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         messageHead.AddChild(messageLabel);
         _mailBodyRemaining = UiTheme.Text(Net.MailBodyMax.ToString(), 11, UiTheme.TextDim);
+        _mailBodyRemaining.Name = "mail_body_remaining";
         messageHead.AddChild(_mailBodyRemaining);
         _mailBody = new TextEdit
         {
+            Name = "mail_body",
             CustomMinimumSize = new Vector2(MailComposeWidth, MailComposeBodyHeight),
             WrapMode = TextEdit.LineWrappingMode.Boundary,
             PlaceholderText = "write your message",
@@ -107,29 +114,36 @@ public partial class World
         });
         goldRow.AddChild(UiTheme.Text("Gold", 12, UiTheme.TextLo));
         _mailGold = new MoneyEdit(MailGoldMax, 160);
+        _mailGold.Name = "mail_gold";
         goldRow.AddChild(_mailGold);
 
         _mailAttachTitle = UiTheme.Text("", 13, UiTheme.Gold);
+        _mailAttachTitle.Name = "mail_attach_title";
         body.AddChild(MailComposeGapAbove(_mailAttachTitle));
         _mailDropZone = new MailDropZone
         {
+            Name = "mail_drop_zone",
             OnDropItem = AttachMailItem,
             CanAccept = CanAttachMailSlot,
         };
         body.AddChild(_mailDropZone);
         _mailAttachRows = _mailDropZone.Rows;
+        _mailAttachRows.Name = "mail_attach_rows";
 
         var actions = new HBoxContainer();
         actions.AddThemeConstantOverride("separation", 6);
         body.AddChild(MailComposeGapAbove(actions));
         _mailSendBtn = UiTheme.ActionButton("Send", "Send the mail");
+        _mailSendBtn.Name = "mail_send";
         _mailSendBtn.Pressed += SendComposedMail;
         actions.AddChild(_mailSendBtn);
         var cancel = UiTheme.SmallButton("Cancel", "Discard this mail");
+        cancel.Name = "mail_cancel";
         cancel.Pressed += CloseMailCompose;
         actions.AddChild(cancel);
 
         _mailComposeStatus = UiTheme.Text("", 12, UiTheme.TextLo);
+        _mailComposeStatus.Name = "mail_compose_status";
         _mailComposeStatus.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         body.AddChild(_mailComposeStatus);
 
@@ -159,6 +173,7 @@ public partial class World
 
     private void OpenMailCompose()
     {
+        if (_mailSending) return;
         _mailComposeShown = true;
         _mailComposeWindow.Visible = true;
         _mailComposeWindow.GetParent()?.MoveChild(_mailComposeWindow, _mailComposeWindow.GetParent().GetChildCount() - 1);
@@ -272,7 +287,7 @@ public partial class World
     {
         _mailAttachTitle.Text = $"Attachments ({_mailAttachments.Count} / {Net.MailItemAttachmentsMax})";
         ClearChildren(_mailAttachRows);
-        _mailDropZone.SetHintVisible(_mailAttachments.Count < Net.MailItemAttachmentsMax);
+        _mailDropZone.SetHintVisible(_mailComposeWindow.HasMeta("classic_mail") ? _mailAttachments.Count == 0 : _mailAttachments.Count < Net.MailItemAttachmentsMax);
         for (var i = 0; i < _mailAttachments.Count; i++)
         {
             var index = i;
@@ -313,6 +328,7 @@ public partial class World
 
     private void SendComposedMail()
     {
+        if (_mailSending || _mailSendBtn.Disabled) return;
         var to = _mailTo.Text.Trim();
         var subject = _mailSubject.Text.Trim();
         if (to.Length == 0 || subject.Length == 0)
@@ -334,12 +350,14 @@ public partial class World
             .ToList();
 
         _mailSendBtn.Disabled = true;
+        _mailSending = true;
         _mailComposeStatus.Text = "Sending…";
         Net.I.SendMailSend(to, subject, _mailBody.Text, gold, items);
     }
 
     private void OnMailSendResult(bool ok, string message)
     {
+        _mailSending = false;
         if (ok)
         {
             _mailStatus.Text = message;
@@ -359,6 +377,8 @@ public partial class World
         private readonly Label _hint;
         private readonly StyleBox _idle;
         private readonly StyleBox _hot;
+        private StyleBox Idle => HasMeta("classic_mail_idle") ? (StyleBox)GetMeta("classic_mail_idle").AsGodotObject() : _idle;
+        private StyleBox Hot => HasMeta("classic_mail_hot") ? (StyleBox)GetMeta("classic_mail_hot").AsGodotObject() : _hot;
 
         public MailDropZone()
         {
@@ -386,7 +406,7 @@ public partial class World
             _hint.CustomMinimumSize = new Vector2(0, QuestRowIconSide);
             _hint.MouseFilter = MouseFilterEnum.Ignore;
             stack.AddChild(_hint);
-            MouseExited += () => AddThemeStyleboxOverride("panel", _idle);
+            MouseExited += () => AddThemeStyleboxOverride("panel", Idle);
         }
 
         public void SetHintVisible(bool visible) => _hint.Visible = visible;
@@ -397,13 +417,13 @@ public partial class World
             var d = data.AsGodotDictionary();
             if (!d.ContainsKey("invFrom")) return false;
             var ok = CanAccept?.Invoke(d["invFrom"].AsInt32()) ?? false;
-            AddThemeStyleboxOverride("panel", ok ? _hot : _idle);
+            AddThemeStyleboxOverride("panel", ok ? Hot : Idle);
             return ok;
         }
 
         public override void _DropData(Vector2 atPosition, Variant data)
         {
-            AddThemeStyleboxOverride("panel", _idle);
+            AddThemeStyleboxOverride("panel", Idle);
             OnDropItem?.Invoke(data.AsGodotDictionary()["invFrom"].AsInt32());
         }
     }

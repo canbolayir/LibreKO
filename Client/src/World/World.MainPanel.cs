@@ -153,7 +153,7 @@ public partial class World
         if (window.Visible)
         {
             window.Visible = false;
-            if (key == "Inventory") { HideItemTooltip(); HideDeletePrompt(); }
+            if (key == "Inventory") { HideItemTooltip(); HideDeletePrompt(); if (_repairShown) CloseRepair(); }
             Audio.PlayUi(Sfx.InventoryClose);
         }
         else
@@ -170,7 +170,7 @@ public partial class World
     {
         if (!_mainWindows.TryGetValue(key, out HudWindow? window) || !window.Visible) return;
         window.Visible = false;
-        if (key == "Inventory") { HideItemTooltip(); HideDeletePrompt(); }
+        if (key == "Inventory") { HideItemTooltip(); HideDeletePrompt(); if (_repairShown) CloseRepair(); }
         SyncMainWindowState();
     }
 
