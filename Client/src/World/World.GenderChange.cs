@@ -37,6 +37,7 @@ public partial class World
         AddChild(_genderLayer);
 
         _genderPanel = new HudWindow("genderchange", "Gender Change") { Visible = false };
+        _genderPanel.SetMeta("classic_appearance_controls", 1);
         _genderPanel.Closed += CloseGenderChange;
         _genderLayer.AddChild(_genderPanel);
 
@@ -44,17 +45,18 @@ public partial class World
         row.AddThemeConstantOverride("separation", 12);
         _genderPanel.Body.AddChild(row);
 
-        _genderPreview = new LookPreview(LookPreviewWidth, LookPreviewHeight);
+        _genderPreview = new LookPreview(LookPreviewWidth, LookPreviewHeight) { Name = "look_preview" };
         row.AddChild(LookPreviewColumn(_genderPreview));
 
         var form = new VBoxContainer();
         form.AddThemeConstantOverride("separation", 8);
         row.AddChild(form);
-        _genderEditor = new LookEditor();
+        _genderEditor = new LookEditor { Name = "look_editor" };
         _genderEditor.Changed += OnGenderLookChanged;
         form.AddChild(_genderEditor);
 
         _genderStatus = HudStyle.Label(12);
+        _genderStatus.Name = "look_status";
         _genderStatus.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _genderStatus.CustomMinimumSize = new Vector2(230, 0);
         form.AddChild(_genderStatus);
@@ -63,8 +65,11 @@ public partial class World
         actions.AddThemeConstantOverride("separation", 8);
         form.AddChild(actions);
         _genderConfirm = LookActionButton("Change", OnGenderConfirmPressed);
+        _genderConfirm.Name = "look_accept";
         actions.AddChild(_genderConfirm);
-        actions.AddChild(LookActionButton("Cancel", CloseGenderChange));
+        var cancel = LookActionButton("Cancel", CloseGenderChange);
+        cancel.Name = "look_cancel";
+        actions.AddChild(cancel);
     }
 
     private static Control LookPreviewColumn(LookPreview preview)
@@ -74,8 +79,12 @@ public partial class World
         column.AddChild(preview);
         var turnRow = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         turnRow.AddThemeConstantOverride("separation", 8);
-        turnRow.AddChild(LookEditor.StepButton("◀", () => preview.Turn(-LookTurnDegrees)));
-        turnRow.AddChild(LookEditor.StepButton("▶", () => preview.Turn(LookTurnDegrees)));
+        var left = LookEditor.StepButton("◀", () => preview.Turn(-LookTurnDegrees));
+        var right = LookEditor.StepButton("▶", () => preview.Turn(LookTurnDegrees));
+        left.Name = "look_turn_left";
+        right.Name = "look_turn_right";
+        turnRow.AddChild(left);
+        turnRow.AddChild(right);
         column.AddChild(turnRow);
         return column;
     }
@@ -90,13 +99,14 @@ public partial class World
 
     private void OpenGenderChange()
     {
+        if (_genderInFlight) return;
         var me = Net.I.LastEnter;
         if (!GenderChange.CanChange(me.Class))
         {
             ChatStatusNotice(ItemData.Text(GenderChange.NotForClassText, "Your class cannot change gender."));
             return;
         }
-        _genderInFlight = false;
+        _genderEditor.SetLocked(false);
         _genderEditor.Load(GenderChange.AllowedRaces(me.Class), me.Race, me.Face, me.Hair);
         DisarmGenderChange();
         ShowGenderLook();
@@ -109,11 +119,13 @@ public partial class World
         if (!_genderShown) return;
         _genderShown = false;
         _genderPanel.Visible = false;
+        _genderEditor.CloseColourPicker();
         _genderPreview.Clear();
     }
 
     private void OnGenderLookChanged()
     {
+        if (_genderInFlight) return;
         DisarmGenderChange();
         ShowGenderLook();
     }
@@ -134,7 +146,7 @@ public partial class World
 
     private void OnGenderConfirmPressed()
     {
-        if (_genderInFlight || _selfDead) return;
+        if (!_genderShown || _genderInFlight || _selfDead) return;
         if (!_genderArmed)
         {
             _genderArmed = true;
@@ -143,6 +155,7 @@ public partial class World
             return;
         }
         _genderInFlight = true;
+        _genderEditor.SetLocked(true);
         _genderConfirm.Disabled = true;
         SetGenderStatus("Changing…", false);
         Net.I.SendGenderChange(_genderEditor.Race, _genderEditor.Face, _genderEditor.Hair);
@@ -150,7 +163,9 @@ public partial class World
 
     private void OnGenderChangeRefused(int result)
     {
+        if (!_genderInFlight) return;
         _genderInFlight = false;
+        _genderEditor.SetLocked(false);
         DisarmGenderChange();
         _genderConfirm.Disabled = false;
         string text = result == Net.GenderChangeNoItem
@@ -162,7 +177,9 @@ public partial class World
 
     private void OnGenderChanged()
     {
+        if (!_genderInFlight) return;
         _genderInFlight = false;
+        _genderEditor.SetLocked(false);
         CloseGenderChange();
     }
 

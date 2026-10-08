@@ -5,6 +5,17 @@ namespace LibreKO;
 
 public partial class World
 {
+    internal CanvasLayer BuildGenderClassicUiPreview(int nation)
+    {
+        ItemData.EnsureLoaded();
+        var me = Net.I.LastEnter;
+        me.Name = "Tester10"; me.Nation = nation; me.Class = nation == 1 ? 112 : 206;
+        me.Race = nation == 1 ? 2 : 12; me.Face = 1; me.Hair = (2 << 24) | 0x5A3820;
+        Net.I.SeedPreviewEnter(me);
+        BuildGenderPanel(); OpenGenderChange();
+        RemoveChild(_genderLayer); return _genderLayer;
+    }
+
     internal Control BuildGenderChangeUiPreview()
     {
         ItemData.EnsureLoaded();
