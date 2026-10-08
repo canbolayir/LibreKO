@@ -137,8 +137,9 @@ public partial class World
 
     private void AskAmount(
         ItemSlot slot, string hint, int price, int maxCount, bool countable,
-        System.Action<int, int> accept, bool priceEditable = true, int defaultCount = 0, int marketPriceItem = 0)
+        System.Action<int, int> accept, bool priceEditable = true, int defaultCount = 0, int marketPriceItem = 0, bool quantityOnly = false)
     {
+        _amountLayer.SetMeta("merchant_quantity_only", quantityOnly);
         _amountLayer.SetMeta("merchant_price_editable",priceEditable);
         _amountLayer.SetMeta("merchant_quantity",countable && maxCount>1);
         _amountLayer.SetMeta("merchant_error","");

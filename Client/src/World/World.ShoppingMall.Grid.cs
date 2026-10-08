@@ -205,6 +205,7 @@ public partial class World
         var selected = id == _pusCategory && !searching;
         var button = new Button
         {
+            Name = "pus_category_" + id,
             Text = name,
             Alignment = HorizontalAlignment.Left,
             FocusMode = Control.FocusModeEnum.None,
@@ -212,6 +213,7 @@ public partial class World
             ClipText = true,
             TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
         };
+        button.SetMeta("pus_category_selected", selected);
         if (PowerUpStoreCatalog.HasDiscount(_pusCatalog, id))
         {
             button.Icon = UiIcons.Get("system/clock");
@@ -292,10 +294,13 @@ public partial class World
     {
         var card = new PanelContainer
         {
+            Name = "pus_card_" + entry.Id,
             CustomMinimumSize = new Vector2(PusCardWidth, PusCardHeight),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             MouseFilter = Control.MouseFilterEnum.Stop,
         };
+        card.SetMeta("pus_card_id", entry.Id);
+        card.SetMeta("pus_card_featured", entry.Featured);
         card.MouseEntered += () =>
         {
             _pusHoveredCard = entry.Id;
@@ -321,6 +326,7 @@ public partial class World
         var frame = new PanelContainer
         {
             CustomMinimumSize = new Vector2(PusCardIconSide, PusCardIconSide),
+            Name = "pus_card_icon",
             SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
@@ -337,6 +343,8 @@ public partial class World
         box.AddChild(frame);
 
         var name = UiTheme.Text(entry.Name, PusCardNameFontSize, UiTheme.TextHi, HorizontalAlignment.Center);
+        name.Name = "pus_card_name";
+        name.TooltipText = entry.Name;
         name.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         name.MaxLinesVisible = PusCardNameLines;
         name.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
@@ -353,6 +361,7 @@ public partial class World
         if (entry.Featured) overlay.AddChild(PusFeaturedBadge());
 
         var cartChip = PusChip("system/cart", "", UiTheme.GoldVivid, UiTheme.Ink, out var cartCount);
+        cartChip.Name = "pus_cart_chip";
         cartChip.TooltipText = "In your cart";
         cartChip.Position = new Vector2(PusChipInset - PusCardSideMargin, PusChipInset - PusCardTopMargin);
         overlay.AddChild(cartChip);
@@ -360,6 +369,7 @@ public partial class World
         if (entry.Discounted && entry.DiscountEndsAt is { } endsAt)
         {
             var timer = PusChip("system/clock", PowerUpStoreTimer.Label(endsAt - DateTime.UtcNow), PusTimerChipColor, UiTheme.Ink, out var timerLabel);
+            timer.Name = "pus_timer_chip";
             timer.TooltipText = "Time left at this price";
             timer.AnchorLeft = timer.AnchorRight = 1f;
             timer.OffsetLeft = timer.OffsetRight = PusCardSideMargin - PusChipInset;
@@ -422,7 +432,10 @@ public partial class World
             view.CartChip.Visible = inCart > 0;
             view.CartCount.Text = $"×{inCart}";
             var active = inCart > 0 || (_pusHoveredCard == view.Entry.Id && _pusModal == PusModal.None);
-            view.Card.AddThemeStyleboxOverride("panel", PusCardStyle(view.Entry.Featured, active));
+            view.Card.SetMeta("pus_card_active", active);
+            string style = "pus_card_" + (view.Entry.Featured ? "featured_" : "") + (active ? "active" : "normal");
+            view.Card.AddThemeStyleboxOverride("panel", view.Card.HasThemeStylebox(style)
+                ? view.Card.GetThemeStylebox(style) : PusCardStyle(view.Entry.Featured, active));
         }
     }
 }

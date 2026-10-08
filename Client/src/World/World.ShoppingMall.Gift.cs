@@ -217,8 +217,8 @@ public partial class World
         row.CustomMinimumSize = new Vector2(0, Platform.Pick(PusGiftRowHeight, PusGiftTouchRowHeight));
         var normal = UiTheme.Row();
         var hover = UiTheme.Row(selected: true);
-        row.MouseEntered += () => row.AddThemeStyleboxOverride("panel", hover);
-        row.MouseExited += () => row.AddThemeStyleboxOverride("panel", normal);
+        row.MouseEntered += () => row.AddThemeStyleboxOverride("panel", row.HasThemeStylebox("pus_contact_active") ? row.GetThemeStylebox("pus_contact_active") : hover);
+        row.MouseExited += () => row.AddThemeStyleboxOverride("panel", row.HasThemeStylebox("pus_contact_normal") ? row.GetThemeStylebox("pus_contact_normal") : normal);
         row.GuiInput += e =>
         {
             if (e is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }) return;

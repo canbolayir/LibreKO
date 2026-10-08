@@ -79,6 +79,7 @@ public partial class World
         AddChild(_pusLayer);
 
         _pusWindow = new HudWindow("shoppingmall", "Power-Up Store", persistLayout: false) { Visible = false };
+        _pusWindow.SetMeta("classic_store_controls", 1);
         var panel = UiTheme.WindowPanel();
         panel.BgColor = PusWindowFill;
         _pusWindow.AddThemeStyleboxOverride("panel", panel);
@@ -97,6 +98,28 @@ public partial class World
         _pusTicker = new Godot.Timer { WaitTime = PusTimerTickSeconds };
         _pusTicker.Timeout += TickPusTimers;
         _pusLayer.AddChild(_pusTicker);
+        NamePusControls();
+    }
+
+    private void NamePusControls()
+    {
+        foreach (var (node, name) in new (Node, string)[]
+        {
+            (_pusWindow.Body, "body"), (_pusCategoryColumn, "categories"), (_pusCartColumn, "cart"),
+            (_pusCategoryList, "category_list"), (_pusGridTitle, "grid_title"), (_pusCashValue, "cash"),
+            (_pusSearch, "query"), (_pusSortPick, "sort"), (_pusTools, "tools"),
+            (_pusGridScroll, "grid_scroll"), (_pusGrid, "grid"), (_pusGridEmpty, "grid_empty"),
+            (_pusCartTitle, "cart_title"), (_pusClearCart, "clear_cart"), (_pusCartScroll, "cart_scroll"),
+            (_pusCartLines, "cart_lines"), (_pusCartEmpty, "cart_empty"), (_pusGiftButton, "gift"),
+            (_pusGiftBanner, "gift_banner"), (_pusGiftName, "gift_name"), (_pusGiftInfo, "gift_info"),
+            (_pusTotalRow, "total"), (_pusShortfall, "shortfall"), (_pusCheckout, "checkout"), (_pusCartStatus, "cart_status"),
+            (_pusOverlay, "overlay"), (_pusDetailsBox, "details"), (_pusDetailsIcon, "details_icon"),
+            (_pusDetailsName, "details_name"), (_pusDetailsCategory, "details_category"), (_pusDetailsDescription, "details_description"),
+            (_pusDetailsPrice, "details_price"), (_pusDetailsAdd, "details_add"), (_pusDetailsBuy, "details_buy"), (_pusDetailsStatus, "details_status"),
+            (_pusGiftBox, "gift_box"), (_pusGiftSearch, "gift_query"), (_pusGiftPickPane, "gift_pick"),
+            (_pusGiftListTitle, "gift_list_title"), (_pusGiftList, "gift_list"), (_pusGiftCard, "gift_card"),
+            (_pusGiftCardName, "recipient_name"), (_pusGiftCardInfo, "recipient_info"), (_pusGiftCardWarning, "recipient_warning"), (_pusGiftStatus, "gift_status"),
+        }) node.Name = "pus_" + name;
     }
 
     private Control BuildPusCashRow()
@@ -220,7 +243,10 @@ public partial class World
     private void CentrePowerUpStore()
     {
         if (!_pusShown || !IsInstanceValid(_pusWindow)) return;
-        _pusWindow.Position = WindowPlacement.Centre(_pusWindow.GetViewportRect().Size, _pusWindow.Size);
+        var screen = _pusWindow.GetViewportRect().Size;
+        _pusWindow.Position = Platform.TouchUi
+            ? ((screen - _pusWindow.Size) / 2).Max(Vector2.Zero)
+            : WindowPlacement.Centre(screen, _pusWindow.Size);
     }
 
     private void OnShoppingMallOpen(short error, short freeSlot)

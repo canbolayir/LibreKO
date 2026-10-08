@@ -62,6 +62,6 @@ public partial class World
                 ]);
                 break;
         }
-        return DetachPreviewControl(_specialAuctionPanel);
+        return view == "classic-today" ? _specialAuctionPanel : DetachPreviewControl(_specialAuctionPanel);
     }
 }

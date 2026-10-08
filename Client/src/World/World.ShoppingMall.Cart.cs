@@ -207,6 +207,7 @@ public partial class World
     private Control BuildPusCartLine(PowerUpStoreCart.Line line)
     {
         var row = UiTheme.RowPanel();
+        row.Name = "pus_cart_line_" + line.Entry.Id;
         var hb = new HBoxContainer();
         hb.AddThemeConstantOverride("separation", 8);
         row.AddChild(hb);

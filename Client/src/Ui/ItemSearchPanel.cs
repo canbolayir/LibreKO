@@ -46,19 +46,22 @@ public partial class ItemSearchPanel : VBoxContainer
         if (resultsSize == default) resultsSize = new Vector2(470, 320);
         CustomMinimumSize = new Vector2(resultsSize.X, 0);
 
-        AddChild(UiTheme.SectionTitle("Item search", UiIcons.Get("system/bag")));
+        var heading = UiTheme.SectionTitle("Item search", UiIcons.Get("system/bag"));
+        heading.Name = "item_search_heading"; AddChild(heading);
 
         var findRow = new HBoxContainer();
         findRow.AddThemeConstantOverride("separation", 5);
         AddChild(findRow);
         _query = new LineEdit
         {
+            Name = "item_search_query",
+            KeepEditingOnTextSubmit = true,
             PlaceholderText = "item name",
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
         };
         _query.TextSubmitted += _ => Run();
         findRow.AddChild(_query);
-        var search = new Button { Text = "Search", FocusMode = FocusModeEnum.None };
+        var search = new Button { Name = "item_search_find", Text = "Search", FocusMode = FocusModeEnum.None };
         search.Pressed += Run;
         findRow.AddChild(search);
 
@@ -69,6 +72,7 @@ public partial class ItemSearchPanel : VBoxContainer
         {
             string key = label;
             var button = new Button { Text = label, ToggleMode = true, FocusMode = FocusModeEnum.None };
+            button.Name = "item_search_tab_" + label;
             button.AddThemeFontSizeOverride("font_size", 12);
             button.Pressed += () => SelectTab(key);
             _tabButtons[key] = button;
@@ -80,28 +84,34 @@ public partial class ItemSearchPanel : VBoxContainer
         pickRow.AddThemeConstantOverride("separation", 5);
         AddChild(pickRow);
         _pick = UiTheme.Dropdown();
+        _pick.Name = "item_search_name";
         _pick.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _pick.ItemSelected += _ => OnNamePicked();
         pickRow.AddChild(_pick);
         _group = UiTheme.Dropdown();
+        _group.Name = "item_search_group";
         _group.CustomMinimumSize = new Vector2(124, 0);
         _group.ItemSelected += _ => OnGroupPicked();
         pickRow.AddChild(_group);
         _level = UiTheme.Dropdown();
+        _level.Name = "item_search_level";
         _level.CustomMinimumSize = new Vector2(96, 0);
         _level.ItemSelected += _ => Refresh();
         pickRow.AddChild(_level);
 
         _summary = UiTheme.Text("Type an item name and press Search.", 12, UiTheme.TextLo);
+        _summary.Name = "item_search_summary";
         AddChild(_summary);
 
         var scroll = new ScrollContainer
         {
+            Name = "item_search_scroll",
             CustomMinimumSize = resultsSize,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
         AddChild(scroll);
         _results = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _results.Name = "item_search_results";
         _results.AddThemeConstantOverride("separation", 3);
         scroll.AddChild(_results);
     }
@@ -127,7 +137,7 @@ public partial class ItemSearchPanel : VBoxContainer
 
     public void Refresh()
     {
-        foreach (Node child in _results.GetChildren()) child.QueueFree();
+        foreach (Node child in _results.GetChildren()) { _results.RemoveChild(child); child.QueueFree(); }
         _hideTooltip?.Invoke();
 
         int levelIndex = _level.Selected - 1;

@@ -81,6 +81,7 @@ public partial class World
         _merchantSearchPanel = new HudWindow("merchantsearch", ItemData.DisplayName(MerchantSearch.OfficialListItem).Trim(),
             bodyMinWidth: 720) { Visible = false };
         _merchantSearchPanel.Closed += CloseMerchantSearch;
+        _merchantSearchPanel.SetMeta("classic_merchant_search_controls", 1);
         _merchantSearchLayer.AddChild(_merchantSearchPanel);
 
         var body = _merchantSearchPanel.Body;
@@ -88,20 +89,25 @@ public partial class World
 
         var tip = UiTheme.Text(MerchantSearchText(MerchantSearchTipText, "An item can be sold or purchased while searching."),
             12, UiTheme.TextDim, HorizontalAlignment.Center);
+        tip.Name = "merchant_search_tip";
         body.AddChild(tip);
 
         var top = new HBoxContainer();
         top.AddThemeConstantOverride("separation", 8);
         body.AddChild(top);
-        top.AddChild(MerchantSearchLabel(MerchantSearchText(MerchantSearchSearchText, "Search")));
-        _merchantSearchEdit = new LineEdit { CustomMinimumSize = new Vector2(180, 0) };
+        var searchLabel = MerchantSearchLabel(MerchantSearchText(MerchantSearchSearchText, "Search"));
+        searchLabel.Name = "merchant_search_query_label"; top.AddChild(searchLabel);
+        _merchantSearchEdit = new LineEdit { Name = "merchant_search_query", CustomMinimumSize = new Vector2(180, 0), KeepEditingOnTextSubmit = true };
         _merchantSearchEdit.TextSubmitted += _ => RunMerchantSearch();
         top.AddChild(_merchantSearchEdit);
-        top.AddChild(LookActionButton(MerchantSearchText(MerchantSearchFindText, "Search"), RunMerchantSearch));
-        top.AddChild(LookActionButton(MerchantSearchText(MerchantSearchAllText, "View All"), ShowAllMerchantSearch));
+        var search = LookActionButton(MerchantSearchText(MerchantSearchFindText, "Search"), RunMerchantSearch);
+        search.Name = "merchant_search_find"; top.AddChild(search);
+        var all = LookActionButton(MerchantSearchText(MerchantSearchAllText, "View All"), ShowAllMerchantSearch);
+        all.Name = "merchant_search_all"; top.AddChild(all);
         top.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
-        top.AddChild(MerchantSearchLabel(MerchantSearchText(MerchantSearchScopeText, "Scope")));
-        _merchantSearchScope = new OptionButton { FocusMode = Control.FocusModeEnum.None, CustomMinimumSize = new Vector2(130, 0) };
+        var scopeLabel = MerchantSearchLabel(MerchantSearchText(MerchantSearchScopeText, "Scope"));
+        scopeLabel.Name = "merchant_search_scope_label"; top.AddChild(scopeLabel);
+        _merchantSearchScope = new OptionButton { Name = "merchant_search_scope", FocusMode = Control.FocusModeEnum.None, CustomMinimumSize = new Vector2(130, 0) };
         _merchantSearchScope.AddItem(MerchantSearchText(MerchantSearchSellText, "Sell Merchant"), MerchantSearch.SellingType);
         _merchantSearchScope.AddItem(MerchantSearchText(MerchantSearchBuyText, "Buy Merchant"), MerchantSearch.BuyingType);
         _merchantSearchScope.ItemSelected += index => PickMerchantSearchScope((int)index);
@@ -110,22 +116,28 @@ public partial class World
         var header = new HBoxContainer();
         header.AddThemeConstantOverride("separation", 4);
         body.AddChild(header);
-        header.AddChild(MerchantSearchColumnTitle(MerchantSearchText(MerchantSearchChatText, "Chat"), MerchantSearchActionColumn));
-        header.AddChild(MerchantSearchColumnTitle(MerchantSearchText(MerchantSearchLocationText, "Sales Location"), MerchantSearchActionColumn));
-        header.AddChild(MerchantSearchColumnTitle(MerchantSearchText(MerchantSearchHistoryText, "Price"), MerchantSearchActionColumn));
+        foreach (var column in new[] { ("chat", MerchantSearchChatText, "Chat"), ("location", MerchantSearchLocationText, "Sales Location"), ("history", MerchantSearchHistoryText, "Price") })
+        {
+            var label = MerchantSearchColumnTitle(MerchantSearchText(column.Item2, column.Item3), MerchantSearchActionColumn);
+            label.Name = "merchant_search_header_" + column.Item1; header.AddChild(label);
+        }
         var byName = UiTheme.TopTabButton(MerchantSearchText(MerchantSearchByNameText, "View by Name"), 12);
         byName.ToggleMode = false;
+        byName.Name = "merchant_search_name_sort";
         byName.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         byName.Pressed += () => SortMerchantSearch(MerchantSearchSort.Name);
         header.AddChild(byName);
         var priceHeader = new VBoxContainer { CustomMinimumSize = new Vector2(MerchantSearchPriceColumn, 0) };
-        priceHeader.AddChild(UiTheme.Text(MerchantSearchText(MerchantSearchItemPriceText, "Item Price"), 12, UiTheme.Gold, HorizontalAlignment.Center));
+        var priceTitle = UiTheme.Text(MerchantSearchText(MerchantSearchItemPriceText, "Item Price"), 12, UiTheme.Gold, HorizontalAlignment.Center);
+        priceTitle.Name = "merchant_search_header_price"; priceHeader.AddChild(priceTitle);
         var sorts = new HBoxContainer();
         sorts.AddThemeConstantOverride("separation", 4);
         var low = UiTheme.SmallButton(MerchantSearchText(MerchantSearchLowText, "Low to High"), "");
+        low.Name = "merchant_search_low_sort";
         low.Pressed += () => SortMerchantSearch(MerchantSearchSort.PriceLowToHigh);
         sorts.AddChild(low);
         var high = UiTheme.SmallButton(MerchantSearchText(MerchantSearchHighText, "High to Low"), "");
+        high.Name = "merchant_search_high_sort";
         high.Pressed += () => SortMerchantSearch(MerchantSearchSort.PriceHighToLow);
         sorts.AddChild(high);
         priceHeader.AddChild(sorts);
@@ -141,15 +153,19 @@ public partial class World
         footer.AddThemeConstantOverride("separation", 4);
         body.AddChild(footer);
         _merchantSearchStatus = HudStyle.Label(12);
+        _merchantSearchStatus.Name = "merchant_search_status";
         _merchantSearchStatus.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         footer.AddChild(_merchantSearchStatus);
-        footer.AddChild(LookEditor.StepButton("◀", () => { _merchantSearch.Previous(); RefreshMerchantSearch(); }));
-        _merchantSearchPages = new HBoxContainer();
+        var previous = LookEditor.StepButton("◀", () => { _merchantSearch.Previous(); RefreshMerchantSearch(); });
+        previous.Name = "merchant_search_previous"; footer.AddChild(previous);
+        _merchantSearchPages = new HBoxContainer { Name = "merchant_search_pages" };
         _merchantSearchPages.AddThemeConstantOverride("separation", 2);
         footer.AddChild(_merchantSearchPages);
-        footer.AddChild(LookEditor.StepButton("▶", () => { _merchantSearch.Next(); RefreshMerchantSearch(); }));
+        var next = LookEditor.StepButton("▶", () => { _merchantSearch.Next(); RefreshMerchantSearch(); });
+        next.Name = "merchant_search_next"; footer.AddChild(next);
         footer.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
         var refresh = UiTheme.IconButton("⟳", "Refresh");
+        refresh.Name = "merchant_search_refresh";
         refresh.Pressed += () => RequestMerchantSearch(MerchantSearch.OfficialListItem);
         footer.AddChild(refresh);
     }
@@ -170,7 +186,9 @@ public partial class World
 
     private MerchantSearchLine BuildMerchantSearchLine()
     {
+        int index = _merchantSearchLines.Count;
         var line = new MerchantSearchLine { Root = new HBoxContainer { CustomMinimumSize = new Vector2(0, MerchantSearchRowHeight) } };
+        line.Root.Name = "merchant_search_row_" + index;
         line.Root.AddThemeConstantOverride("separation", 4);
         line.Whisper = MerchantSearchRowButton(MerchantSearchText(MerchantSearchWhisperText, "Whisper"));
         line.Whisper.Pressed += () => { if (line.Row is { } row) OpenWhisperWith(row.Seller); };
@@ -194,6 +212,12 @@ public partial class World
         line.Root.AddChild(line.Name);
         line.Price = HudStyle.Label(13, HorizontalAlignment.Right);
         line.Price.CustomMinimumSize = new Vector2(MerchantSearchPriceColumn, 0);
+        line.Whisper.Name = "merchant_search_whisper_" + index;
+        line.Move.Name = "merchant_search_move_" + index;
+        line.View.Name = "merchant_search_view_" + index;
+        line.Icon.Name = "merchant_search_icon_" + index;
+        line.Name.Name = "merchant_search_name_" + index;
+        line.Price.Name = "merchant_search_price_" + index;
         line.Root.AddChild(line.Price);
         _merchantSearchLines.Add(line);
         return line;
@@ -302,12 +326,14 @@ public partial class World
             line.Whisper.Visible = line.Move.Visible = line.View.Visible = shown;
             line.Icon.Texture = shown ? ItemData.Icon(visible[i].ItemId) : null;
             line.Name.Text = shown ? visible[i].ItemName : "";
+            line.Name.TooltipText = shown ? visible[i].ItemName + "\n" + visible[i].Seller : "";
+            line.Icon.TooltipText = line.Name.TooltipText;
             if (shown) line.Name.AddThemeColorOverride("font_color", ItemGrade.Tint(visible[i].ItemId));
             line.Price.Text = shown ? visible[i].Price.ToString("n0") : "";
         }
 
         foreach (var child in _merchantSearchPages.GetChildren())
-            child.QueueFree();
+        { _merchantSearchPages.RemoveChild(child); child.QueueFree(); }
         foreach (int page in _merchantSearch.GroupPages())
         {
             int target = page;
@@ -319,7 +345,7 @@ public partial class World
             _merchantSearchPages.AddChild(button);
         }
 
-        _merchantSearchStatus.Text = _merchantSearchLoading ? "Loading…" : "";
+        _merchantSearchStatus.Text = _merchantSearchLoading ? "Loading…" : visible.Count == 0 ? "No matching items." : "";
     }
 
     private void MoveToMerchant(MerchantSearchRow row)

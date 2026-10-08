@@ -62,6 +62,7 @@ public partial class World
 
         _marketPricePanel = new HudWindow("marketprice", "Market Price", bodyMinWidth: 820) { Visible = false };
         _marketPricePanel.Closed += CloseMarketPrice;
+        _marketPricePanel.SetMeta("classic_market_price_controls", 1);
         _marketPriceLayer.AddChild(_marketPricePanel);
 
         var body = _marketPricePanel.Body;
@@ -91,6 +92,7 @@ public partial class World
         pickRow.AddThemeConstantOverride("separation", 10);
         pick.AddChild(pickRow);
         _marketPriceSlot = new ItemSlotView(MarketPriceSlotSize);
+        _marketPriceSlot.Name = "market_price_item";
         _marketPriceSlot.Hovered += view => { if (!view.Item.IsEmpty) ShowItemTooltip(-1, view.Item); };
         _marketPriceSlot.Unhovered += _ => HideItemTooltip();
         pickRow.AddChild(_marketPriceSlot);
@@ -98,11 +100,13 @@ public partial class World
         pickText.AddThemeConstantOverride("separation", 4);
         pickRow.AddChild(pickText);
         _marketPriceName = UiTheme.Text("", 13, UiTheme.TextHi);
+        _marketPriceName.Name = "market_price_name";
         _marketPriceName.ClipText = true;
         pickText.AddChild(_marketPriceName);
         var search = UiTheme.ActionButton(MarketPriceText(MarketPriceSearchText, "Search Price"),
             MarketPriceText(MarketPriceSearchTipText, "Search the price of selected item"));
         search.Pressed += SearchMarketPrice;
+        search.Name = "market_price_search";
         pickText.AddChild(search);
 
         var right = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -113,13 +117,16 @@ public partial class World
         head.AddThemeConstantOverride("separation", 6);
         right.AddChild(head);
         head.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
-        head.AddChild(UiTheme.Text(MarketPriceText(MarketPriceTradesText, "Recent of Trades :"), 13, UiTheme.TextLo));
+        var tradesCaption = UiTheme.Text(MarketPriceText(MarketPriceTradesText, "Recent of Trades :"), 13, UiTheme.TextLo);
+        tradesCaption.Name = "market_price_trades_caption"; head.AddChild(tradesCaption);
         _marketPriceTrades = UiTheme.Text("0", 13, UiTheme.TextHi);
+        _marketPriceTrades.Name = "market_price_trades";
         head.AddChild(_marketPriceTrades);
 
         string dayWord = MarketPriceText(MarketPriceDayText, "Data");
         _marketPriceChart = new PriceChart
         {
+            Name = "market_price_chart",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
             DayLabel = index => $"{dayWord}{index + 1}",
@@ -134,11 +141,14 @@ public partial class World
         foot.AddThemeConstantOverride("separation", 6);
         right.AddChild(foot);
         _marketPriceUpdated = UiTheme.Text("", 12, UiTheme.Gold);
+        _marketPriceUpdated.Name = "market_price_updated";
         foot.AddChild(_marketPriceUpdated);
         foot.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
-        foot.AddChild(UiTheme.Text(MarketPriceText(MarketPriceLatestLeftText, "Latest data will show on the left."), 12, UiTheme.TextDim));
+        var latest = UiTheme.Text(MarketPriceText(MarketPriceLatestLeftText, "Latest data will show on the left."), 12, UiTheme.TextDim);
+        latest.Name = "market_price_latest"; foot.AddChild(latest);
 
         _marketPriceStatus = UiTheme.Text("", 13, UiTheme.Warning, HorizontalAlignment.Center);
+        _marketPriceStatus.Name = "market_price_status";
         body.AddChild(_marketPriceStatus);
     }
 
@@ -196,6 +206,7 @@ public partial class World
         _marketPriceItem = 0;
         _marketPriceSlot.Clear();
         _marketPriceName.Text = "";
+        _marketPriceName.TooltipText = "";
         ClearMarketPriceChart();
     }
 
@@ -211,6 +222,7 @@ public partial class World
         _marketPriceItem = itemId;
         _marketPriceSlot.Set(TooltipItem(itemId));
         _marketPriceName.Text = ItemData.DisplayName(itemId);
+        _marketPriceName.TooltipText = _marketPriceName.Text;
         if (_marketPriceCache.TryGetValue(itemId, out var cached))
         {
             DrawMarketPrice(cached);
@@ -249,6 +261,12 @@ public partial class World
 
     private void DrawMarketPrice(MarketPriceReply reply)
     {
+        if (reply.Result == MarketPrice.NoHistory)
+        {
+            ClearMarketPriceChart();
+            SetMarketPriceStatus(MarketPriceText(MarketPriceNoHistoryText, "There is no trade history for this item"));
+            return;
+        }
         _marketPriceChart.ShowDays(reply.Days);
         _marketPriceTrades.Text = $"{reply.Trades:n0}";
         var local = reply.LastUpdate.ToLocalTime();

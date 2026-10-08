@@ -82,7 +82,7 @@ public partial class PriceChart : Control
 
     public override void _Draw()
     {
-        DrawStyleBox(UiTheme.Inset(), new Rect2(Vector2.Zero, Size));
+        DrawStyleBox(HasThemeStylebox("chart_background") ? GetThemeStylebox("chart_background") : UiTheme.Inset(), new Rect2(Vector2.Zero, Size));
         var plot = Plot;
         var font = GetThemeDefaultFont();
 

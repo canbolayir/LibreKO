@@ -64,11 +64,14 @@ public partial class World
     private Godot.Timer _auctionTicker = null!;
     private AuctionTab _auctionTab;
     private AuctionToday _auctionToday;
-    private AuctionBidRow? _auctionActionRow;
+    private readonly AuctionTransactions _auctionTransactions = new();
+    private Notice? _auctionConfirmation;
+    private Button _auctionPlaceBid = null!, _auctionRefresh = null!;
+    private bool _auctionBidPending => _auctionTransactions.Bid != null;
     private int _auctionSelected = -1;
     private float _auctionSecondsLeft;
     private double _auctionClickedAt = double.NegativeInfinity, _auctionRefreshedAt = double.NegativeInfinity;
-    private bool _specialAuctionShown, _auctionOpening, _auctionBidPending, _auctionRefreshing;
+    private bool _specialAuctionShown, _auctionOpening, _auctionRefreshing;
 
     private void SpecialAuctionInit()
     {
@@ -112,6 +115,7 @@ public partial class World
 
         _specialAuctionPanel = new HudWindow("specialauction", AuctionText(SpecialAuctionTitleText, "Akara's Altar"), bodyMinWidth: 780)
             { Visible = false };
+        _specialAuctionPanel.SetMeta("classic_auction_controls", 1);
         _specialAuctionPanel.Closed += CloseSpecialAuction;
         _specialAuctionLayer.AddChild(_specialAuctionPanel);
 
@@ -122,7 +126,7 @@ public partial class World
         var body = _specialAuctionPanel.Body;
         body.AddThemeConstantOverride("separation", 8);
 
-        var tabs = new HBoxContainer();
+        var tabs = new HBoxContainer { Name = "auction_tabs" };
         tabs.AddThemeConstantOverride("separation", 4);
         body.AddChild(tabs);
         AddAuctionTab(tabs, AuctionTab.Today, "Ongoing Auction");
@@ -130,7 +134,7 @@ public partial class World
         AddAuctionTab(tabs, AuctionTab.MyInfo, "My Auction Status");
         AddAuctionTab(tabs, AuctionTab.Log, "Auction History");
 
-        var pages = new Control { CustomMinimumSize = new Vector2(0, SpecialAuctionPageHeight) };
+        var pages = new Control { Name = "auction_pages", CustomMinimumSize = new Vector2(0, SpecialAuctionPageHeight) };
         body.AddChild(pages);
         AddAuctionPage(pages, AuctionTab.Today, BuildAuctionTodayPage());
         AddAuctionPage(pages, AuctionTab.Schedule, BuildAuctionSchedulePage());
@@ -141,7 +145,10 @@ public partial class World
         body.AddChild(_auctionStatus);
         var notice = UiTheme.Text(AuctionText(SpecialAuctionMaintenanceText, "Please be aware that auction is not available during maintenance"),
             12, UiTheme.TextDim, HorizontalAlignment.Center);
+        notice.Name = "auction_maintenance"; notice.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         body.AddChild(notice);
+        NameAuctionControls();
+        RefreshAuctionTransactions();
     }
 
     private void AddAuctionTab(HBoxContainer tabs, AuctionTab tab, string text)
@@ -149,12 +156,14 @@ public partial class World
         var button = UiTheme.TopTabButton(text, 13);
         button.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         button.Pressed += () => PressAuctionTab(tab);
+        button.Name = "auction_tab_" + tab;
         tabs.AddChild(button);
         _auctionTabButtons[tab] = button;
     }
 
     private void AddAuctionPage(Control pages, AuctionTab tab, Control page)
     {
+        page.Name = "auction_page_" + tab;
         page.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         page.Visible = false;
         pages.AddChild(page);
@@ -166,9 +175,9 @@ public partial class World
         var page = new VBoxContainer();
         page.AddThemeConstantOverride("separation", 8);
 
-        var lots = UiTheme.Section();
+        var lots = UiTheme.Section(); lots.Name = "auction_lots";
         page.AddChild(lots);
-        var grid = new GridContainer { Columns = SpecialAuctionGridColumns, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        var grid = new GridContainer { Name = "auction_lots_grid", Columns = SpecialAuctionGridColumns, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         grid.AddThemeConstantOverride("h_separation", 12);
         grid.AddThemeConstantOverride("v_separation", 8);
         lots.AddChild(grid);
@@ -177,7 +186,7 @@ public partial class World
             var cell = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Alignment = BoxContainer.AlignmentMode.Center };
             cell.AddThemeConstantOverride("separation", 3);
             grid.AddChild(cell);
-            var slot = new ItemSlotView(SpecialAuctionLotSize) { Index = i, SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter };
+            var slot = new ItemSlotView(SpecialAuctionLotSize) { Name = "auction_lot_" + i, Index = i, SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter };
             slot.Clicked += view => SelectAuctionLot(view.Index);
             slot.Hovered += view => { if (!view.Item.IsEmpty) ShowItemTooltip(-1, view.Item); };
             slot.Unhovered += _ => HideItemTooltip();
@@ -188,7 +197,7 @@ public partial class World
             _auctionLotMarks.Add(mark);
         }
 
-        var nameBar = UiTheme.Section();
+        var nameBar = UiTheme.Section(); nameBar.Name = "auction_selection";
         page.AddChild(nameBar);
         _auctionSelectedName = UiTheme.Text("-", 15, UiTheme.TextHi, HorizontalAlignment.Center);
         nameBar.AddChild(_auctionSelectedName);
@@ -204,7 +213,7 @@ public partial class World
 
     private Control BuildAuctionBalanceSection()
     {
-        var section = UiTheme.Section();
+        var section = UiTheme.Section(); section.Name = "auction_balance";
         section.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         var box = new VBoxContainer();
         box.AddThemeConstantOverride("separation", 6);
@@ -227,6 +236,7 @@ public partial class World
         box.AddChild(entry);
         _auctionMillions = UiTheme.NumberBox(0, SpecialAuction.MaxMillions, 1, 70);
         _auctionMillions.ValueChanged += _ => RefreshAuctionTotal();
+        _auctionMillions.GetLineEdit().TextChanged += _ => RefreshAuctionTotal();
         entry.AddChild(_auctionMillions);
         var suffix = UiTheme.Text(",000,000", 13, UiTheme.TextLo);
         suffix.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
@@ -234,6 +244,7 @@ public partial class World
         entry.AddChild(AuctionCheckIcon());
         _auctionCheckInput = UiTheme.NumberBox(0, 0, 1, 56);
         _auctionCheckInput.ValueChanged += _ => RefreshAuctionTotal();
+        _auctionCheckInput.GetLineEdit().TextChanged += _ => RefreshAuctionTotal();
         entry.AddChild(_auctionCheckInput);
         return section;
     }
@@ -250,7 +261,7 @@ public partial class World
 
     private Control BuildAuctionBidSection()
     {
-        var section = UiTheme.Section();
+        var section = UiTheme.Section(); section.Name = "auction_bid";
         section.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         var box = new VBoxContainer();
         box.AddThemeConstantOverride("separation", 6);
@@ -263,6 +274,7 @@ public partial class World
         box.AddChild(_auctionWords);
         box.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
         var place = UiTheme.ActionButton(AuctionText(SpecialAuctionPlaceBidText, "Place Bid"), "");
+        _auctionPlaceBid = place;
         place.Pressed += PlaceAuctionBid;
         box.AddChild(place);
         return section;
@@ -270,7 +282,7 @@ public partial class World
 
     private Control BuildAuctionStatusSection()
     {
-        var section = UiTheme.Section();
+        var section = UiTheme.Section(); section.Name = "auction_status_section";
         section.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         var box = new VBoxContainer();
         box.AddThemeConstantOverride("separation", 6);
@@ -287,6 +299,7 @@ public partial class World
         foot.AddThemeConstantOverride("separation", 8);
         box.AddChild(foot);
         var refresh = UiTheme.SmallButton("Refresh", "Refresh the bids");
+        _auctionRefresh = refresh;
         refresh.Pressed += RefreshAuctionToday;
         foot.AddChild(refresh);
         foot.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
@@ -356,6 +369,11 @@ public partial class World
             CloseSpecialAuction();
             return;
         }
+        if (_auctionTransactions.Busy)
+        {
+            Notice.Show(this, "An auction transaction is still pending.", AuctionText(SpecialAuctionTitleText, "Akara's Altar"));
+            return;
+        }
         EnsureAuctionTable();
         ResetSpecialAuction();
         _auctionOpening = true;
@@ -365,8 +383,6 @@ public partial class World
     private void ResetSpecialAuction()
     {
         _auctionSelected = -1;
-        _auctionBidPending = false;
-        _auctionActionRow = null;
         _auctionLots = Array.Empty<AuctionLot>();
         _auctionMillions.Value = 0;
         _auctionCheckInput.Value = 0;
@@ -388,6 +404,8 @@ public partial class World
     private void CloseSpecialAuction()
     {
         _auctionOpening = false;
+        if (IsInstanceValid(_auctionConfirmation)) _auctionConfirmation!.Close();
+        _auctionConfirmation = null;
         if (!_specialAuctionShown) return;
         _specialAuctionShown = false;
         _specialAuctionPanel.Visible = false;
@@ -402,9 +420,11 @@ public partial class World
         foreach (var (key, button) in _auctionTabButtons)
         {
             bool on = key == tab;
-            button.AddThemeStyleboxOverride("normal", UiTheme.TopTab(on));
-            button.AddThemeStyleboxOverride("hover", UiTheme.TopTab(on, true));
-            button.AddThemeStyleboxOverride("pressed", UiTheme.TopTab(true));
+            button.SetPressedNoSignal(on);
+            button.SetMeta("auction_tab_selected", on);
+            button.AddThemeStyleboxOverride("normal", button.HasThemeStylebox(on ? "auction_tab_selected" : "auction_tab_normal") ? button.GetThemeStylebox(on ? "auction_tab_selected" : "auction_tab_normal") : UiTheme.TopTab(on));
+            button.AddThemeStyleboxOverride("hover", button.HasThemeStylebox("auction_tab_hover") ? button.GetThemeStylebox("auction_tab_hover") : UiTheme.TopTab(on, true));
+            button.AddThemeStyleboxOverride("pressed", button.HasThemeStylebox("auction_tab_selected") ? button.GetThemeStylebox("auction_tab_selected") : UiTheme.TopTab(true));
         }
         if (tab == AuctionTab.Schedule) RenderAuctionSchedule();
     }
@@ -425,7 +445,13 @@ public partial class World
 
     private void PressAuctionTab(AuctionTab tab)
     {
+        foreach (var (key, button) in _auctionTabButtons) button.SetPressedNoSignal(key == _auctionTab);
         if (!TakeAuctionClick()) return;
+        if (_auctionTransactions.Busy && tab is AuctionTab.Today or AuctionTab.MyInfo)
+        {
+            ShowAuctionTab(tab);
+            return;
+        }
         switch (tab)
         {
             case AuctionTab.Today:
@@ -446,6 +472,7 @@ public partial class World
 
     private void RefreshAuctionToday()
     {
+        if (_auctionTransactions.Busy) return;
         double waited = AuctionNow - _auctionRefreshedAt;
         if (waited < SpecialAuctionRefreshDelay)
         {
@@ -527,7 +554,7 @@ public partial class World
 
     private void SelectAuctionLot(int slot)
     {
-        if (_auctionLots.All(l => l.Slot != slot)) return;
+        if (_auctionBidPending || _auctionLots.All(l => l.Slot != slot)) return;
         _auctionSelected = slot;
         for (int i = 0; i < _auctionLotSlots.Count; i++)
             if (!_auctionLotSlots[i].Item.IsEmpty)
@@ -537,6 +564,7 @@ public partial class World
 
     private void RenderAuctionSelection()
     {
+        RefreshAuctionTransactions();
         var lot = SelectedAuctionLot;
         if (lot == null)
         {
@@ -578,7 +606,7 @@ public partial class World
 
     private void PlaceAuctionBid()
     {
-        if (_auctionBidPending || !TakeAuctionClick()) return;
+        if (_auctionTransactions.Busy || !TakeAuctionClick()) return;
         var (millions, checks) = AuctionEntry;
         if (SpecialAuction.Total(millions, checks) <= 0)
         {
@@ -586,13 +614,14 @@ public partial class World
                 AuctionText(SpecialAuctionTitleText, "Akara's Altar"));
             return;
         }
-        Notice.Confirm(this, AuctionText(SpecialAuctionConfirmBidText, "Do you wish to place a bid?"), "Yes", "No",
+        _auctionConfirmation = Notice.Confirm(this, AuctionText(SpecialAuctionConfirmBidText, "Do you wish to place a bid?"), "Yes", "No",
             ConfirmAuctionBid, title: AuctionText(SpecialAuctionTitleText, "Akara's Altar"));
     }
 
     private void ConfirmAuctionBid()
     {
-        if (_auctionBidPending) return;
+        _auctionConfirmation = null;
+        if (!_specialAuctionShown || _auctionTransactions.Busy) return;
         var lot = SelectedAuctionLot;
         var (millions, checks) = AuctionEntry;
         var checkSlots = SpecialAuction.CheckSlots(Inv);
@@ -602,24 +631,26 @@ public partial class World
             Notice.Show(this, AuctionText(refusal, ""), AuctionText(SpecialAuctionTitleText, "Akara's Altar"));
             return;
         }
-        _auctionBidPending = true;
+        if (!_auctionTransactions.BeginBid(lot!, SpecialAuction.Total(millions, checks), _auctionToday.Group, _auctionToday.Day)) return;
+        RefreshAuctionTransactions();
         Net.I.SendAuctionBid(lot!, checkSlots.Take(checks).ToList(), millions);
     }
 
     private void OnAuctionBid(short result)
     {
-        if (!_auctionBidPending) return;
-        _auctionBidPending = false;
-        if (result == SpecialAuction.Success && SelectedAuctionLot is { } lot)
+        var submitted = _auctionTransactions.CompleteBid();
+        if (submitted == null) return;
+        if (result == SpecialAuction.Success && _auctionToday.Group == submitted.Group && _auctionToday.Day == submitted.Day)
         {
-            var (millions, checks) = AuctionEntry;
-            long total = SpecialAuction.Total(millions, checks);
-            _auctionLots = _auctionLots.Select(l => l.Slot == lot.Slot ? l with { Current = total, TopBidder = AuctionPlayerName() } : l).ToList();
+            var lot = submitted.Lot;
+            _auctionLots = _auctionLots.Select(l => l.Slot == lot.Slot && l.ItemId == lot.ItemId && l.Current <= submitted.Total ? l with { Current = submitted.Total, TopBidder = AuctionPlayerName() } : l).ToList();
             _auctionMillions.Value = 0;
             _auctionCheckInput.Value = 0;
             RenderAuctionLots();
         }
         RefreshAuctionBalance();
+        RefreshAuctionTransactions();
+        if (!_specialAuctionShown) return;
         Notice.Show(this, AuctionText(SpecialAuction.BidResultText(result), ""), AuctionText(SpecialAuctionTitleText, "Akara's Altar"));
     }
 
@@ -645,11 +676,12 @@ public partial class World
     {
         FillAuctionRows(_auctionBidList, _auctionBids, won: false);
         FillAuctionRows(_auctionWinList, _auctionWins, won: true);
+        RefreshAuctionTransactions();
     }
 
     private void FillAuctionRows(VBoxContainer list, List<AuctionBidRow> rows, bool won)
     {
-        foreach (var child in list.GetChildren()) child.QueueFree();
+        ClearChildren(list);
         foreach (var row in rows) list.AddChild(BuildAuctionRow(row, won));
     }
 
@@ -677,6 +709,7 @@ public partial class World
         if (won)
         {
             var name = UiTheme.Text(ItemData.DisplayName(row.ItemId), 13, ItemGrade.Tint(row.ItemId));
+            name.ClipText = true; name.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis; name.TooltipText = name.Text;
             text.AddChild(name);
         }
         else
@@ -690,6 +723,7 @@ public partial class World
         if (won || SpecialAuction.CanRetract(row.Status))
         {
             var button = UiTheme.SmallButton(won ? AuctionText(SpecialAuctionReceiveText, "Receive") : AuctionText(SpecialAuctionRetractText, "Retract Bid"), "");
+            button.SetMeta("auction_row_action", true);
             button.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
             button.Pressed += () => PressAuctionRow(row, won);
             line.AddChild(button);
@@ -699,38 +733,46 @@ public partial class World
 
     private void PressAuctionRow(AuctionBidRow row, bool won)
     {
-        if (!TakeAuctionClick()) return;
-        _auctionActionRow = row;
+        if (_auctionTransactions.Busy || !TakeAuctionClick()) return;
+        if (won ? row.Status != SpecialAuction.Won || !_auctionWins.Contains(row) : !SpecialAuction.CanRetract(row.Status) || !_auctionBids.Contains(row)) return;
+        if (!_auctionTransactions.BeginRow(row, won)) return;
+        RefreshAuctionTransactions();
         if (won) Net.I.SendAuctionReceive(row);
         else Net.I.SendAuctionRetract(row);
     }
 
     private void OnAuctionCollect(short result)
     {
-        if (SpecialAuction.Collected(result) && _auctionActionRow is { } row)
+        var request = _auctionTransactions.CompleteRow(claim: false);
+        if (request == null) return;
+        if (SpecialAuction.Collected(result))
         {
-            _auctionBids.Remove(row);
+            _auctionBids.Remove(request.Row);
             RenderAuctionMyInfo();
         }
-        _auctionActionRow = null;
         RefreshAuctionBalance();
+        RefreshAuctionTransactions();
+        if (!_specialAuctionShown) return;
         Notice.Show(this, AuctionText(SpecialAuction.CollectResultText(result), ""), AuctionText(SpecialAuctionTitleText, "Akara's Altar"));
     }
 
     private void OnAuctionClaim(short result)
     {
-        if (result == SpecialAuction.Success && _auctionActionRow is { } row)
+        var request = _auctionTransactions.CompleteRow(claim: true);
+        if (request == null) return;
+        if (result == SpecialAuction.Success)
         {
-            _auctionWins.Remove(row);
+            _auctionWins.Remove(request.Row);
             RenderAuctionMyInfo();
         }
-        _auctionActionRow = null;
+        RefreshAuctionTransactions();
+        if (!_specialAuctionShown) return;
         Notice.Show(this, AuctionText(SpecialAuction.ClaimResultText(result), ""), AuctionText(SpecialAuctionTitleText, "Akara's Altar"));
     }
 
     private void RenderAuctionSchedule()
     {
-        foreach (var child in _auctionSchedule.GetChildren()) child.QueueFree();
+        ClearChildren(_auctionSchedule);
         if (_auctionToday.Group == 0) return;
         foreach (var day in SpecialAuction.Upcoming(_auctionTable, _auctionToday.Group, _auctionToday.Day))
             _auctionSchedule.AddChild(BuildAuctionScheduleDay(day));
@@ -766,14 +808,14 @@ public partial class World
     private void OnAuctionLog(IReadOnlyList<IReadOnlyList<AuctionResultLine>> days)
     {
         if (!_specialAuctionShown) return;
-        foreach (var child in _auctionLog.GetChildren()) child.QueueFree();
+        ClearChildren(_auctionLog);
         for (int d = 0; d < days.Count; d++)
         {
             var colour = new Color(SpecialAuction.LogColour(d));
             foreach (var result in days[d])
             {
                 string text = AuctionResultText(result);
-                if (text.Length > 0) _auctionLog.AddChild(UiTheme.Text(text, 13, colour));
+                if (text.Length > 0) { var line = UiTheme.Text(text, 13, colour); line.AutowrapMode = TextServer.AutowrapMode.WordSmart; _auctionLog.AddChild(line); }
             }
         }
         if (_auctionLog.GetChildCount() == 0)
