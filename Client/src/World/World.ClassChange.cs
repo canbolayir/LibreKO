@@ -28,16 +28,18 @@ public partial class World
 
         _classChangePanel = new HudWindow("class_change", "Redistribution", bodyMinWidth: RedistributionPanelWidth) { Visible = false };
         _classChangePanel.Closed += CloseClassChange;
+        _classChangePanel.SetMeta("classic_service_controls", 1);
         _classChangeLayer.AddChild(_classChangePanel);
 
         var root = _classChangePanel.Body;
         root.AddThemeConstantOverride("separation", 8);
 
         var header = UiTheme.Text(
-            "Every stat or mastery point goes back into its pool, for a fee. Your inventory must be empty to redistribute stats.",
+            "Every stat or mastery point goes back into its pool, for a fee. Unequip every item to redistribute stats.",
             13, UiTheme.TextLo);
         header.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         header.CustomMinimumSize = new Vector2(RedistributionPanelWidth, 0);
+        header.Name = "redistribution_description";
         root.AddChild(header);
 
         var buttons = new HBoxContainer();

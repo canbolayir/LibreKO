@@ -40,6 +40,7 @@ public partial class World
     private readonly Queue<int> _repairQueue = new();
     private bool _repairInFlight;
     private int _repairCur = -1;
+    private int _repairItemId;
     private int _repairSelected = -1;
 
     private void RepairInit()
@@ -97,7 +98,7 @@ public partial class World
         stack.AddChild(grid);
         for (int i = 0; i < _repairCells.Length; i++)
         {
-            var cell = new ItemSlotView(RepairCellSize) { Index = i };
+            var cell = new ItemSlotView(RepairCellSize) { Index = i, Name = "repair_cell_" + i };
             cell.Clicked += c => { if (_repairCellSlots[c.Index] >= 0) SelectRepair(_repairCellSlots[c.Index]); };
             cell.DoubleClicked += c => RepairOne(_repairCellSlots[c.Index]);
             cell.RightClicked += c => RepairOne(_repairCellSlots[c.Index]);
@@ -128,6 +129,19 @@ public partial class World
         _repairAllBtn.Pressed += RepairAll;
         _repairFooter.Right.AddChild(_repairAllBtn);
         root.AddChild(_repairFooter);
+        _repairPanel.SetMeta("classic_service_controls", 1);
+        _repairNote.Name = "repair_note";
+        _repairPager.Name = "repair_pager";
+        _repairEmpty.Name = "repair_empty";
+        _repairDetail.Name = "repair_detail";
+        _repairBox.Name = "repair_box";
+        _repairBar.Name = "repair_bar";
+        _repairDurability.Name = "repair_durability";
+        _repairCost.Name = "repair_cost";
+        _repairOneBtn.Name = "repair_one";
+        _repairAllBtn.Name = "repair_all";
+        _repairFooter.Name = "repair_footer";
+        _repairWallet.Name = "repair_wallet";
     }
 
     private void BuildRepairBox(Control parent)
@@ -169,10 +183,12 @@ public partial class World
         _repairPanel.Title = _vendorNpcName;
         _repairFooter.ResetStatus();
         _repairWallet.Value = Sheet.Gold;
-        _repairPanel.Visible = true;
+        _repairPanel.Visible = !_repairPanel.GetMeta("classic_inventory_repair", false).AsBool();
         _repairShown = true;
         _repairCompanion ??= new BagCompanion(RepairTakeFromBag, _ => BagFit.Normal, RepairBagNote, CloseRepair);
         AttachBagCompanion(_repairCompanion);
+        SyncRepairInventoryMode();
+        GameCursor.Set(_repairInFlight ? GameCursorKind.RepairAlt : GameCursorKind.Repair);
         RefreshRepairWindow();
     }
 
@@ -181,8 +197,10 @@ public partial class World
         HideItemTooltip();
         if (!_repairShown) return;
         _repairShown = false;
+        SyncRepairInventoryMode();
         _repairQueue.Clear();
         _repairPanel.Visible = false;
+        GameCursor.Set(GameCursorKind.Arrow);
         if (_repairCompanion != null) DetachBagCompanion(_repairCompanion);
     }
 
@@ -245,6 +263,7 @@ public partial class World
 
     private void RefreshRepairWindow()
     {
+        SyncRepairInventoryMode();
         var slots = RepairableSlots().ToList();
         int pages = Mathf.Max(1, (slots.Count + RepairPageSize - 1) / RepairPageSize);
         _repairPage = Paging.Step(_repairPage, 0, pages);
@@ -328,10 +347,20 @@ public partial class World
     private void SendRepairFor(int abs)
     {
         if (!IsRepairable(abs)) { PumpRepair(); return; }
+        if (_repairPanel.GetMeta("classic_inventory_repair", false).AsBool() && RepairCostAt(abs) > Sheet.Gold)
+        {
+            _repairQueue.Clear();
+            _repairFooter.Status("Not enough Noahs to repair this item.", bad: true);
+            CombatNotice("Not enough Noahs to repair this item.");
+            return;
+        }
         byte posType = (byte)(abs < GridStart ? 1 : 2);
         byte slot = (byte)(abs < GridStart ? abs : abs - GridStart);
         _repairCur = abs;
+        _repairItemId = Inv[abs].ItemId;
         _repairInFlight = true;
+        SyncRepairInventoryMode();
+        GameCursor.Set(GameCursorKind.RepairAlt);
         _repairOneBtn.Disabled = true;
         _repairAllBtn.Disabled = true;
         Net.I.SendRepair(posType, slot, _vendorNpcId, Inv[abs].ItemId);
@@ -341,19 +370,23 @@ public partial class World
     {
         if (!_repairInFlight) return;
         _repairInFlight = false;
-        if (ok && _repairCur >= 0 && _repairCur < Inv.Length && !Inv[_repairCur].IsEmpty)
+        if (ok && _repairCur >= 0 && _repairCur < Inv.Length && !Inv[_repairCur].IsEmpty && Inv[_repairCur].ItemId == _repairItemId)
         {
             Inv.SetDurability(_repairCur, ItemData.MaxDurabilityOf(Inv[_repairCur].ItemId));
             Net.I.MirrorInventorySlot(_repairCur, Inv[_repairCur]);
             if (CharTabOpen()) RefreshInventoryUI();
             _repairFooter.Status($"Repaired {ItemData.DisplayName(Inv[_repairCur].ItemId)}.", bad: false);
+            Audio.PlayUi(Sfx.UiRepair);
         }
         else if (!ok)
         {
             _repairFooter.Status("Repair failed (not enough gold?).", bad: true);
+            if (_repairPanel.GetMeta("classic_inventory_repair", false).AsBool()) CombatNotice("Repair failed.");
             _repairQueue.Clear();
         }
         _repairCur = -1;
+        _repairItemId = 0;
+        GameCursor.Set(_repairShown ? GameCursorKind.Repair : GameCursorKind.Arrow);
         if (_repairShown) RefreshRepairWindow();
         PumpRepair();
     }
@@ -366,5 +399,15 @@ public partial class World
     private void OnRepairInventoryGrid(ItemSlot[] items)
     {
         if (_repairShown) RefreshRepairWindow();
+    }
+
+    private void SyncRepairInventoryMode()
+    {
+        if (!_repairPanel.GetMeta("classic_inventory_repair", false).AsBool()
+            || !_mainWindows.TryGetValue("Inventory", out var window)) return;
+        window.SetMeta("classic_repair_mode", _repairShown);
+        window.SetMeta("classic_repair_pending", _repairInFlight);
+        window.SetMeta("classic_repair_close", Callable.From(CloseRepair));
+        window.SetMeta("classic_repair_all", Callable.From(RepairAll));
     }
 }

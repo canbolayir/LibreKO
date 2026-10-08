@@ -31,6 +31,8 @@ public partial class World
     private int _sealSlot = -1;
     private string _sealCode = "";
     private bool _sealShown;
+    private Notice? _sealNotice;
+    private bool _sealWaiting;
 
     private void SealInit()
     {
@@ -61,6 +63,7 @@ public partial class World
         _sealMode = mode;
         _sealSlot = -1;
         _sealCode = "";
+        DismissSealNotice();
         _sealPad.Visible = false;
         _sealPanel.Title = mode == SealMode.Secret ? "Item Seal / Unseal" : "Item Bind / Release";
         _sealPanel.Visible = true;
@@ -72,6 +75,7 @@ public partial class World
     {
         if (!_sealShown) return;
         _sealShown = false;
+        DismissSealNotice();
         _sealSlot = -1;
         _sealCode = "";
         _sealPanel.Visible = false;
@@ -114,11 +118,13 @@ public partial class World
             : $"{SealFee:n0} gold";
 
         _sealConfirm.Disabled = held.IsEmpty
+            || _sealWaiting
             || (_sealMode == SealMode.Secret && _sealCode.Length != SealCodeLength);
     }
 
     private void TakeSealSocket(int bagIndex)
     {
+        if (_sealWaiting || _sealNotice != null) return;
         int abs = GridStart + bagIndex;
         if (abs >= Inv.Length || Inv[abs].IsEmpty) return;
         _sealSlot = abs;
@@ -127,12 +133,14 @@ public partial class World
 
     private void ClearSealSocket()
     {
+        if (_sealWaiting || _sealNotice != null) return;
         _sealSlot = -1;
         RefreshSealWindow();
     }
 
     private void AskSealConfirm()
     {
+        if (_sealWaiting || _sealNotice != null || _sealConfirm.Disabled) return;
         if (_sealSlot < 0 || _sealSlot >= Inv.Length || Inv[_sealSlot].IsEmpty) return;
 
         var action = SealActionFor(_sealMode, Inv[_sealSlot].State);
@@ -145,16 +153,37 @@ public partial class World
             ItemSealType.Bind => "Bind this item to you?",
             _ => "Release the binding?",
         };
-        _sealAskPanel.Visible = true;
-        Audio.PlayUi(Sfx.MsgBoxPop);
+        int confirmedSlot = _sealSlot;
+        var confirmedItem = Inv[confirmedSlot];
+        _sealNotice = Notice.Confirm(this, _sealAskText.Text, "Confirm", "Cancel",
+            () =>
+            {
+                _sealNotice = null;
+                if (_sealSlot != confirmedSlot || !Inv[confirmedSlot].Equals(confirmedItem))
+                {
+                    RefreshSealWindow();
+                    return;
+                }
+                SendSeal();
+            }, () => _sealNotice = null, "Item Seal");
+    }
+
+    private void DismissSealNotice()
+    {
+        if (_sealNotice != null && GodotObject.IsInstanceValid(_sealNotice)) _sealNotice.Close();
+        _sealNotice = null;
     }
 
     private void SendSeal()
     {
         _sealAskPanel.Visible = false;
+        if (_sealWaiting) return;
         if (_sealSlot < 0 || _sealSlot >= Inv.Length || Inv[_sealSlot].IsEmpty) return;
 
         var slot = Inv[_sealSlot];
+        if (_sealMode == SealMode.Secret && _sealCode.Length != SealCodeLength) return;
+        _sealWaiting = true;
+        RefreshSealWindow();
         Net.I.SendItemSeal(
             SealActionFor(_sealMode, slot.State),
             slot.ItemId,
@@ -164,6 +193,7 @@ public partial class World
 
     private void OnItemSeal(ItemSealType sealType, ItemSealResult result, int itemId, int srcPos)
     {
+        _sealWaiting = false;
         int abs = srcPos >= 0 ? GridStart + srcPos : _sealSlot;
 
         if (result != ItemSealResult.Succeeded)
@@ -174,7 +204,8 @@ public partial class World
             return;
         }
 
-        ApplySealFlag(abs, sealType);
+        if (abs >= 0 && abs < Inv.Length && Inv[abs].ItemId == itemId)
+            ApplySealFlag(abs, sealType);
         CombatNotice(sealType switch
         {
             ItemSealType.Seal => "Item sealed.",
@@ -310,7 +341,7 @@ public partial class World
         for (int i = 0; i < SealBagCells; i++)
         {
             int index = i;
-            var cell = new WarehouseCell(GridStart + i, bag: true);
+            var cell = new WarehouseCell(GridStart + i, bag: true) { Name = "seal_bag_" + i };
             cell.OnActivate += _ => TakeSealSocket(index);
             cell.OnHover += HoverWarehouseCell;
             cell.OnHoverEnd += HideItemTooltip;
@@ -327,6 +358,17 @@ public partial class World
         footer.AddChild(_sealGold);
 
         BuildSealAskPanel();
+        _sealPanel.SetMeta("classic_service_controls", 1);
+        _sealSocket.Name = "seal_socket";
+        _sealHeadline.Name = "seal_headline";
+        _sealPrompt.Name = "seal_prompt";
+        _sealCodeRow.Name = "seal_code_row";
+        _sealCodeField.Name = "seal_code";
+        _sealPad.Name = "seal_keypad";
+        _sealGold.Name = "seal_gold";
+        _sealConfirm.Name = "seal_confirm";
+        _sealAskPanel.Name = "seal_approval";
+        _sealAskText.Name = "seal_approval_text";
     }
 
     private void BuildSealKeypad()

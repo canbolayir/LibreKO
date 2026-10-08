@@ -118,6 +118,14 @@ public partial class World
 
         ClearPieceBench();
         RefreshPieceBackpack();
+        _piecePanel.SetMeta("classic_service_controls", 1);
+        _pieceBackpackGrid.Name = "piece_bag";
+        _pieceMessage.Name = "piece_message";
+        _pieceSubMessage.Name = "piece_status";
+        _pieceStartBtn.Name = "piece_start";
+        _pieceStopBtn.Name = "piece_stop";
+        _pieceTalkBtn.Name = "piece_talk";
+        _pieceSocket.Name = "piece_socket";
     }
 
     private static Button PieceButton(string text, System.Action pressed)
@@ -139,6 +147,12 @@ public partial class World
         bench.AddThemeConstantOverride("separation", 16);
 
         _pieceSocket = new UpgradeSocket("", 64);
+        _pieceSocket.CanDrop = data => PieceDropSlot(data) >= 0;
+        _pieceSocket.Dropped = data =>
+        {
+            int abs = PieceDropSlot(data);
+            if (abs >= 0 && _piecePosition != abs - GridStart) PlacePiece(abs);
+        };
         _pieceSocket.Cleared += ClearPieceBench;
         _pieceSocket.Hovered += held => ShowItemTooltip(PieceSocketSlot(), held);
         _pieceSocket.Unhovered += HideItemTooltip;
@@ -150,7 +164,7 @@ public partial class World
         wheel.AddThemeConstantOverride("separation", 6);
         for (int i = 0; i < _pieceResultSockets.Length; i++)
         {
-            var socket = new UpgradeSocket("?", 56, interactive: false);
+            var socket = new UpgradeSocket("?", 56, interactive: false) { Name = "piece_reward_" + i };
             socket.Hovered += held => ShowItemTooltip(-1, held);
             socket.Unhovered += HideItemTooltip;
             _pieceResultSockets[i] = socket;
@@ -234,6 +248,16 @@ public partial class World
         _pieceSubMessage.Text = $"{_pieceRewards.Count} possible rewards.";
         RefreshPieceBackpack();
         RefreshPieceActions();
+    }
+
+    private int PieceDropSlot(Variant data)
+    {
+        if (!_pieceShown || _pieceBusy || _pieceSpinning || data.VariantType != Variant.Type.Dictionary) return -1;
+        var dict = data.AsGodotDictionary();
+        if (!dict.ContainsKey("invFrom")) return -1;
+        int abs = dict["invFrom"].AsInt32();
+        return abs >= GridStart && abs < GridStart + GridCount && abs < Inv.Length
+            && !Inv[abs].IsEmpty && ItemData.IsExchangePiece(Inv[abs].ItemId) ? abs : -1;
     }
 
     private void StartPieceSpin()
@@ -326,13 +350,16 @@ public partial class World
         _pieceBackpackCells.Clear();
         foreach (var child in _pieceBackpackGrid.GetChildren()) child.QueueFree();
 
-        var grid = new GridContainer { Columns = 5 };
+        bool fullInventory = _piecePanel.GetMeta("piece_full_inventory", false).AsBool();
+        var grid = new GridContainer { Columns = fullInventory ? 7 : 5 };
         grid.AddThemeConstantOverride("h_separation", 4);
         grid.AddThemeConstantOverride("v_separation", 4);
         _pieceBackpackGrid.AddChild(grid);
 
         var usable = UsableBackpackSlots(ItemData.IsExchangePiece);
-        foreach (int abs in usable)
+        var shown = fullInventory ? new List<int>() : usable;
+        if (fullInventory) for (int i = 0; i < GridCount; i++) shown.Add(GridStart + i);
+        foreach (int abs in shown)
         {
             int slot = abs;
             var cell = new UpgradeBackpackCell(slot, Inv[slot], _piecePosition == slot - GridStart);
@@ -342,7 +369,7 @@ public partial class World
             cell.Unhovered += HideItemTooltip;
             grid.AddChild(cell);
         }
-        for (int i = usable.Count; i < FilteredBackpackMinCells; i++)
+        for (int i = shown.Count; i < FilteredBackpackMinCells; i++)
             grid.AddChild(new UpgradeBackpackCell(-1, default, false));
 
         var footer = new HBoxContainer();
@@ -451,6 +478,8 @@ public partial class World
 
     private sealed partial class UpgradeSocket : PanelContainer
     {
+        public System.Func<Variant, bool>? CanDrop;
+        public System.Action<Variant>? Dropped;
         public event System.Action? Cleared;
         public event System.Action<ItemSlot>? Hovered;
         public event System.Action? Unhovered;
@@ -522,6 +551,8 @@ public partial class World
                 or InputEventMouseButton { Pressed: true, DoubleClick: true, ButtonIndex: MouseButton.Left })
                 Cleared?.Invoke();
         }
+        public override bool _CanDropData(Vector2 atPosition, Variant data) => _interactive && (CanDrop?.Invoke(data) ?? false);
+        public override void _DropData(Vector2 atPosition, Variant data) => Dropped?.Invoke(data);
     }
 
     private sealed partial class UpgradeBackpackCell : PanelContainer
@@ -530,12 +561,16 @@ public partial class World
         public event System.Action<int, ItemSlot>? Hovered;
         public event System.Action? Unhovered;
         private readonly ItemSlot _item;
+        private readonly int _absSlot;
+        private Vector2 _grab;
+        private bool _dragStarted;
 
         public bool HasItem => !_item.IsEmpty;
 
         public UpgradeBackpackCell(int absSlot, ItemSlot item, bool staged)
         {
             _item = item;
+            _absSlot = absSlot;
             MouseEntered += () => { if (!_item.IsEmpty) Hovered?.Invoke(absSlot, _item); };
             MouseExited += () => Unhovered?.Invoke();
             CustomMinimumSize = new Vector2(48, 48);
@@ -557,10 +592,12 @@ public partial class World
             AddChild(icon);
             if (UpgradeBadge.Show(this, item.ItemId) is { } badge) badge.Modulate = icon.Modulate;
 
-            if (item.Count > 1)
+            var definition = ItemData.Get(item.ItemId);
+            string badgeText = ItemData.CountBadge(definition, ItemData.ShownCount(definition, item));
+            if (badgeText.Length > 0)
             {
                 var count = HudStyle.Label(11, HorizontalAlignment.Right);
-                count.Text = item.Count.ToString();
+                count.Text = badgeText;
                 count.SetAnchorsPreset(LayoutPreset.BottomRight);
                 count.MouseFilter = MouseFilterEnum.Ignore;
                 AddChild(count);
@@ -569,8 +606,23 @@ public partial class World
 
         public override void _GuiInput(InputEvent ev)
         {
-            if (!_item.IsEmpty && ev is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+            if (ev is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click)
+            { _grab = click.Position; _dragStarted = false; }
+            if (!_item.IsEmpty && (ev is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right }
+                || ev is InputEventMouseButton { Pressed: false, ButtonIndex: MouseButton.Left } released
+                    && !_dragStarted && new Rect2(Vector2.Zero, Size).HasPoint(released.Position)))
                 Pressed?.Invoke();
+        }
+        public override Variant _GetDragData(Vector2 atPosition)
+        {
+            if (_item.IsEmpty || _absSlot < 0) return default;
+            _dragStarted = true;
+            var preview = new Control { MouseFilter = MouseFilterEnum.Ignore };
+            preview.AddChild(new TextureRect { Texture = ItemData.Icon(_item.ItemId), Size = Size - new Vector2(4, 4),
+                Position = new Vector2(2, 2) - _grab, ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.Scale, MouseFilter = MouseFilterEnum.Ignore });
+            DragLayer.Show(this, preview);
+            return new Godot.Collections.Dictionary { { "invFrom", _absSlot } };
         }
     }
 }

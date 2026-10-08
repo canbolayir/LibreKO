@@ -6,6 +6,7 @@ namespace LibreKO;
 public partial class World
 {
     private byte _resetKind;
+    private bool _resetAwaitingCost;
     private Notice? _resetConfirm;
 
     private void ResetConfirmInit()
@@ -25,13 +26,17 @@ public partial class World
 
     private void RequestReset(byte kind)
     {
+        if (_resetKind != 0) return;
         _resetKind = kind;
+        _resetAwaitingCost = true;
+        _classChangePanel?.SetMeta("redistribution_pending", true);
         Net.I.SendResetCostQuery(kind);
     }
 
     private void OnResetCost(int cost)
     {
-        if (_resetKind == 0) return;
+        if (_resetKind == 0 || !_resetAwaitingCost) return;
+        _resetAwaitingCost = false;
         DismissResetConfirm();
 
         bool stat = _resetKind == Net.ResetKindStat;
@@ -39,7 +44,7 @@ public partial class World
         string body = $"Every one of your {what} goes back into the pool, and it costs "
                       + $"{cost:n0} gold.";
         if (stat)
-            body += "\n\nYour inventory must be empty.";
+            body += "\n\nUnequip every item first.";
 
         _resetConfirm = Notice.Confirm(
             this,
@@ -53,6 +58,7 @@ public partial class World
 
     private void ConfirmReset()
     {
+        if (_resetKind == 0 || _resetAwaitingCost) return;
         _resetConfirm = null;
         if (_resetKind == Net.ResetKindStat) Net.I.SendStatReset();
         else Net.I.SendSkillReset();
@@ -62,6 +68,8 @@ public partial class World
     {
         _resetConfirm = null;
         _resetKind = 0;
+        _resetAwaitingCost = false;
+        _classChangePanel?.SetMeta("redistribution_pending", false);
     }
 
     private void DismissResetConfirm()
@@ -77,7 +85,7 @@ public partial class World
         if (!ok)
         {
             CombatNotice(money > 0
-                ? $"The redistribution needs {money:n0} gold, and an empty inventory."
+                ? $"The redistribution needs {money:n0} gold, and empty equipment slots."
                 : "There is nothing to redistribute.");
             CancelReset();
             return;

@@ -311,6 +311,14 @@ public partial class World
         close.CustomMinimumSize = new Vector2(120, 0);
         close.Pressed += CloseWarp;
         buttons.AddChild(close);
+        _warpPanel.SetMeta("classic_service_controls", 1);
+        _warpScroll.Name = "warp_list_scroll";
+        _warpImage.Name = "warp_image";
+        _warpLevels.Name = "warp_levels";
+        _warpDesc.Name = "warp_description";
+        _warpGoldLbl.Name = "warp_gold";
+        _warpStatus.Name = "warp_status";
+        _warpTravel.Name = "warp_travel";
     }
 
     private void OnWarpList(List<Net.WarpListEntry> warps)
@@ -401,7 +409,8 @@ public partial class World
         {
             WarpData.TryGet(_warpEntries[i].WarpId, out var rowInfo);
             bool selected = i == index;
-            _warpRows[i].AddThemeStyleboxOverride("panel", UiTheme.Row(selected));
+            _warpRows[i].SetMeta("service_selected", selected);
+            if (!_warpPanel.HasMeta("classic_service")) _warpRows[i].AddThemeStyleboxOverride("panel", UiTheme.Row(selected));
             if (_warpRows[i].GetChild(0).GetChild(0) is Label label)
                 label.AddThemeColorOverride("font_color", WarpRowColor(rowInfo, selected));
         }

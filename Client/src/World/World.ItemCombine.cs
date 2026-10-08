@@ -110,11 +110,16 @@ public partial class World
         _itemCombineFooter = new FooterBand { Hint = ItemCombineHint };
         root.AddChild(_itemCombineFooter);
         ShowItemCombinePrompt();
+        _itemCombinePanel.SetMeta("classic_service_controls", 1);
+        _itemCombineStrip.Name = "combine_detail";
+        _itemCombineFooter.Name = "combine_footer";
+        _itemCombineResult.Name = "combine_result";
+        _itemCombineButton.Name = "combine_action";
     }
 
     private ItemSlotView CombineSocket(int index)
     {
-        var socket = new ItemSlotView(ItemCombineSocketSize) { Index = index };
+        var socket = new ItemSlotView(ItemCombineSocketSize) { Index = index, Name = "combine_material_" + index };
         socket.RightClicked += _ => ClearCombineSocket(index);
         socket.DoubleClicked += _ => ClearCombineSocket(index);
         socket.Hovered += s => { if (!s.Item.IsEmpty) ShowItemTooltip(-1, s.Item); };
@@ -236,7 +241,7 @@ public partial class World
         }
         AskAmount(slot, CombineText(ItemCombine.QuantityText, "Please enter the quantity."), 0,
             Math.Min((int)slot.Count, ItemCombine.MaxCount), countable: true,
-            (count, _) => StageCombine(socket, abs, count), priceEditable: false);
+            (count, _) => StageCombine(socket, abs, count), priceEditable: false, quantityOnly: true);
     }
 
     private void StageCombine(int socket, int abs, int count)

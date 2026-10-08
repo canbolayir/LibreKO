@@ -28,6 +28,7 @@ public partial class World
         AddChild(_combineBookLayer);
 
         _combineBookPanel = new HudWindow("combinerecipes", "Book of Transformation", bodyMinWidth: CombineBookWidth) { Visible = false };
+        _combineBookPanel.SetMeta("classic_service_controls", 1);
         _combineBookPanel.Closed += CloseCombineRecipeBook;
         _combineBookLayer.AddChild(_combineBookPanel);
 
@@ -198,6 +199,7 @@ public partial class World
         button.AddThemeStyleboxOverride("hover", UiTheme.ListRow(true));
         button.AddThemeStyleboxOverride("pressed", UiTheme.ListRow(true));
         button.Pressed += pressed;
+        button.SetMeta("service_selected", selected);
         return button;
     }
 }
