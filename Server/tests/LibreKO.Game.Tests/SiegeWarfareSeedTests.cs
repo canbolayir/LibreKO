@@ -55,4 +55,38 @@ public class SiegeWarfareSeedTests : GameTestBase
         row.MoradonTariff.Should().Be(shipped.MoradonTariff);
         row.WarDay.Should().Be(shipped.WarDay);
     }
+
+    [Fact]
+    public async Task ATableThatHoldsRowsIsLeftAloneUnlessTheSeedIsForced()
+    {
+        using var provider = CreateProvider(db => db.SiegeWarfare.Add(new SiegeWarfareData
+        {
+            CastleIndex = CastleIndex,
+            MasterKnights = CapturedByClan,
+            WarDay = 0,
+            WarTime = 0,
+            WarMinute = 0,
+        }));
+        using var scope = provider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var applied = await new DataSeeder(db, NullLogger<DataSeeder>.Instance).SeedEntityAsync(new SiegeWarfareSeed());
+
+        applied.Should().BeFalse();
+        var row = await db.SiegeWarfare.AsNoTracking().SingleAsync();
+        (row.WarDay, row.WarTime, row.WarMinute).Should().Be(((byte)0, (byte)0, (byte)0));
+    }
+
+    [Fact]
+    public async Task AnEmptyTableIsFilledWithoutForcing()
+    {
+        using var provider = CreateProvider(_ => { });
+        using var scope = provider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var applied = await new DataSeeder(db, NullLogger<DataSeeder>.Instance).SeedEntityAsync(new SiegeWarfareSeed());
+
+        applied.Should().BeTrue();
+        (await db.SiegeWarfare.CountAsync()).Should().Be(1);
+    }
 }

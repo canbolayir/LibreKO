@@ -49,6 +49,8 @@ internal static class ModelBuilderExtensions
         Configure<ItemOpData>(modelBuilder, "ItemOps");
         Configure<ItemUpgradeData>(modelBuilder, "ItemUpgrades");
         Configure<ItemUpgradeSettingsData>(modelBuilder, "ItemUpgradeSettings");
+        Configure<GameplayTipData>(modelBuilder, "GameplayTips");
+        Configure<GameplayTipSettingsData>(modelBuilder, "GameplayTipSettings");
         Configure<ItemUpgradeRecipeData>(modelBuilder, "ItemUpgradeRecipes");
         Configure<PremiumItemData>(modelBuilder, "PremiumItems");
         Configure<PremiumItemExpData>(modelBuilder, "PremiumItemExps");
@@ -96,6 +98,7 @@ internal static class ModelBuilderExtensions
         Configure<BotMerchantData>(modelBuilder, "BotMerchants");
         Configure<UserBotData>(modelBuilder, "UserBots");
         Configure<SlaveMerchantData>(modelBuilder, "SlaveMerchants");
+        Configure<RentalListingData>(modelBuilder, "RentalListings");
         Configure<SlaveMerchantTimeData>(modelBuilder, "SlaveMerchantTimes");
 
         Configure<Patch>(modelBuilder, "Patches");

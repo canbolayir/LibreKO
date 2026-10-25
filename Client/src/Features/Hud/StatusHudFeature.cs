@@ -2,7 +2,7 @@
 
 namespace LibreKO.Features.Hud;
 
-internal sealed class StatusHudFeature : IFeature
+internal sealed class StatusHudFeature : IFeature, IHudTickFeature
 {
     private readonly IWorldContext context;
     private readonly SelfSession self;
@@ -15,7 +15,10 @@ internal sealed class StatusHudFeature : IFeature
         this.combat = combat;
     }
 
-    private static readonly Vector2 OnlineTimeHudPosition = new(120f, 11f);
+    private static readonly Vector2 NameHudPosition = new(120f, 8f);
+    private static readonly Vector2 NameHudSize = new(140f, 18f);
+    private static readonly Vector2 OnlineTimeHudSize = new(96f, 16f);
+    private const int NameFontSize = 13;
     private const double OnlineTimeTickSeconds = 1.0;
     private const ulong MsecPerSecond = 1000;
     private Label? onlineLabel;
@@ -47,6 +50,16 @@ internal sealed class StatusHudFeature : IFeature
     internal static Vector2 VitalsSize => Platform.TouchUi ? TouchSize : Size;
 
     internal Control Root { get; private set; } = null!;
+
+    private int scaledZone = -1;
+
+    public void HudTick(double delta, double nowSec)
+    {
+        if (context.Zone == scaledZone || HpBar == null) return;
+        scaledZone = context.Zone;
+        HpBar.TextScale = CombatLogLines.HpTextScale(scaledZone);
+        PluginHost.Game.RaiseCharacter();
+    }
 
     internal void RefreshVitalBars()
     {
@@ -145,8 +158,22 @@ internal sealed class StatusHudFeature : IFeature
 
         if (!touch)
         {
-            onlineLabel = HudStyle.Label(11, HorizontalAlignment.Left);
-            onlineLabel.Position = OnlineTimeHudPosition;
+            var nameLabel = HudStyle.Label(NameFontSize, HorizontalAlignment.Left);
+            nameLabel.Position = NameHudPosition;
+            nameLabel.Size = NameHudSize;
+            nameLabel.ClipText = true;
+            nameLabel.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+            nameLabel.Text = self.LastEnter.Name ?? "";
+            nameLabel.TooltipText = nameLabel.Text;
+            nameLabel.MouseFilter = Control.MouseFilterEnum.Pass;
+            nameLabel.AddThemeColorOverride("font_color", UiTheme.TextHi);
+            nameLabel.AddThemeColorOverride("font_outline_color", Colors.Black);
+            nameLabel.AddThemeConstantOverride("outline_size", 2);
+            status.AddChild(nameLabel);
+
+            onlineLabel = HudStyle.Label(11, HorizontalAlignment.Right);
+            onlineLabel.Size = OnlineTimeHudSize;
+            onlineLabel.Position = new Vector2(HpBarPos.X + HpBarSize.X - OnlineTimeHudSize.X, NameHudPosition.Y + 2f);
             onlineLabel.TooltipText = "Time online since this character entered the game";
             onlineLabel.MouseFilter = Control.MouseFilterEnum.Pass;
             onlineLabel.AddThemeColorOverride("font_color", UiTheme.TextDim);

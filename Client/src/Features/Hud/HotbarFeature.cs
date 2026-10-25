@@ -8,6 +8,7 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
     private readonly IWorldContext context;
     private readonly ChaosSession chaos;
     private readonly BifrostSession bifrost;
+    private readonly ManesSurvivalSession manes;
     private readonly CombatSession combat;
     private readonly GenieSession genie;
     private readonly ProgressSession progress;
@@ -19,11 +20,12 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
     private readonly SoccerSystem soccer;
     private readonly SkillCastSystem skillCast;
 
-    public HotbarFeature(IWorldContext context, ChaosSession chaos, BifrostSession bifrost, CombatSession combat, GenieSession genie, ProgressSession progress, PvpSession pvp, SelfSession self, SkillTimers skillTimers, ICombatRequests combatRequests, MonsterStoneFeature monsterStone, SoccerSystem soccer, SkillCastSystem skillCast)
+    public HotbarFeature(IWorldContext context, ChaosSession chaos, BifrostSession bifrost, ManesSurvivalSession manes, CombatSession combat, GenieSession genie, ProgressSession progress, PvpSession pvp, SelfSession self, SkillTimers skillTimers, ICombatRequests combatRequests, MonsterStoneFeature monsterStone, SoccerSystem soccer, SkillCastSystem skillCast)
     {
         this.context = context;
         this.chaos = chaos;
         this.bifrost = bifrost;
+        this.manes = manes;
         this.combat = combat;
         this.genie = genie;
         this.progress = progress;
@@ -62,7 +64,7 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
         set
         {
             hotSelected = value;
-            combat.SelectedHotSlot = (self.MyCharId, value);
+            combat.SelectHotSlot(self.MyCharId, value);
         }
     }
     private bool hotLoadedFromServer;
@@ -100,6 +102,7 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
         Refresh();
         ApplyChaos();
         ApplyFullMoon();
+        ApplyManes();
 
         if (combat.SkillBar is not { } bar)
         {
@@ -365,6 +368,14 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
         Refresh();
     }
 
+    internal void StepHotPage(int delta)
+    {
+        int page = Math.Clamp(HotPage + delta, 0, ReachablePages - 1);
+        if (page == HotPage) return;
+        HotPage = page;
+        Refresh();
+    }
+
     private void ChangeStripPage(HotStrip strip, int delta)
     {
         strip.Page = ((strip.Page + delta) % HotPages + HotPages) % HotPages;
@@ -533,7 +544,7 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
         }
         else
         {
-            if (!Assignable(id) || !Takes(id, dragged: true)) return;
+            if (!Assignable(id) || !Takes(id, dragged: true) || ManesDuplicate(id)) return;
             Slots[dest] = id;
         }
         Refresh();
@@ -551,7 +562,7 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
         }
         else
         {
-            if (!Assignable(id) || !Takes(id, dragged: true)) return;
+            if (!Assignable(id) || !Takes(id, dragged: true) || ManesDuplicate(id)) return;
             Slots[dest] = id;
         }
         Refresh();
@@ -575,6 +586,24 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
                 return;
             }
         }
+    }
+
+    internal bool ApplyQuickslot(int page, IReadOnlyList<int> cells)
+    {
+        if (page is < 0 or >= HotPages || RefuseEdit()) return true;
+        bool usable = true;
+        for (int cell = 0; cell < HotSlotsPerPage && cell < cells.Count; cell++)
+        {
+            if (!QuickslotSaves.Usable(cells[cell], Assignable))
+            {
+                usable = false;
+                break;
+            }
+            Slots[page * HotSlotsPerPage + cell] = cells[cell];
+        }
+        Refresh();
+        Save();
+        return usable;
     }
 
     private void SetHotSlot(int abs, int id)
@@ -731,6 +760,11 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
             bifrost.KeepFullMoonHotbar((int[])Slots.Clone());
             return;
         }
+        if (InManesZone)
+        {
+            manes.KeepHotbar((int[])Slots.Clone());
+            return;
+        }
         combatRequests.SkillDataSave(Slots);
         WriteLocal();
     }
@@ -748,6 +782,12 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
         {
             hotLoadedFromServer = true;
             ApplyFullMoon();
+            return;
+        }
+        if (InManesZone && manes.Hotbar != null)
+        {
+            hotLoadedFromServer = true;
+            ApplyManes();
             return;
         }
 
@@ -826,7 +866,7 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
 
     private void WriteLocal()
     {
-        if (InChaosZone || context.Zone == FullMoon.Zone) return;
+        if (InChaosZone || context.Zone == FullMoon.Zone || InManesZone) return;
         var arr = new Godot.Collections.Array();
         foreach (int id in Slots) arr.Add(id);
         using var f = Godot.FileAccess.Open(LocalPath(), Godot.FileAccess.ModeFlags.Write);
@@ -857,7 +897,60 @@ internal sealed partial class HotbarFeature : IFeature, ILateTickFeature
 
     private bool Assignable(int id) =>
         SkillData.Get(id) is not { } s
-        || (ChaosBattle.IsZone(context.Zone) ? s.Tree == ChaosBattle.SkillTree : self.SkillLearned(s));
+        || (ChaosBattle.IsZone(context.Zone) ? s.Tree == ChaosBattle.SkillTree
+            : InManesZone ? s.Tree == ManesSurvival.ManesTree
+            : self.SkillLearned(s));
+
+    internal bool InManesZone => ManesSurvival.IsZone(context.Zone);
+
+    private bool ManesDuplicate(int id) => InManesZone && System.Array.IndexOf(Slots, id) >= 0;
+
+    private void ApplyManes()
+    {
+        if (!InManesZone || manes.Hotbar is not { } kept) return;
+        System.Array.Clear(Slots, 0, HotTotal);
+        System.Array.Copy(kept, Slots, Math.Min(kept.Length, HotTotal));
+        HotPage = 0;
+        Refresh();
+    }
+
+    internal void StartManes()
+    {
+        System.Array.Clear(Slots, 0, HotTotal);
+        for (int i = 0; i < ManesSurvival.StartBar.Length; i++)
+            Slots[i] = ManesSurvival.StartBar[i];
+        HotPage = 0;
+        HotSelected = -1;
+        manes.KeepHotbar((int[])Slots.Clone());
+        Refresh();
+    }
+
+    internal ManesFit ManesFitOf(int code, ManesBook book)
+    {
+        foreach (int id in Slots)
+        {
+            if (id == 0 || book.PickOfMagic(id) is not { } held) continue;
+            var fit = ManesSurvival.Fit(held.Code, code);
+            if (fit != ManesFit.Free) return fit;
+        }
+        return ManesFit.Free;
+    }
+
+    internal void PlaceManesSkill(ManesPick pick, ManesBook book)
+    {
+        for (int abs = 0; abs < HotTotal; abs++)
+        {
+            if (Slots[abs] == 0 || book.PickOfMagic(Slots[abs]) is not { } held) continue;
+            var fit = ManesSurvival.Fit(held.Code, pick.Code);
+            if (fit == ManesFit.AlreadyHeld) return;
+            if (fit != ManesFit.Replaces) continue;
+            Slots[abs] = pick.Magic;
+            Refresh();
+            Save();
+            return;
+        }
+        AddTo(pick.Magic);
+    }
 
     internal bool ChaosBattleLocked => ChaosBattle.BattleLocked(context.Zone, progress.SelfAbnormal);
 

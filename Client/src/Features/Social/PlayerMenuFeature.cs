@@ -41,6 +41,7 @@ internal sealed partial class PlayerMenuFeature : IFeature
         CopyName,
         ClanBattle,
         ClanSurrender,
+        Manage,
     }
 
     private static readonly System.Collections.Generic.Dictionary<PlayerMenuAction, (string Key, string Caption)> PlayerMenuRows = new()
@@ -57,6 +58,7 @@ internal sealed partial class PlayerMenuFeature : IFeature
         [PlayerMenuAction.CopyName] = ("copy_name", "Copy name"),
         [PlayerMenuAction.ClanBattle] = ("clan_battle", "Clan battle"),
         [PlayerMenuAction.ClanSurrender] = ("clan_surrender", "Surrender the clan battle"),
+        [PlayerMenuAction.Manage] = ("manage", "Manage"),
     };
 
     private PopupMenu playerMenu = null!;
@@ -104,6 +106,7 @@ internal sealed partial class PlayerMenuFeature : IFeature
         if (clan.MyClan.IsChief && hostility.AtClanWarWith(target.KnightsId))
             rows.Add(PlayerMenuAction.ClanSurrender);
         rows.Add(PlayerMenuAction.CopyName);
+        if (world.AdminPanel.CanManagePlayers) rows.Add(PlayerMenuAction.Manage);
         Present(rows, at);
     }
 
@@ -246,6 +249,10 @@ internal sealed partial class PlayerMenuFeature : IFeature
                 context.Log.Notice($"Copied {name}.");
                 break;
 
+            case PlayerMenuAction.Manage:
+                world.AdminPanel.ManagePlayer(name);
+                break;
+
             case PlayerMenuAction.ClanBattle:
                 clanBattleWarRequests.ClanBattleChallenge(id);
                 break;
@@ -275,6 +282,7 @@ internal sealed partial class PlayerMenuFeature : IFeature
 
     internal void RequestTradeWith(int charId, string name)
     {
+        if (ManesSurvival.IsZone(context.Zone)) return;
         if (world.Exchange.TradeHoldsInput) { context.Log.Notice("You are already trading."); return; }
         if (context.Self.Dead) return;
 

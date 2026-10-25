@@ -31,6 +31,14 @@ internal sealed class BifrostReader : IPacketReader
     {
         switch (sub)
         {
+            case TempleSubOpcode.TempleEvent:
+                {
+                    if (p.RemainingBytes < 4) break;
+                    var type = TempleJoin.FromIndunType(p.ReadShort());
+                    int seconds = p.ReadShort();
+                    if (type != TempleEventType.None) bifrost.RaiseBifrostTime(Math.Max(0, seconds), type);
+                    break;
+                }
             case TempleSubOpcode.FullMoonEntry:
                 if (p.RemainingBytes >= 1) bifrost.RaiseFullMoonEntry(p.ReadByte());
                 break;
@@ -43,8 +51,8 @@ internal sealed class BifrostReader : IPacketReader
             case TempleSubOpcode.TempleEventJoin:
                 {
                     var result = p.RemainingBytes >= 1 ? (TempleJoinResult)p.ReadByte() : TempleJoinResult.NotOpen;
-                    int zone = p.RemainingBytes >= 2 ? p.ReadShort() : 0;
-                    bifrost.RaiseBifrostJoin(result, zone);
+                    int indunType = p.RemainingBytes >= 2 ? p.ReadShort() : 0;
+                    bifrost.RaiseBifrostJoin(result, indunType);
                     break;
                 }
             case TempleSubOpcode.TempleEventCounter:
@@ -94,14 +102,14 @@ internal sealed class BifrostReader : IPacketReader
                     int subStage = p.ReadUShort();
                     int limit = p.ReadInt();
                     int elapsed = p.ReadInt();
-                    bifrost.ApplyDrakiTimer(stage, subStage, Math.Max(0, limit - elapsed), nowMsec());
+                    bifrost.ApplyDrakiTimer(stage, subStage, limit, elapsed, nowMsec());
                     break;
                 }
             case TempleSubOpcode.DrakiLeaveFirst:
-                bifrost.ApplyDrakiLeave();
+                bifrost.ApplyDrakiLeave(nowMsec());
                 break;
             case TempleSubOpcode.DrakiLeaveSecond:
-                if (DrakiWire.ReadStageEnd(p) is { } finish) bifrost.ApplyDrakiStageEnd(finish);
+                if (DrakiWire.ReadStageEnd(p) is { } finish) bifrost.ApplyDrakiStageEnd(finish, nowMsec());
                 break;
             case TempleSubOpcode.DrakiEnter:
                 if (p.RemainingBytes >= 1) bifrost.RaiseDrakiEnterResult((DrakiEnterResult)p.ReadByte());

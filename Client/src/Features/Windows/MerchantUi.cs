@@ -47,7 +47,7 @@ internal static class MerchantUi
 
     internal static MerchantCell[] BuildGrid(
         IItemTooltips tooltips, Control parent, int count, int columns, System.Action<int>? onClick, int size = 45,
-        string dragKey = "", string acceptKey = "", System.Action<int, int>? onDropFrom = null)
+        string dragKey = "", string acceptKey = "", System.Action<int, int>? onDropFrom = null, System.Action<int, int>? onMove = null)
     {
         var grid = Grid(columns);
         parent.AddChild(grid);
@@ -62,6 +62,7 @@ internal static class MerchantUi
                 DragKey = dragKey,
                 AcceptKey = acceptKey,
                 OnDropFrom = onDropFrom,
+                OnMove = onMove,
             };
             cells[i] = cell;
             grid.AddChild(cell);

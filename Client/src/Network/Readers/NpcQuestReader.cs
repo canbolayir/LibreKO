@@ -130,6 +130,13 @@ internal sealed class NpcQuestReader : IPacketReader
                     npcQuest.RaiseQuestObjectives(objectives);
                     break;
                 }
+            case QuestSubOpcode.ObjectivesBatch:
+                foreach (var objectives in QuestObjectives.ReadBatch(p))
+                {
+                    questBook.ApplyObjectives(objectives);
+                    npcQuest.RaiseQuestObjectives(objectives);
+                }
+                break;
             case QuestSubOpcode.TargetDetail:
                 npcQuest.RaiseQuestTarget(QuestTargetDetail.Read(p));
                 break;

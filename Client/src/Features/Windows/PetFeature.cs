@@ -1,4 +1,5 @@
 ﻿using Godot;
+using LibreKO.Features.Hud;
 
 namespace LibreKO.Features.Windows;
 
@@ -20,6 +21,9 @@ internal sealed class PetFeature : IFeature, IEscapable
     }
 
     private const int FoodKind = 176;
+    private const int TreatKind = 175;
+    private const string FeedQuestion = "Do you want to feed?";
+    private const string FeedingHint = "Feeding: drag a familiar food or treat here from your bag";
     private const string NoneText = "No familiar is out. Equip one and use a Familiar Summon.";
 
     private CanvasLayer layer = null!;
@@ -38,11 +42,15 @@ internal sealed class PetFeature : IFeature, IEscapable
     private Button feedBtn = null!;
     private Button dismissBtn = null!;
     private readonly ItemSlotView[] bagCells = new ItemSlotView[PetSheet.InventorySize];
+    private GridContainer skillGrid = null!;
+    private (int Class, int Level) skillsShown = (-1, -1);
     private bool shown;
 
     internal bool IsOpen => shown;
 
     private const float BagCellSize = 44f;
+    private const float SkillCellSize = 30f;
+    private const string SkillsHint = "Drag a skill onto the familiar bar. Drag a skill off the bar to clear its cell.";
     private const string BagHint = "Familiar items only, one of each kind. Automatic Looting lets Looting mode pick up loot.";
 
     public void Build()
@@ -125,19 +133,32 @@ internal sealed class PetFeature : IFeature, IEscapable
         {
             var cell = new ItemSlotView(BagCellSize) { Index = i, Veiled = true, CanDrop = CanDropOnBag, Dropped = DropOnBag };
             cell.RightClicked += c => TakeFromBag(c.Index);
+            cell.Hovered += view => context.Tooltips.Show(-1, view.Item);
+            cell.Unhovered += _ => context.Tooltips.Hide();
             bagCells[i] = cell;
             bag.AddChild(cell);
         }
 
         root.AddChild(UiTheme.Rule());
+        root.AddChild(UiTheme.SectionTitle("Skills"));
+        skillGrid = new GridContainer { Columns = PetSkills.SlotsPerPage, TooltipText = SkillsHint };
+        skillGrid.AddThemeConstantOverride("h_separation", 3);
+        skillGrid.AddThemeConstantOverride("v_separation", 3);
+        root.AddChild(skillGrid);
+
+        root.AddChild(UiTheme.Rule());
         var actions = new HBoxContainer();
         actions.AddThemeConstantOverride("separation", 8);
         root.AddChild(actions);
+        var feedingCell = new ItemSlotView(BagCellSize) { CanDrop = CanDropFood, Dropped = DropFood, TooltipText = FeedingHint };
+        actions.AddChild(feedingCell);
         feedBtn = UiTheme.ActionButton("Feed", "Give your familiar the most filling food in your bag");
         feedBtn.Pressed += Feed;
+        feedBtn.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         actions.AddChild(feedBtn);
         dismissBtn = UiTheme.ActionButton("Dismiss", "Send your familiar away");
         dismissBtn.Pressed += Dismiss;
+        dismissBtn.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         actions.AddChild(dismissBtn);
 
         status = HudStyle.Label(12);
@@ -216,6 +237,34 @@ internal sealed class PetFeature : IFeature, IEscapable
             return;
         }
         requests.Feed(slot - Inventory.GridStart, self.Inventory[slot].ItemId);
+    }
+
+    private bool CanDropFood(ItemSlotView cell, Variant data)
+    {
+        if (context.Self.Dead || pet.Pet == null || data.VariantType != Variant.Type.Dictionary) return false;
+        var d = data.AsGodotDictionary();
+        if (!d.ContainsKey("invFrom") || d["invFrom"].VariantType != Variant.Type.Int) return false;
+        int abs = d["invFrom"].AsInt32();
+        return abs >= Inventory.GridStart && abs < Inventory.GridStart + Inventory.GridCount && abs < self.Inventory.Length
+               && self.Inventory[abs] is { IsEmpty: false, Count: > 0 } slot && slot.State != ItemFlag.Duplicate
+               && ItemData.Get(slot.ItemId) is { Kind: FoodKind or TreatKind };
+    }
+
+    private void DropFood(ItemSlotView cell, Variant data)
+    {
+        if (!CanDropFood(cell, data)) return;
+        int abs = data.AsGodotDictionary()["invFrom"].AsInt32();
+        var held = self.Inventory[abs];
+        if (ItemData.Get(held.ItemId) is { Kind: FoodKind } && pet.Pet is { Satisfaction: >= PetSheet.MaxSatisfaction })
+        {
+            SetStatus("Your familiar is already full.", false);
+            return;
+        }
+        Notice.Confirm(context.Root, FeedQuestion, "OK", "Cancel", () =>
+        {
+            if (pet.Pet == null || context.Self.Dead || self.Inventory[abs].ItemId != held.ItemId) return;
+            requests.Feed(abs - Inventory.GridStart, held.ItemId);
+        }, title: "Familiar");
     }
 
     internal int BestFoodSlot()
@@ -354,6 +403,7 @@ internal sealed class PetFeature : IFeature, IEscapable
             }
             hpBar.SetFraction(0f, "");
             mpBar.SetFraction(0f, "");
+            ShowSkills(null);
             HighlightMode(null);
             if (status.Text.Length == 0) SetStatus(NoneText, false);
             return;
@@ -368,6 +418,28 @@ internal sealed class PetFeature : IFeature, IEscapable
         satBar.SetFraction(petSheet.SatisfactionFraction, $"{petSheet.Satisfaction / 100f:0.00}%");
         HighlightMode(petSheet.Mode);
         for (int i = 0; i < bagCells.Length && i < petSheet.Items.Length; i++) bagCells[i].Set(petSheet.Items[i]);
+        ShowSkills(petSheet);
+    }
+
+    private void ShowSkills(PetSheet? petSheet)
+    {
+        var key = petSheet == null ? (-1, -1) : (petSheet.Class, petSheet.Level);
+        if (key == skillsShown) return;
+        skillsShown = key;
+        foreach (var child in skillGrid.GetChildren()) child.QueueFree();
+        if (petSheet == null) return;
+        var skills = new List<(int, int)>();
+        foreach (var s in SkillData.All)
+            if (s.Id is >= PetSkills.FirstSkill and <= PetSkills.LastSkill) skills.Add((s.Id, s.Tree));
+        foreach (int skillId in PetSkills.Owned(skills, petSheet.Class))
+        {
+            if (SkillData.Get(skillId) is not { } s) continue;
+            bool locked = !PetSkills.Unlocked(s.Level, petSheet.Level);
+            var cell = new PetSkillCell(SkillCellSize) { Draggable = true };
+            cell.Set(s.Id, locked, dim: false,
+                SkillText.Tooltip(s) + "\n" + PetSkills.AutoCastLine(s.AutoCast) + (locked ? $"\nFamiliar level {s.Level}" : ""));
+            skillGrid.AddChild(cell);
+        }
     }
 
     private bool CanDropOnBag(ItemSlotView cell, Variant data)

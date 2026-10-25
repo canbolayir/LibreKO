@@ -108,6 +108,7 @@ public class UserSession
     // Knight Cash (account-scoped premium currency).
     public int KnightCash { get; set; }
     public GameLanguage Language { get; set; } = GameLanguage.English;
+    public GameplayTipRotation GameplayTips { get; } = new();
 
     public string LanguageCode => Language switch
     {
@@ -128,6 +129,7 @@ public class UserSession
     public byte ZoneId { get; set; }
     public ushort Room { get; set; }
     public (byte ZoneId, float X, float Z)? InstanceReturn { get; set; }
+    public ManesSurvivalEntry? ManesSurvival { get; set; }
     public short Direction { get; set; }
 
     // ArenaZones.NoArena unless standing inside a free-for-all arena region of the current zone.
@@ -253,6 +255,8 @@ public class UserSession
 
     public short GenieHours => (short)Math.Min(Math.Ceiling(GenieTime.RemainingSeconds / 3600), short.MaxValue);
 
+    public FlashBonusState Flash { get; } = new();
+
     public ushort GenieMinutes => (ushort)Math.Min(Math.Ceiling(GenieTime.RemainingSeconds / 60), ushort.MaxValue);
 
     private bool genieActive;
@@ -268,6 +272,7 @@ public class UserSession
     }
 
     public byte[] GenieOptions { get; set; } = [];
+    public RankMarks RankMarks { get; set; } = new();
 
     public List<RepurchaseEntry> Repurchases { get; } = [];
 
@@ -572,6 +577,11 @@ public class UserSession
         HealStrikesEnemies = HealStrike.Armed(Inventory, gameData.GetItemOps, now);
         if (ZoneId == ChaosRules.Zone)
             Stats.MaxHp = ChaosRules.MaxHp;
+        if (ManesSurvival is { } survival)
+        {
+            Stats.MaxHp = survival.MaxHp;
+            Stats.MaxMp = survival.MaxMp;
+        }
         MaxHp = Stats.MaxHp;
         MaxMp = Stats.MaxMp;
     }
@@ -861,6 +871,14 @@ public class UserSession
 
     public byte[] SavedItems => WithLock(s => UserSessionBinaryState.SerializeItems(s.AsIfOffersCameBack().Bag));
 
+    public byte SavedLevel => ManesSurvival?.Real.Level ?? Level;
+
+    public long SavedExperience => ManesSurvival?.Real.Experience ?? Experience;
+
+    public short SavedHp => ManesSurvival?.Real.Hp ?? Hp;
+
+    public short SavedMp => ManesSurvival?.Real.Mp ?? Mp;
+
     public byte[] SavedWarehouse => WithLock(s => UserSessionBinaryState.SerializeWarehouse(s.AsIfOffersCameBack().Store));
 
     private long HeldGold => Trade.BuyMerchantGold
@@ -869,6 +887,9 @@ public class UserSession
     private (ItemSlot[] Bag, ItemSlot[] Store) AsIfOffersCameBack()
     {
         var bag = Copies(Inventory);
+        if (ManesSurvival is { } survival)
+            for (var i = 0; i < survival.Real.Bag.Length; i++)
+                InventoryJournal.CopyInto(survival.Real.Bag[i], bag[InventoryConstants.InventoryStart + i]);
         var store = Copies(Warehouse);
         foreach (var item in Trade.ExchangeItemList.Where(item => item.ItemId != InventoryConstants.ItemGold))
         {

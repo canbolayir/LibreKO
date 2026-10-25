@@ -24,7 +24,7 @@ public static class ChatCategories
         if (serverNotice) return ChatCategory.Notice;
         return type switch
         {
-            ChatType.General or ChatType.GameMaster or ChatType.SeekingParty => ChatCategory.General,
+            ChatType.General or ChatType.GameMaster or ChatType.SeekingParty or ChatType.NpcShout or ChatType.GameplayTip => ChatCategory.General,
             ChatType.ChatRoom => ChatCategory.ChatRoom,
             ChatType.NoahKnights => ChatCategory.NoahKnights,
             ChatType.Private => ChatCategory.Whisper,

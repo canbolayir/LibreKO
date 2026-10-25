@@ -35,6 +35,9 @@ public class GameServerSettings
     public JackpotSettings Jackpot { get; set; } = new();
     public ChatRoomSettings ChatRooms { get; set; } = new();
     public BowlEventSettings BowlEvent { get; set; } = new();
+    public ManesSurvivalSettings ManesSurvival { get; set; } = new();
+    public RankMarkSettings RankMarks { get; set; } = new();
+    public RentalSettings Rental { get; set; } = new();
 
     public PublicDemoSettings PublicDemo { get; set; } = new();
 
@@ -189,7 +192,30 @@ public class EventSettings
 
     public int[] BifrostStartHours { get; set; } = [1, 5, 13, 17, 20];
 
+    [Range(1, int.MaxValue)]
+    public int WantedMinutes { get; set; } = 60;
+
     public bool ChaosNeedsMap { get; set; }
+}
+
+public class RentalSettings
+{
+    public bool Enabled { get; set; } = true;
+
+    [Range(1, 30)]
+    public int MinDays { get; set; } = 3;
+
+    [Range(1, 30)]
+    public int MaxDays { get; set; } = 7;
+
+    [Range(0, int.MaxValue)]
+    public int ListingFeePerDay { get; set; } = 10_000;
+
+    [Range(0, 100)]
+    public int TaxPercent { get; set; } = 10;
+
+    [Range(1, 100)]
+    public int MaxListingsPerPlayer { get; set; } = 10;
 }
 
 public class BowlEventSettings
@@ -226,4 +252,116 @@ public class BowlEventSettings
 
     [Range(0, long.MaxValue)]
     public long Exp { get; set; } = 250000;
+}
+
+public class ManesSurvivalSettings
+{
+    private const int BlueTreasureChest = 379156000;
+    private const int GreenTreasureChest = 379155000;
+    private const int RedTreasureChest = 379154000;
+    private const int VoucherOfOracle = 900184000;
+    private const int Shaitan = 9834;
+    private const int ScorpionKing = 9830;
+
+    [Range(1, 500)]
+    public int PlayersPerArena { get; set; } = 50;
+
+    public bool OneEntryPerAddress { get; set; } = true;
+
+    [Range(1, short.MaxValue)]
+    public int StartHp { get; set; } = 1000;
+
+    [Range(0, short.MaxValue)]
+    public int HpPerLevel { get; set; } = 100;
+
+    [Range(0, short.MaxValue)]
+    public int StartMp { get; set; } = 1000;
+
+    [Range(0, short.MaxValue)]
+    public int MpPerLevel { get; set; } = 100;
+
+    [Range(1, short.MaxValue)]
+    public int ExpToSecondLevel { get; set; } = 20;
+
+    [Range(0, short.MaxValue)]
+    public int ExpPerLevel { get; set; } = 10;
+
+    [Range(0, short.MaxValue)]
+    public int ExpPerMonsterLevel { get; set; } = 1;
+
+    [Range(0, short.MaxValue)]
+    public int ExpPerHunterLevel { get; set; } = 10;
+
+    [Range(0, int.MaxValue)]
+    public int KillScore { get; set; } = 100;
+
+    [Range(0, int.MaxValue)]
+    public int MonsterScore { get; set; } = 10;
+
+    [Range(0, int.MaxValue)]
+    public int LevelScore { get; set; } = 50;
+
+    public int BossNpcId { get; set; } = Shaitan;
+
+    [Range(1, int.MaxValue)]
+    public int BossHp { get; set; } = 300_000;
+
+    [Range(0, int.MaxValue)]
+    public int BossScore { get; set; } = 5000;
+
+    public int BossKillerItemId { get; set; } = VoucherOfOracle;
+
+    [Range(1, byte.MaxValue)]
+    public byte BossKillerItemCount { get; set; } = 1;
+
+    [Range(0, int.MaxValue)]
+    public int EndAfterBossSeconds { get; set; } = 30;
+
+    public int MidBossNpcId { get; set; } = ScorpionKing;
+
+    [Range(1, int.MaxValue)]
+    public int MidBossHp { get; set; } = 20_000;
+
+    [Range(0, int.MaxValue)]
+    public int MidBossScore { get; set; } = 1000;
+
+    [Range(0, 20)]
+    public int MidBossesPerWave { get; set; } = 2;
+
+    public int[] MidBossWaveSeconds { get; set; } = [300, 540, 780, 1020];
+
+    public ManesSurvivalReward[] Rewards { get; set; } =
+    [
+        new() { FromRank = 1, ToRank = 1, ItemId = BlueTreasureChest, Count = 1 },
+        new() { FromRank = 2, ToRank = 3, ItemId = GreenTreasureChest, Count = 1 },
+        new() { FromRank = 4, ToRank = 10, ItemId = RedTreasureChest, Count = 1 },
+    ];
+}
+
+public class RankMarkSettings
+{
+    public bool Enabled { get; set; } = true;
+
+    [Range(0, 1000)]
+    public int GoldPlaces { get; set; } = 1;
+
+    [Range(0, 1000)]
+    public int SilverPlaces { get; set; } = 3;
+
+    [Range(0, 1000)]
+    public int BronzePlaces { get; set; } = 10;
+}
+
+public class ManesSurvivalReward
+{
+    [Range(1, byte.MaxValue)]
+    public byte FromRank { get; set; }
+
+    [Range(1, byte.MaxValue)]
+    public byte ToRank { get; set; }
+
+    public int ItemId { get; set; }
+
+    [Range(1, byte.MaxValue)]
+    public byte Count { get; set; } = 1;
 }

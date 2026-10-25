@@ -31,6 +31,11 @@ internal sealed class ChatHostFeature : IFeature, IEscapable, IChatHost
     private const float SwatchWidth = 36f;
     private const float SwatchHeight = 18f;
     private const int SwatchColumns = 6;
+    private const int PathoistText = 43161;
+    private const int ParticipantText = 42156;
+    private const int ParticipantZone = 29;
+    private const int PathoistArenaZone = 76;
+    private bool pluginWatching;
 
     internal NearbyCard? NearbyCard { get; set; }
     private Godot.Timer? nearbyTimer;
@@ -59,6 +64,7 @@ internal sealed class ChatHostFeature : IFeature, IEscapable, IChatHost
         context.Chat.LayoutChanged += OnLayoutChanged;
         nearbyPlayers.NearbyPlayersEvent += OnNearbyPlayers;
         if (!Platform.TouchUi) BuildNearbyCard();
+        PluginHost.Game.AttachZoneUsers(new PluginZoneUsersBridge(this));
     }
 
     bool IEscapable.CloseOnEscape()
@@ -89,7 +95,7 @@ internal sealed class ChatHostFeature : IFeature, IEscapable, IChatHost
 
     public bool NoahKnight => world.EntityPlatesSystem.SelfIsNoahKnight;
 
-    public string? SendRefusal() => world.KnightRoyaleWindow.ChatRefusal();
+    public string? SendRefusal() => world.KnightRoyaleWindow.ChatRefusal() ?? world.ManesSurvivalWindow.ChatRefusal();
 
     private void ShowNameMenu(string name, Vector2 at) => world.PlayerMenu.ShowByName(name, at);
 
@@ -127,17 +133,69 @@ internal sealed class ChatHostFeature : IFeature, IEscapable, IChatHost
 
     private void NearbyTick()
     {
-        if (!context.Ready || context.Self.Body == null || NearbyCard?.IsVisibleInTree() != true) return;
+        bool cardShown = NearbyCard?.IsVisibleInTree() == true;
+        if (!context.Ready || context.Self.Body == null || !cardShown && !pluginWatching) return;
         if (nearbyTicks++ % NearbyPollTicks == 0)
         {
             nearbyPlayersRequests.Request(nearbyFirstPoll);
             nearbyFirstPoll = false;
         }
-        RebuildNearby();
+        if (cardShown) RebuildNearby();
+        if (pluginWatching) PluginHost.Game.RaiseZoneUsers();
+    }
+
+    private IReadOnlyList<GameZoneUser> ZoneUsersForPlugins()
+    {
+        var me = NearbyViewerNow();
+        var byName = new Dictionary<string, EntityView>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (id, e) in context.Entities.Views)
+            if (!e.IsNpc && id != context.Self.CharId && e.Name.Length > 0) byName[e.Name] = e;
+        var users = new List<GameZoneUser>(nearbyPlayers.Players.Count + 1);
+        bool selfListed = false;
+        foreach (var p in nearbyPlayers.Players)
+        {
+            bool isSelf = string.Equals(p.Name, me.Name, StringComparison.OrdinalIgnoreCase);
+            selfListed |= isSelf;
+            byName.TryGetValue(p.Name, out var seen);
+            users.Add(new GameZoneUser(p.Name, ShownName(p.Name, isSelf), isSelf, !isSelf && p.Nation != me.Nation,
+                seen != null ? world.ClanMarks.Mark(seen.KnightsId, seen.ClanMarkVersion) : null,
+                seen == null ? GameZoneUserState.Online
+                    : world.EntityPlatesSystem.HasStall(seen.Id) ? GameZoneUserState.Merchant
+                    : seen.Gathering ? GameZoneUserState.Gathering : GameZoneUserState.Online,
+                isSelf ? 0f : NearbyRoster.Distance(me, p.MapX, p.MapZ)));
+        }
+        if (!selfListed && me.Name.Length > 0)
+            users.Insert(0, new GameZoneUser(me.Name, me.Name, true, false, null,
+                world.EntityPlatesSystem.HasStall(context.Self.CharId) ? GameZoneUserState.Merchant : GameZoneUserState.Online, 0f));
+        return users;
+    }
+
+    private string ShownName(string name, bool isSelf)
+    {
+        if (isSelf || self.IsGm) return name;
+        if (KnightRoyale.IsZone(context.Zone) || context.Zone == PathoistArenaZone) return ItemData.Text(PathoistText, "Pathoist");
+        if (context.Zone == ParticipantZone) return ItemData.Text(ParticipantText, "Participant");
+        return name;
+    }
+
+    private sealed class PluginZoneUsersBridge(ChatHostFeature host) : IGameZoneUsers
+    {
+        event Action? IGameZoneUsers.Changed { add { } remove { } }
+
+        public IReadOnlyList<GameZoneUser> Users => host.ZoneUsersForPlugins();
+
+        public void Watch(bool shown)
+        {
+            if (shown && !host.pluginWatching) host.nearbyTicks = 0;
+            host.pluginWatching = shown;
+        }
+
+        public void ShowMenu(string name, Vector2 at) => host.world.PlayerMenu.ShowByName(name, at);
     }
 
     private void OnNearbyPlayers(List<NearbyPlayer> list)
     {
+        PluginHost.Game.RaiseZoneUsers();
         if (nearbyRebuildQueued || NearbyCard?.IsVisibleInTree() != true) return;
         nearbyRebuildQueued = true;
         Callable.From(() =>

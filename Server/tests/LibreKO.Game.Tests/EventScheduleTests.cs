@@ -94,6 +94,7 @@ public class EventScheduleTests
             Substitute.For<IUnderTheCastleService>(), Substitute.For<IForgottenTempleService>(),
             Substitute.For<IKrowazService>(), Substitute.For<INereidMonumentService>(),
             Substitute.For<IBowlEventService>(),
+            Substitute.For<IManesSurvivalService>(),
             data, clock, NullLogger<EventSchedulerService>.Instance);
 
         clock.MoveTo(settings.Events, 20, 0);

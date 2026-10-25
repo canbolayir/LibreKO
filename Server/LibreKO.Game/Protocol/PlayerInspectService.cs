@@ -37,7 +37,8 @@ public class PlayerInspectService(SessionManager sessionManager, IDailyRankServi
                 ClanOf(target),
                 (byte)target.RebirthLevel,
                 target.IsInParty ? (short)target.PartyIndex : PlayerInspectPacketWriter.NoParty,
-                places)));
+                places,
+                target.RankMarks)));
     }
 
     public async Task HandleEquipmentViewAsync(UserSession session, Packet packet)

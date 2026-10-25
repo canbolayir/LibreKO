@@ -348,8 +348,11 @@ internal sealed class EntitySystem : IFeature, IEntityAccess
 
     private void BuildEntity(EntitySnapshot info)
     {
-        var label = info.Name.Length > 0 ? info.Name : (info.IsNpc ? "NPC" : "Player");
         bool statue = info.IsNpc && RankerStatue.Is(info.NpcType);
+        var phase = BossPhases.For(context.Zone, info.IsNpc && !statue, info.NpcId);
+        var label = phase?.Name ?? (info.Name.Length > 0 ? info.Name : (info.IsNpc ? "NPC" : "Player"));
+        int size = phase?.ScalePercent ?? info.Size;
+        int[] gear = phase != null ? BossPhases.Gear(phase) : info.Gear;
 
         var watch = Diag.Watch();
         var sceneScope = Perf.Measure(Perf.Section.BuildScene);
@@ -359,7 +362,7 @@ internal sealed class EntitySystem : IFeature, IEntityAccess
             : info.IsNpc && !statue ? entityLooks.ResolveMobScene(info.ModelId)
                                     : entityLooks.ResolvePlayerScene(PlayerRig.LookRace(info.Race, info.Class));
         Diag.Slow($"model load {label} model={info.ModelId} race={info.Race}", loadWatch);
-        float lift = scene != null || mapObject ? 0f : PlayerSystem.CapsuleHalf;
+        float lift = phase is { Buried: true } ? phase.GroundOffset : scene != null || mapObject ? 0f : PlayerSystem.CapsuleHalf;
         var pos = statue ? StatueSpot(info.X, info.Z, info.Y) : scenery.InOutGroundPos(info.IsNpc, info.X, info.Z, info.Y, lift);
 
         Node3D body;
@@ -369,8 +372,14 @@ internal sealed class EntitySystem : IFeature, IEntityAccess
         {
             (body, anim) = statue
                 ? entityLooks.MakeAnimatedEntity(scene, RankerStatueFeature.StatueOverheadName, RankerStatue.Scale)
-                : entityLooks.MakeAnimatedEntity(scene, label, WeaponMounts.SizeScale(info.Size));
-            crowd = CrowdAnimator.Create(anim, body, scene.ResourcePath);
+                : entityLooks.MakeAnimatedEntity(scene, label, WeaponMounts.SizeScale(size));
+            string rigPath = scene.ResourcePath;
+            if (anim != null && phase?.AnimSet is { } animSet)
+            {
+                rigPath = $"{scene.ResourcePath.GetBaseName()}.{animSet}";
+                ModelAnimation.UseClipSet(anim, rigPath + ModelAnimation.MetadataSuffix);
+            }
+            crowd = CrowdAnimator.Create(anim, body, rigPath);
             if (crowd != null) anim!.CallbackModeProcess = AnimationMixer.AnimationCallbackModeProcess.Manual;
         }
         else if (mapObject)
@@ -408,8 +417,8 @@ internal sealed class EntitySystem : IFeature, IEntityAccess
                 string lookStem = info.IsNpc && !statue && entityLooks.MobIndex != null
                     && entityLooks.MobIndex.TryGetValue(info.ModelId, out var fs) ? fs : "";
                 ModelNodes.AttachBuiltInPlugs(body, lookStem);
-                entityLooks.AttachWeapons(body, info.Gear,
-                    WeaponMounts.WeaponWearer(info.IsNpc, statue, info.Race, info.NpcId, info.Size, info.ModelId), info.NpcType);
+                entityLooks.AttachWeapons(body, gear,
+                    WeaponMounts.WeaponWearer(info.IsNpc, statue, info.Race, info.NpcId, size, info.ModelId, phase), info.NpcType);
                 if (!info.IsNpc) ClanGauntletRig.AttachClanGauntlet(body, info.Race, info.ClanGrade, info.ClanRanking);
                 if (info.IsNpc && !statue)
                     ModelNodes.AttachCharacterFxPlugs(body, lookStem);
@@ -438,14 +447,15 @@ internal sealed class EntitySystem : IFeature, IEntityAccess
             MapX = info.X, MapZ = info.Z, MapY = info.Y,
             IsNpc = info.IsNpc, IsMonster = info.IsMonster, Statue = statue, Attackable = info.Attackable, ObjectType = info.ObjectType,
             Name = label, Level = info.Level, Radius = radii.Footprint, BoundRadius = radii.Bound,
-            ModelId = info.ModelId, Size = info.Size, Nation = entityPlates.ShownNation(info),
+            ModelId = info.ModelId, Size = size, Nation = entityPlates.ShownNation(info), SurvivalRow = info.SurvivalRow,
             NpcId = info.NpcId, NpcType = info.NpcType,
             Race = info.Race, LookRace = PlayerRig.LookRace(info.Race, info.Class), Face = info.Face, Hair = info.Hair,
             CapeId = info.CapeId, CapeR = info.CapeR, CapeG = info.CapeG, CapeB = info.CapeB,
             KnightsId = info.KnightsId, AllianceId = info.AllianceId, ClanGrade = info.ClanGrade, ClanRanking = info.ClanRanking,
             ClanMarkVersion = info.ClanMarkVersion, ClanName = info.ClanName, ClanFlag = info.ClanFlag, ClanFame = info.ClanFame,
             IsGm = info.IsGm, HelmetHidden = info.HelmetHidden, CostumeHidden = info.CostumeHidden, PersonalRank = info.PersonalRank, KnightsRank = info.KnightsRank,
-            Gear = info.Gear.Length > 0 ? (int[])info.Gear.Clone() : System.Array.Empty<int>(),
+            Gear = gear.Length > 0 ? (int[])gear.Clone() : System.Array.Empty<int>(),
+            BossPhase = phase,
             DefaultParts = defaultParts,
             SpawnX = info.X, SpawnZ = info.Z, SpawnY = info.Y, SpawnDir = info.Dir,
             ModelStem = modelStem, TargetYaw = spawnYaw,
@@ -495,6 +505,7 @@ internal sealed class EntitySystem : IFeature, IEntityAccess
             ent.Plate.SetLeader(info.PartyLeader);
             if (!info.IsNpc && entityPlates.AtSiegeWar) entityPlates.ApplySiegeName(ent);
         }
+        if (info.IsNpc) StealthLook.SetLookOpacity(body, LookOpacity.Of(info.ModelId));
         ent.RoleFx = NpcRoleFx.Spawn(ent);
         if (info.Invisible) stealth.StealthOnSpawn(info.Id, (InvisibilityType)info.Invisibility);
         if (!info.IsNpc && info.Appearance == RespawnBlink.Blinking) entityStates.StartRespawnBlink(info.Id);
@@ -740,7 +751,7 @@ internal sealed class EntitySystem : IFeature, IEntityAccess
         if (e.RigCrowd != e.Crowd) e.RigCrowd?.Release();
         e.Body.QueueFree();
         Ents.Remove(id);
-        entityStates.GenieUsers.Remove(id);
+        entityStates.GenieForgetEntity(id);
         entityStates.StateVisualForgetEntity(id);
         entityStates.SizeStateForgetEntity(id);
         stealth.StealthForgetEntity(id);

@@ -342,6 +342,10 @@ public class AdminPacketCoordinator(
                 await HandleTempleEventCommandAsync(session, TempleEvent.Chaos, ZoneId.ChaosDungeon, "Chaos Dungeon", arg);
                 break;
 
+            case "manes":
+                await HandleTempleEventCommandAsync(session, TempleEvent.ManesSurvival, ZoneId.ManesSurvival1, "Manes' Survival", arg);
+                break;
+
             case "krowaz":
             case "kro":
                 await HandleKrowazCommandAsync(session, arg);
@@ -491,7 +495,7 @@ public class AdminPacketCoordinator(
 
                         if (isEligible)
                         {
-                            var confirmPkt = EventPacketWriter.TempleEvent((byte)TempleSubOpcode.TempleEventJoin, (byte)TempleJoinResult.Joined, (short)ZoneId.ForgottenTemple);
+                            var confirmPkt = EventPacketWriter.TempleEvent((byte)TempleSubOpcode.TempleEventJoin, (byte)TempleJoinResult.Joined, (short)TempleEventRules.ForgottenTempleIndunEvent);
                             await session.Client.SendPacket(confirmPkt);
                             await SendNoticeAsync(session, $"[Forgotten Temple] Tier {(isLow ? 1 : 2)} ({min}-{max}) registration open ({formattedTime}). Pop-up modal broadcasted! You will teleport automatically.");
                         }
@@ -635,21 +639,21 @@ public class AdminPacketCoordinator(
 
             case "exp_add":
             case "expadd":
-                await HandleEventRateAsync(session, arg, "EXP", RateEvent.Exp, v => timeWeather.ExpEventAmount = v);
+                await HandleEventRateAsync(session, arg, "EXP", RateEvent.Exp);
                 break;
 
             case "money_add":
             case "noahadd":
             case "coin_add":
-                await HandleEventRateAsync(session, arg, "Coin", RateEvent.Coin, v => timeWeather.CoinEventAmount = v);
+                await HandleEventRateAsync(session, arg, "Coin", RateEvent.Coin);
                 break;
 
             case "np_add":
-                await HandleEventRateAsync(session, arg, "NP", RateEvent.Np, v => timeWeather.NpEventAmount = v);
+                await HandleEventRateAsync(session, arg, "NP", RateEvent.Np);
                 break;
 
             case "drop_add":
-                await HandleEventRateAsync(session, arg, "Drop", RateEvent.Drop, v => timeWeather.DropEventAmount = v);
+                await HandleEventRateAsync(session, arg, "Drop", RateEvent.Drop);
                 break;
 
             case "goto":
@@ -696,6 +700,10 @@ public class AdminPacketCoordinator(
 
             case "countzone":
                 await HandleCountZoneAsync(session);
+                break;
+
+            case "npcrebuild":
+                await HandleNpcRebuildAsync(session, arg);
                 break;
 
             case "countlevel":
@@ -852,6 +860,18 @@ public class AdminPacketCoordinator(
         }
         await SendNoticeAsync(session, $"Killed {killed} NPCs in zone {session.ZoneId}.");
         logger.LogInformation("GM {Gm} killed {Count} NPCs in zone {Zone}", session.Name, killed, session.ZoneId);
+    }
+
+    private async Task HandleNpcRebuildAsync(UserSession session, string arg)
+    {
+        int zone = int.TryParse(arg.Trim(), out var asked) ? asked : session.ZoneId;
+        var spawnRows = serviceProvider.GetRequiredService<INpcSpawnRowService>();
+        var rows = gameDataService.NpcPositions.Where(position => position.ZoneId == zone).ToList();
+        var spawned = 0;
+        foreach (var row in rows)
+            spawned += await spawnRows.RespawnRowAsync(row);
+        await SendNoticeAsync(session, $"Zone {zone}: {rows.Count} spawn rows rebuilt, {spawned} NPCs spawned.");
+        logger.LogInformation("GM {Gm} rebuilt the NPCs of zone {Zone}: {Rows} rows, {Spawned} spawned", session.Name, zone, rows.Count, spawned);
     }
 
     private async Task HandleCountZoneAsync(UserSession session)
@@ -1141,6 +1161,8 @@ public class AdminPacketCoordinator(
     }
 
     private const ushort WeatherAmountMax = 100;
+    private const string WeatherUsage = "+weather <clear|rain|snow> [0-100]";
+    private const int RateEventMaxMinutes = 10_080;
     private const ushort WeatherAmountDefault = 60;
     private const int SealCodeLength = 8;
 
@@ -1194,7 +1216,7 @@ public class AdminPacketCoordinator(
 
         if (type == null)
         {
-            await SendNoticeAsync(session, "Usage: +weather <clear|rain|snow|leaves> [0-100]");
+            await SendNoticeAsync(session, $"Usage: {WeatherUsage}");
             return;
         }
 
@@ -1297,20 +1319,23 @@ public class AdminPacketCoordinator(
         "clear" or "fine" or "sunny" => WeatherType.Fine,
         "rain" => WeatherType.Rain,
         "snow" => WeatherType.Snow,
-        "leaves" or "leaf" => WeatherType.Leaves,
         _ => null,
     };
 
-    private async Task HandleEventRateAsync(UserSession session, string arg, string label, RateEvent kind, Action<byte> apply)
+    private async Task HandleEventRateAsync(UserSession session, string arg, string label, RateEvent kind)
     {
-        if (string.IsNullOrWhiteSpace(arg) || !byte.TryParse(arg.Trim(), out var pct))
+        var parts = (arg ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        int minutes = 0;
+        if (parts.Length is < 1 or > 2 || !byte.TryParse(parts[0], out var pct)
+            || parts.Length == 2 && (!int.TryParse(parts[1], out minutes) || minutes is < 1 or > RateEventMaxMinutes))
         {
-            await SendNoticeAsync(session, $"Usage: +{label.ToLower()}_add <0-255 percent>");
+            await SendNoticeAsync(session, $"Usage: +{label.ToLower()}_add <0-255 percent> [1-{RateEventMaxMinutes} minutes]");
             return;
         }
 
-        apply(pct);
-        await SendNoticeAsync(session, $"{label} event bonus = {pct}%");
+        RateEvents.Set(timeWeather, kind, pct);
+        timeWeather.EndRateAt(kind, pct > 0 && minutes > 0 ? DateTime.UtcNow.AddMinutes(minutes) : null);
+        await SendNoticeAsync(session, pct > 0 && minutes > 0 ? $"{label} event bonus = {pct}% for {minutes} minutes" : $"{label} event bonus = {pct}%");
         var title = RateEvents.Title(kind);
         if (pct == 0)
         {
@@ -1959,7 +1984,9 @@ public class AdminPacketCoordinator(
         }
 
         await eventSchedulerService.CallTempleEventAsync(contest, joinSec, session);
-        var confirmPkt = EventPacketWriter.TempleEvent((byte)TempleSubOpcode.TempleEventJoin, (byte)TempleJoinResult.Joined, (short)zoneId);
+        var confirmPkt = contest == TempleEvent.ManesSurvival
+            ? ManesSurvivalPacketWriter.SignUpReply(ManesSignUpResult.Applied, eventSchedulerService.SignUpsOf(contest).Count)
+            : EventPacketWriter.TempleEvent((byte)TempleSubOpcode.TempleEventJoin, (byte)TempleJoinResult.Joined, (short)TempleEventRules.IndunType(contest));
         await session.Client.SendPacket(confirmPkt);
         string formattedTime = joinSec >= 60 ? $"{joinSec / 60}m" : $"{joinSec}s";
         await SendNoticeAsync(session, $"[{eventName}] Registration open ({formattedTime}). You are registered and will teleport automatically!");

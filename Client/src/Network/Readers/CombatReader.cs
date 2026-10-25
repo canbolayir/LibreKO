@@ -58,7 +58,8 @@ internal sealed class CombatReader : IPacketReader
         int attackerId = p.ReadInt();
         int targetId = p.ReadInt();
         bool chained = p.RemainingBytes >= 1 && p.ReadByte() == AttackChainedFlag;
-        combat.RaiseAttack(new AttackReply(AttackType: attackType, Result: result, AttackerId: attackerId, TargetId: targetId, Chained: chained));
+        combat.RaiseAttack(new AttackReply(AttackType: attackType, Result: result, AttackerId: attackerId, TargetId: targetId, Chained: chained,
+            Shown: AttackPresentation.Read(p)));
     }
 
     private void HandleMagicProcess(Packet p)

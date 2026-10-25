@@ -8,7 +8,7 @@ namespace LibreKO;
 public readonly record struct PlugPose(Vector3 Position, Quaternion Rotation, Vector3 Scale);
 
 public readonly record struct HandWearer(int Race, bool Npc = false, int NpcId = 0, float NpcScale = 1f,
-                                         int PlugSlots = NpcPlugSlots.Unlimited)
+                                         int PlugSlots = NpcPlugSlots.Unlimited, bool ItemJoint = false)
 {
     public static readonly HandWearer TransformedLook = new(WeaponMount.NoRace);
 }

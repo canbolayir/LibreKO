@@ -66,8 +66,8 @@ public partial class MiniMap
         diamonds.Clear();
         foreach (var b in blips)
         {
-            float dx = (b.X - mapX) * pxw;
-            float dy = -(b.Z - mapZ) * pxw;
+            float dx = (b.X - viewX) * pxw;
+            float dy = -(b.Z - viewZ) * pxw;
             var p = ctr + new Vector2(dx, dy);
             bool clamped = p.X < min || p.X > maxX || p.Y < min || p.Y > maxY;
             if (b.Diamond)

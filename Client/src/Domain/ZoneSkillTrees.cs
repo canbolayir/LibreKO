@@ -21,4 +21,6 @@ public static class ZoneSkillTrees
         if (zone is >= FirstTree3200Zone and <= LastTree3200Zone) return tree == Tree3200;
         return true;
     }
+
+    public static bool SkillWindowRefused(int zone) => KnightRoyale.IsZone(zone) || ManesSurvival.IsZone(zone);
 }

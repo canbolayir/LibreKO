@@ -14,6 +14,8 @@ internal sealed class PartyInvitesFeature : IFeature
     private const string InviteNamePlaceholder = "Character name";
     private const string InviteSendText = "Send";
     private const int CharacterNameMax = 20;
+    private const int InviteAnswerSeconds = 10;
+    private const string DeclineText = "Decline";
 
     private readonly IWorldContext context;
     private readonly PartySession party;
@@ -28,6 +30,7 @@ internal sealed class PartyInvitesFeature : IFeature
     private int pendingInviterId = -1;
     private string pendingInviterName = "";
     private IInviteAutoAccept? inviteAutoAccept;
+    private int inviteSerial;
 
     public PartyInvitesFeature(IWorldContext context, PartySession party, UserOptionSession userOption, IPartyRequests requests)
     {
@@ -72,7 +75,7 @@ internal sealed class PartyInvitesFeature : IFeature
             OkButtonText = "Join",
             Exclusive = false,
         };
-        inviteAskDialog.GetCancelButton().Text = "Decline";
+        inviteAskDialog.GetCancelButton().Text = DeclineText;
         inviteAskDialog.Confirmed += () => AnswerInvite(true);
         inviteAskDialog.Canceled += () => AnswerInvite(false);
         dialogLayer.AddChild(inviteAskDialog);
@@ -175,6 +178,22 @@ internal sealed class PartyInvitesFeature : IFeature
         inviteAskDialog.DialogText = ask;
         inviteAskDialog.PopupCentered();
         context.Log.Notice(ask);
+        StartInviteClock();
+    }
+
+    private void StartInviteClock() => InviteClockTick(++inviteSerial, InviteAnswerSeconds);
+
+    private void InviteClockTick(int serial, int left)
+    {
+        if (!invitePending || serial != inviteSerial) return;
+        if (left <= 0)
+        {
+            AnswerInvite(false);
+            inviteAskDialog.Hide();
+            return;
+        }
+        inviteAskDialog.GetCancelButton().Text = $"{DeclineText} ({left})";
+        context.Root.After(1.0, () => InviteClockTick(serial, left - 1));
     }
 
     private void OnBbsInvite(PartyBoardInvite invite)
@@ -182,12 +201,14 @@ internal sealed class PartyInvitesFeature : IFeature
         if (userOption.PartyRequestsBlocked || party.InParty) return;
         var board = party.PartyBoardMode;
         string text = invite.Prompt(ItemData.Text(PartyBoardInvite.PromptText, PartyBoardInvite.PromptFallback), CharacterClassCatalog.DisplayName(invite.Class));
-        Notice.Confirm(context.Root, text, "Yes", "No", () => requests.BbsAccept(invite.Inviter, board), title: "Party");
+        var prompt = Notice.Confirm(context.Root, text, "Yes", "No", () => requests.BbsAccept(invite.Inviter, board), title: "Party");
+        prompt.After(InviteAnswerSeconds, prompt.Close);
     }
 
     private void AnswerInvite(bool accept)
     {
         if (!invitePending) return;
+        inviteSerial++;
         invitePending = false;
         pendingInviterId = -1;
         pendingInviterName = "";

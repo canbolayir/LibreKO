@@ -76,6 +76,10 @@ public class NpcInstance
     // Patrol/waypoint data
     public NpcMoveType MoveType { get; set; }
     public NpcMoveType InitMoveType { get; set; }
+
+    public long InvincibleUntilTicks { get; set; }
+    public bool IsInvincible => InvincibleUntilTicks > DateTime.UtcNow.Ticks;
+    public int DamageTaken(int damage, bool basicHit) => IsInvincible ? 0 : NpcHitRules.Taken(NpcType, damage, basicHit);
     public (short X, short Z)[] Waypoints { get; set; } = [];
     public short CurrentWaypoint { get; set; }
 
@@ -463,7 +467,7 @@ public class NpcInstance
             Speed1 = npc.Speed1,
             Speed2 = npc.Speed2,
             AttackRange = npc.AttackRange > 0 ? npc.AttackRange : (byte)3,
-            SearchRange = npc.SearchRange > 0 ? npc.SearchRange : (byte)8,
+            SearchRange = npc.SearchRange,
             TracingRange = npc.TracingRange > 0 ? npc.TracingRange : (byte)20,
             Bulk = npc.Bulk,
             HitRate = npc.HitRate,
@@ -536,7 +540,7 @@ public class NpcInstance
             Speed1 = npc.Speed1,
             Speed2 = npc.Speed2,
             AttackRange = npc.AttackRange > 0 ? npc.AttackRange : (byte)3,
-            SearchRange = npc.SearchRange > 0 ? npc.SearchRange : (byte)8,
+            SearchRange = npc.SearchRange,
             TracingRange = npc.TracingRange > 0 ? npc.TracingRange : (byte)20,
             Bulk = npc.Bulk,
             HitRate = npc.HitRate,

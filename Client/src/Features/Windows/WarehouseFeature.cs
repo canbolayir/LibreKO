@@ -278,7 +278,7 @@ internal sealed partial class WarehouseFeature : IFeature, IClosableWindow
 
     private int WarehouseDestination(ItemSlot source, int count, out bool merge)
     {
-        int whIdx = StorageDestination.Find(StoredItems, source, count, UiKit.IsStackable(source.ItemId));
+        int whIdx = StorageDestination.Find(StoredItems, source, count, UiKit.IsStackable(source.ItemId), Page * PageSize, PageSize);
         merge = whIdx >= 0 && !StoredItems[whIdx].IsEmpty;
         return whIdx;
     }

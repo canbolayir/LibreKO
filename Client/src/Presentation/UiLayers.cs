@@ -6,6 +6,7 @@ public static class UiLayers
     public const int NationSelectScreen = 5;
     public const int CharSelectScreen = 10;
     public const int BlindOverlay = 50;
+    public const int RainScreen = 52;
     public const int WorldText = 59;
     public const int TouchZones = 60;
     public const int EventScoreboards = 61;
@@ -36,6 +37,7 @@ public static class UiLayers
     public const int EventBanners = 95;
     public const int GameMenu = 110;
     public const int ExitMenu = 111;
+    public const int Movie = 115;
     public const int Loading = 120;
     public const int Reconnect = 125;
     public const int DebugOverlay = 128;

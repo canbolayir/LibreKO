@@ -170,8 +170,25 @@ internal sealed class EntityPlatesSystem : IFeature
 
     private static string SiegeText(int textId) => ItemData.Text(textId, SiegeWar.Fallback(textId));
 
+    internal bool HidesHunters =>
+        ManesSurvival.HidesNames(context.Zone, self.IsGm, ManesSurvival.HasSight(self.BuffEnds, FrameClock.Now(), id => SkillData.Get(id)?.BuffType ?? 0));
+
+    private string HunterName => ItemData.Text(ManesSurvival.HunterText, "Hunter");
+
+    internal void RefreshHunterNames()
+    {
+        bool hidden = HidesHunters;
+        foreach (var (id, e) in context.Entities.Views)
+        {
+            if (e.IsNpc || e.NameTag == null || !GodotObject.IsInstanceValid(e.NameTag)) continue;
+            e.NameTag.Text = hidden ? HunterName : e.Name;
+            RefreshClanLine(e, id);
+        }
+    }
+
     internal string ShownName(EntityView e)
     {
+        if (!e.IsNpc && HidesHunters) return HunterName;
         if (e.IsNpc || !AtSiegeWar) return e.Name;
         int mask = SiegeWar.TargetMaskText(self.IsGm, clan.MyClan.InClan ? clan.MyClan.ClanId : 0, clan.MyClan.InClan ? clan.MyClan.AllianceId : 0,
             e.KnightsId, e.AllianceId, siege.SiegeWar);
@@ -216,6 +233,7 @@ internal sealed class EntityPlatesSystem : IFeature
     internal void RefreshClanLine(EntityView ent, int charId)
     {
         if (ent.IsNpc) return;
+        if (HidesHunters) { ent.Plate?.SetClan(""); return; }
         if (SiegeClanLine(ent) is { } siegeLine) { ent.Plate?.SetClan(siegeLine.Text, siegeLine.Colour); return; }
         ApplyClanLine(ent.Plate, ent.ClanName, ent.Level, ent.ClanFame, HasStall(charId));
     }
@@ -390,6 +408,7 @@ internal sealed class EntityPlatesSystem : IFeature
 
     internal int ZoneNameText(EntitySnapshot info)
     {
+        if (!info.IsNpc && HidesHunters) return ManesSurvival.HunterText;
         int text = ZoneLooks.OtherNameText(context.Zone, self.Nation, self.IsGm, party.InParty, InMyParty(info.Id));
         return text > 0 ? text : AnonymousNameText(info);
     }

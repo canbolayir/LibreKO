@@ -16,6 +16,7 @@ public static class MailWire
     public const int SubjectMax = 64;
     public const int BodyMax = 512;
     public const int InboxMax = 50;
+    public const byte DiscardAttachments = 1;
     public const int ItemAttachmentsMax = 4;
 }
 

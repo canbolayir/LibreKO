@@ -24,6 +24,7 @@ public class GenieSystemPacketCoordinator(
 {
     public const int SpiritOfGenieItem = 810378000;
     public const int SpiritOfGenieMinutes = 120;
+    public static readonly int[] SpiritOfGenieItems = [900772000, 810305000, 810306000, SpiritOfGenieItem, 811062000];
 
     public async Task HandleAsync(IClient client, Packet packet)
     {
@@ -52,7 +53,7 @@ public class GenieSystemPacketCoordinator(
                 await client.SendPacket(GenieSystemPacketWriter.HammerResult(used));
                 break;
             case GenieSystemPacketWriter.UseSpiritPotion:
-                await UseSpiritPotionAsync(session);
+                await UseSpiritPotionAsync(session, packet.RemainingBytes >= 4 ? packet.ReadInt() : 0);
                 break;
             case GenieSystemPacketWriter.LoadOptions:
                 await session.Client.SendPacket(
@@ -103,9 +104,12 @@ public class GenieSystemPacketCoordinator(
         }
     }
 
-    private async Task UseSpiritPotionAsync(UserSession session)
+    private async Task UseSpiritPotionAsync(UserSession session, int askedItem)
     {
-        if (!await itemUsage.TryConsumeItemAsync(session, SpiritOfGenieItem))
+        int spirit = SpiritOfGenieItems.Contains(askedItem)
+            ? askedItem
+            : SpiritOfGenieItems.FirstOrDefault(id => itemUsage.CanUseItem(session, id));
+        if (spirit == 0 || !await itemUsage.TryConsumeItemAsync(session, spirit))
         {
             await session.Client.SendPacket(GenieSystemPacketWriter.Remaining(session.GenieMinutes));
             return;

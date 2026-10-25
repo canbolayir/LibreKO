@@ -32,7 +32,9 @@ public class MailPacketCoordinator(
                 await HandleSendAsync(session, packet);
                 break;
             case MailPacketWriter.SubDelete when packet.RemainingBytes >= 4:
-                await mailService.DeleteAsync(session, packet.ReadInt());
+                var mailId = packet.ReadInt();
+                var discard = packet.RemainingBytes >= 1 && packet.ReadByte() == MailPacketWriter.DiscardAttachments;
+                await mailService.DeleteAsync(session, mailId, discard);
                 break;
             case MailPacketWriter.SubClaim when packet.RemainingBytes >= 4:
                 await mailService.ClaimAsync(session, packet.ReadInt());

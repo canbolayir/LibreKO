@@ -54,6 +54,16 @@ public class ChatSenderTests
     }
 
     [Fact]
+    public void EnemyChatIsUnreadableExceptToAGameMaster()
+    {
+        Assert.False(ChatSender.Understandable(ChatType.General, false, Nations.ElMorad, false, Nations.Karus, false));
+        Assert.True(ChatSender.Understandable(ChatType.General, false, Nations.ElMorad, true, Nations.Karus, false));
+        Assert.True(ChatSender.Understandable(ChatType.Shout, true, Nations.ElMorad, false, Nations.Karus, false));
+        Assert.True(ChatSender.Understandable(ChatType.General, false, Nations.ElMorad, false, Nations.Karus, true));
+        Assert.True(ChatSender.Understandable(ChatType.Party, false, Nations.ElMorad, false, Nations.Karus, false));
+    }
+
+    [Fact]
     public void LineBreaksAreFlattenedExceptInWhispers()
     {
         Assert.Equal("a_b", ChatSender.Flatten(ChatType.General, "a\nb"));

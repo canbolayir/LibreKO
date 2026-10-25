@@ -9,18 +9,20 @@ internal sealed partial class LootFeature : IFeature, ILateTickFeature, IEscapab
     private readonly LootSession loot;
     private readonly SelfSession self;
     private readonly IItemsRequests itemsRequests;
+    private readonly IManesSurvivalRequests manesRequests;
     private readonly LootFilterFeature filterWindow;
     private readonly PetFeature pet;
     private readonly EntityActionSystem entityAction;
     private readonly EntitySystem entities;
 
-    public LootFeature(IWorldContext context, ItemsSession items, LootSession loot, SelfSession self, IItemsRequests itemsRequests, LootFilterFeature lootFilterWindow, PetFeature pet, EntityActionSystem entityAction, EntitySystem entities)
+    public LootFeature(IWorldContext context, ItemsSession items, LootSession loot, SelfSession self, IItemsRequests itemsRequests, IManesSurvivalRequests manesRequests, LootFilterFeature lootFilterWindow, PetFeature pet, EntityActionSystem entityAction, EntitySystem entities)
     {
         this.context = context;
         this.items = items;
         this.loot = loot;
         this.self = self;
         this.itemsRequests = itemsRequests;
+        this.manesRequests = manesRequests;
         filterWindow = lootFilterWindow;
         this.pet = pet;
         this.entityAction = entityAction;
@@ -44,7 +46,8 @@ internal sealed partial class LootFeature : IFeature, ILateTickFeature, IEscapab
 
     private readonly Dictionary<int, LootBox> boxes = new();
 
-    private const double BoxLife = 60.0;
+    private const double BoxLife = LootBoxPlacement.LifeSeconds;
+    private const float CorpsePickLift = 0.8f;
     private const float RangeSq = LootWire.Range * LootWire.Range;
 
     private int openBundleId = -1;
@@ -60,6 +63,7 @@ internal sealed partial class LootFeature : IFeature, ILateTickFeature, IEscapab
 
     private void RequestOpen(int bundleId)
     {
+        if (boxes.TryGetValue(bundleId, out var box)) box.SpawnTime = LootBoxPlacement.SpawnAfterOpen(box.SpawnTime, context.Now);
         openBundleId = bundleId;
         openPending = true;
         openSentAt = context.Now;
@@ -313,12 +317,11 @@ internal sealed partial class LootFeature : IFeature, ILateTickFeature, IEscapab
         int best = -1; float bestD = ClickPickRadius;
         foreach (var (id, box) in boxes)
         {
-            if (!box.Placed) continue;
-            var world = box.BasePos + Vector3.Up * 0.4f;
-            if (context.Camera.IsPositionBehind(world)) continue;
-            float px = context.Camera.UnprojectPosition(world).DistanceTo(mouse);
+            if (!box.Placed || FlatDistanceSq(box.DropPos, me) > RangeSq) continue;
+            float px = ScreenDistance(box.BasePos + Vector3.Up * 0.4f, mouse);
+            if (context.Entities.Views.TryGetValue(box.OwnerId, out var corpse) && corpse.Dead && GodotObject.IsInstanceValid(corpse.Body))
+                px = Mathf.Min(px, ScreenDistance(corpse.Body.Position - new Vector3(0, corpse.Lift - CorpsePickLift, 0), mouse));
             if (px >= bestD) continue;
-            if (FlatDistanceSq(box.DropPos, me) > RangeSq) continue;
             bestD = px; best = id;
         }
         if (best < 0)
@@ -326,6 +329,9 @@ internal sealed partial class LootFeature : IFeature, ILateTickFeature, IEscapab
         RequestOpen(best);
         return true;
     }
+
+    private float ScreenDistance(Vector3 world, Vector2 mouse) =>
+        context.Camera!.IsPositionBehind(world) ? float.MaxValue : context.Camera.UnprojectPosition(world).DistanceTo(mouse);
 
     internal bool HasNearbyBox()
     {
@@ -456,16 +462,24 @@ internal sealed partial class LootFeature : IFeature, ILateTickFeature, IEscapab
     {
         for (int i = 0; i < CellCount; i++)
         {
-            if (i >= Entries.Count) { cells[i].Clear(); continue; }
+            if (i >= Entries.Count)
+            {
+                cells[i].Clear();
+                cells[i].TooltipText = "";
+                continue;
+            }
             var entry = Entries[i];
-            cells[i].Set(new ItemSlot { ItemId = entry.ItemId, Count = 1 }, entry.Count);
+            bool gold = entry.ItemId == LootWire.GoldItemId;
+            cells[i].Set(new ItemSlot { ItemId = entry.ItemId, Count = 1 }, gold ? 0 : entry.Count);
+            cells[i].TooltipText = gold ? $"{entry.Count:n0} Gold" : "";
         }
     }
 
     private void Take(int slot, int itemId)
     {
         if (openBundleId < 0) return;
-        itemsRequests.ItemGet(openBundleId, itemId, slot);
+        if (ManesSurvival.IsZone(context.Zone)) manesRequests.Loot(openBundleId, itemId, slot);
+        else itemsRequests.ItemGet(openBundleId, itemId, slot);
     }
 
     private void OnTaken(int bundleId, int bundleSlot, int itemId)

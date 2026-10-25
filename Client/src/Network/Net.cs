@@ -160,6 +160,7 @@ public partial class Net : Node, IGameConnection, IReconnectHost, IPreGameHost
     public override void _Process(double delta)
     {
         using var scope = Perf.Measure(Perf.Section.Net);
+        Config.NoteWindowState(DisplayServer.WindowIsFocused(), DisplayServer.WindowGetMode() == DisplayServer.WindowMode.Minimized);
         if (conn.Connected && !connectedFired)
         {
             connectedFired = true;

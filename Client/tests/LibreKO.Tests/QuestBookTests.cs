@@ -118,4 +118,15 @@ public class QuestBookTests
         Assert.Empty(book.TargetNpcs);
         Assert.False(book.RewardSelection.Chosen(QuestId, out _));
     }
+
+    [Fact]
+    public void AQuestWithOnlyItsTextIsListed()
+    {
+        var book = new QuestBook();
+        book.ApplyStrings(new List<QuestStrings> { new(501, "Lost letter", "Find the letter."), new(502, "", "") });
+
+        Assert.True(book.Listed(501));
+        Assert.False(book.Listed(502));
+        Assert.False(book.Listed(503));
+    }
 }

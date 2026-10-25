@@ -79,11 +79,12 @@ public class DailyRankTests
     private readonly SessionManager sessions = new();
     private readonly FakeRepository repository = new();
     private readonly DailyRankService service;
+    private readonly IRankMarkService rankMarks = Substitute.For<IRankMarkService>();
 
     public DailyRankTests()
     {
         var provider = new ServiceCollection().AddSingleton<IDailyRankRepository>(repository).BuildServiceProvider();
-        service = new DailyRankService(sessions, provider.GetRequiredService<IServiceScopeFactory>(),
+        service = new DailyRankService(sessions, provider.GetRequiredService<IServiceScopeFactory>(), rankMarks,
             NullLogger<DailyRankService>.Instance);
         repository.Names = new Dictionary<int, string> { [1] = "Alpha", [2] = "Bravo", [3] = "Charlie" };
     }
@@ -234,6 +235,8 @@ public class DailyRankTests
         await service.RollOverAsync(new DateOnly(2026, 10, 2));
 
         repository.Resets.Should().Be(1);
+        await rankMarks.Received(1).AwardMonthAsync(Arg.Is<IReadOnlyList<DailyRankPlace>>(places =>
+            places.Any(place => place.SubjectId == 1 && place.Place == 1 && place.RankedOn == new DateOnly(2026, 9, 30))));
     }
 
     [Fact]

@@ -36,6 +36,7 @@ public sealed class GameSession
     public ExchangeSession Exchange { get; } = new();
     public ExpSealSession ExpSeal { get; } = new();
     public SlaveMerchantSession SlaveMerchant { get; } = new();
+    public ItemRentalSession ItemRental { get; } = new();
     public FishingHallSession FishingHall { get; } = new();
     public ForcesSession Forces { get; } = new();
     public FriendsSession Friends { get; } = new();
@@ -51,6 +52,7 @@ public sealed class GameSession
     public KillAssistSession KillAssist { get; } = new();
     public KingSession King { get; } = new();
     public KnightRoyaleSession KnightRoyale { get; } = new();
+    public ManesSurvivalSession ManesSurvival { get; }
     public LootSession Loot { get; } = new();
     public LotterySession Lottery { get; } = new();
     public MailSession Mail { get; } = new();
@@ -59,6 +61,7 @@ public sealed class GameSession
     public MerchantSearchSession MerchantSearch { get; } = new();
     public MessengerSession Messenger { get; } = new();
     public MiningSession Mining { get; } = new();
+    public MovieSession Movie { get; } = new();
     public MonsterStoneSession MonsterStone { get; } = new();
     public NameChangeSession NameChange { get; } = new();
     public NationChatSession NationChat { get; } = new();
@@ -111,6 +114,7 @@ public sealed class GameSession
     public GameSession()
     {
         Progress = new ProgressSession(Self);
+        ManesSurvival = new ManesSurvivalSession(Self, Progress);
         Party = new PartySession(Self);
         SkillTimers = new SkillTimers(Self);
         UserOption = new UserOptionSession(Self);
@@ -152,6 +156,7 @@ public sealed class GameSession
         Clan.ForgetOnlineCount();
         Chaos.ResetBattle();
         Chaos.ForgetHotbar();
+        ManesSurvival.Reset();
         Bifrost.ForgetFullMoonHotbar();
         Zone.ForgetGroundEffect();
         Pvp.ResetAnger();

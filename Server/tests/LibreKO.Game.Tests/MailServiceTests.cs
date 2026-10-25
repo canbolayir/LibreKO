@@ -81,6 +81,15 @@ public class MailServiceTests : GameTestBase
         return inbox.ReadInt();
     }
 
+    private static Packet DeleteRequest(int mailId, bool discard)
+    {
+        var packet = new Packet(GameOpcodes.GS_MAIL);
+        packet.WriteByte(MailPacketWriter.SubDelete);
+        packet.WriteInt(mailId);
+        if (discard) packet.WriteByte(MailPacketWriter.DiscardAttachments);
+        return packet;
+    }
+
     private static (UserSession Session, List<Packet> Sent) Online(ServiceProvider provider, int characterId, string name)
     {
         var client = Substitute.For<IClient>();
@@ -294,6 +303,40 @@ public class MailServiceTests : GameTestBase
         MailPacket(bobSent, MailPacketWriter.SubDelete).ReadByte().Should().Be(MailPacketWriter.Succeeded);
         await mail.SendInboxAsync(bob);
         MailPacket(bobSent, MailPacketWriter.SubList).ReadUShort().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ALetterWithUnclaimedAttachmentsIsDeletedOnlyWhenTheyAreDiscarded()
+    {
+        using var provider = Provider();
+        var (bob, bobSent) = Online(provider, BobId, "Bob");
+        var mail = provider.GetRequiredService<IMailService>();
+        await mail.SendSystemMailAsync(BobId, "Gift", "A gift.", [new MailAttachmentDraft(MailAttachmentKind.Item, Apple, 4, 1)]);
+        var mailId = await FirstMailIdAsync(mail, bob, bobSent);
+        var coordinator = new MailPacketCoordinator(provider.GetRequiredService<SessionManager>(), mail);
+
+        await coordinator.HandleAsync(bob.Client, DeleteRequest(mailId, discard: false));
+        MailPacket(bobSent, MailPacketWriter.SubDelete).ReadByte().Should().Be(MailPacketWriter.Failed);
+        await coordinator.HandleAsync(bob.Client, DeleteRequest(mailId, discard: true));
+        MailPacket(bobSent, MailPacketWriter.SubDelete).ReadByte().Should().Be(MailPacketWriter.Succeeded);
+
+        await mail.SendInboxAsync(bob);
+        MailPacket(bobSent, MailPacketWriter.SubList).ReadUShort().Should().Be(0);
+        bob.Inventory.Skip(InventoryConstants.InventoryStart).Should().NotContain(s => s.ItemId == Apple);
+    }
+
+    [Fact]
+    public async Task APowerUpStoreParcelIsNeverDeletedUnclaimed()
+    {
+        using var provider = Provider();
+        var (bob, bobSent) = Online(provider, BobId, "Bob");
+        var mail = provider.GetRequiredService<IMailService>();
+        await mail.SendSystemMailAsync(BobId, "Purchase", "Bought.", [new MailAttachmentDraft(MailAttachmentKind.Item, Apple, 4, 1)], MailKind.Store);
+        var mailId = await FirstMailIdAsync(mail, bob, bobSent);
+
+        await mail.DeleteAsync(bob, mailId, discardAttachments: true);
+
+        MailPacket(bobSent, MailPacketWriter.SubDelete).ReadByte().Should().Be(MailPacketWriter.Failed);
     }
 
     [Fact]

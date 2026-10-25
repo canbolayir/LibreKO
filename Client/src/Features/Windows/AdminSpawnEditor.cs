@@ -14,13 +14,8 @@ internal sealed class AdminSpawnEditor
     private const float SpawnLabelWidth = 118;
 
     private readonly IAdminRequests requests;
-    private readonly Action<string, bool> setStatus;
 
-    public AdminSpawnEditor(IAdminRequests requests, Action<string, bool> setStatus)
-    {
-        this.requests = requests;
-        this.setStatus = setStatus;
-    }
+    public AdminSpawnEditor(IAdminRequests requests) => this.requests = requests;
 
     internal HudWindow SpawnWindow { get; private set; } = null!;
     private Label spawnTitle = null!;
@@ -75,7 +70,7 @@ internal sealed class AdminSpawnEditor
         actions.AddChild(set);
 
         spawnPersistBtn = Button("Persist", 90);
-        spawnPersistBtn.TooltipText = "Apply and write the spawn row to the seed file of this zone";
+        spawnPersistBtn.TooltipText = "Apply and save the spawn row in the database";
         spawnPersistBtn.Pressed += () => SendSpawnEdit(persist: true);
         actions.AddChild(spawnPersistBtn);
 
@@ -101,7 +96,7 @@ internal sealed class AdminSpawnEditor
     {
         spawnRow = row;
         spawnTitle.Text = $"{row.Name}  ({row.NpcId})";
-        spawnInfo.Text = $"{(row.Monster ? "Monster" : "NPC")} spawn row {row.Index} in {ZoneName(row.Zone)} ({row.Zone})"
+        spawnInfo.Text = $"{(row.Monster ? "Monster" : "NPC")} spawn row {row.Index} in {ZoneCatalog.Name(row.Zone)} ({row.Zone})"
             + $"  ·  ground height {row.Y:0.0}  ·  {row.Alive} of {row.Count} alive";
         spawnX.Value = row.X;
         spawnZ.Value = row.Z;
@@ -125,7 +120,6 @@ internal sealed class AdminSpawnEditor
     private void SendSpawnEdit(bool persist)
     {
         if (spawnRow is not { } row) return;
-        setStatus(persist ? $"Persisting spawn row {row.Index}…" : $"Setting spawn row {row.Index}…", false);
         requests.SpawnEdit(persist, row.Index, (int)spawnX.Value, (int)spawnZ.Value,
             (int)spawnDirection.Value, (int)spawnCount.Value, (int)spawnRespawn.Value, (int)spawnRange.Value);
     }

@@ -78,6 +78,8 @@ public static class SkillData
         public int NeedWeapon, NeedItem;
         public int NeedBuffSkill;
         public int CooldownGroup;
+        public int BuffIcon;
+        public bool AutoCast;
         private const int PotionItemGroup = 9;
         public Dictionary<string, int> Effect = new();
 

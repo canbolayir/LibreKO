@@ -304,6 +304,7 @@ public class LotteryTests : GameTestBase
         var specificDaySchedule = new LotteryScheduleData
         {
             LotteryId = 1,
+            Repeat = ScheduleRepeat.Weekly,
             Day = DayOfWeek.Sunday,
             Hour = 20,
             Minute = 0

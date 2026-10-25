@@ -34,6 +34,25 @@ public static class NpcNames
         return npcNames.TryGetValue(npcId, out var n) && n.Length > 0 ? n : null;
     }
 
+    public static List<(int Id, string Name)> Search(string query, bool monsters, int cap)
+    {
+        EnsureLoaded();
+        var map = monsters ? mobNames : npcNames;
+        var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var found = new List<(int Id, string Name)>();
+        if (int.TryParse(query.Trim(), out int wanted) && map.TryGetValue(wanted, out var exact)) found.Add((wanted, exact));
+        if (words.Length == 0) return found;
+        found.AddRange(map
+            .Where(entry => entry.Value.Length > 0 && entry.Key != wanted && words.All(word => entry.Value.Contains(word, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(entry => entry.Value.StartsWith(words[0], StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(entry => entry.Value.Length)
+            .ThenBy(entry => entry.Value, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entry => entry.Key)
+            .Take(cap)
+            .Select(entry => (entry.Key, entry.Value)));
+        return found;
+    }
+
     public static string TalkName(int npcId)
     {
         EnsureLoaded();

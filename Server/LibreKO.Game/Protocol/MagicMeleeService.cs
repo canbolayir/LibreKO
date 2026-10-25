@@ -136,6 +136,8 @@ public class MagicMeleeService(
             finalDamage += PlayerBonusDamage(type1Data.AddDamage, caster.ZoneId);
         if (caster.ZoneId == ChaosRules.Zone && !target.BlockPhysical)
             finalDamage = ChaosRules.SkillDamageOf(type1Data.Id);
+        if (caster.ManesSurvival != null && !target.BlockPhysical)
+            finalDamage = ManesSurvivalCombat.Hit(caster, target, ManesSurvivalCombat.MeleeSkill(type1Data.Hit));
 
         finalDamage = GmMode.Taken(target, GmMode.Dealt(caster, target.Hp,
             Math.Min(finalDamage, CombatUtils.MaxDamage)));
@@ -164,8 +166,10 @@ public class MagicMeleeService(
             npcTarget.TotalAc,
             Math.Max(1f, npcTarget.EvadeRate),
             isPlayerTarget: false);
-        var finalDamage = skillDamage + items.Element + type1Data.AddDamage;
-        finalDamage = GmMode.Dealt(caster, npcTarget.Hp, Math.Min(finalDamage, CombatUtils.MaxDamage));
+        var finalDamage = caster.ManesSurvival != null
+            ? ManesSurvivalCombat.Dealt(caster, ManesSurvivalCombat.MeleeSkill(type1Data.Hit))
+            : skillDamage + items.Element + type1Data.AddDamage;
+        finalDamage = npcTarget.DamageTaken(GmMode.Dealt(caster, npcTarget.Hp, Math.Min(finalDamage, CombatUtils.MaxDamage)), basicHit: false);
         if (finalDamage > 0)
         {
             npcTarget.Hp = Math.Max(0, npcTarget.Hp - finalDamage);

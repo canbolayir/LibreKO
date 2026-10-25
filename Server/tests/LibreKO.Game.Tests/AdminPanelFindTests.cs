@@ -23,7 +23,10 @@ public class AdminPanelFindTests
     private const byte Moradon = 21;
     private const byte RonarkLand = 71;
 
-    private sealed record Hit(int Id, int SpawnRow, string Name, short Level, byte Zone, ushort X, ushort Z, byte Flags);
+    private sealed record Hit(int Id, int SpawnRow, string Name, short Level, byte Zone, ushort X, ushort Z, byte Flags,
+        short Class = 0, byte Nation = 0, uint LastSeen = 0);
+
+    private static readonly DateTime LastWeek = new(2026, 10, 16, 20, 0, 0, DateTimeKind.Utc);
 
     private static (AdminPanelPacketCoordinator Coordinator, UserSession Gm, IClient Client, List<Packet> Sent, IZoneTransitionService Zones, IWorldMovementService Movement) Arrange(bool demoGrant = false)
     {
@@ -60,6 +63,20 @@ public class AdminPanelFindTests
         });
         var zones = Substitute.For<IZoneTransitionService>();
         var movement = Substitute.For<IWorldMovementService>();
+        var directory = Substitute.For<ICharacterDirectory>();
+        directory.SearchAsync(Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int>()).Returns(callInfo =>
+        {
+            var query = callInfo.ArgAt<string>(0);
+            var stored = new List<StoredCharacter>
+            {
+                new(2, "Rin", 83, 0, RonarkLand, 640, 920, null),
+                new(7, "Rias", 70, 207, Moradon, 812, 433, LastWeek),
+                new(9, "Ariel", 61, 105, Moradon, 500, 500, LastWeek),
+            };
+            return (IReadOnlyList<StoredCharacter>)stored.Where(c => c.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+        });
+        var playerEditor = new AdminPlayerEditor(sessions, directory, gameData, Substitute.For<IItemGrantService>(),
+            Substitute.For<IUserNotificationService>(), Substitute.For<ILogger<AdminPlayerEditor>>());
         var coordinator = new AdminPanelPacketCoordinator(
             sessions,
             gameData,
@@ -69,7 +86,11 @@ public class AdminPanelFindTests
             movement,
             Substitute.For<INpcSpawnRowService>(),
             Substitute.For<INpcSpawnRowStore>(),
-            Substitute.For<IHostEnvironment>(),
+            Substitute.For<IAdminMonsterEditor>(),
+            Substitute.For<IAdminEventScheduleEditor>(),
+            Substitute.For<IAdminEventContentEditor>(),
+            Substitute.For<IAdminTipEditor>(),
+            playerEditor,
             Substitute.For<ICollectionRaceService>(),
             Substitute.For<IPlayerProgressionService>(),
             Substitute.For<ILoyaltyService>(),
@@ -118,7 +139,7 @@ public class AdminPanelFindTests
         var hits = new List<Hit>();
         for (var i = 0; i < count; i++)
             hits.Add(new Hit(packet.ReadInt(), packet.ReadInt(), packet.ReadSByteString(), packet.ReadShort(), packet.ReadByte(),
-                packet.ReadUShort(), packet.ReadUShort(), packet.ReadByte()));
+                packet.ReadUShort(), packet.ReadUShort(), packet.ReadByte(), packet.ReadShort(), packet.ReadByte(), packet.ReadUInt()));
         return (kind, total, hits);
     }
 
@@ -178,7 +199,23 @@ public class AdminPanelFindTests
 
         var (kind, _, hits) = ReadFind(sent);
         kind.Should().Be(AdminPanelPacketWriter.FindPlayers);
-        hits.Should().ContainSingle().Which.Should().Be(new Hit(2, 0, "Rin", 83, RonarkLand, 640, 920, 0));
+        hits.Should().HaveCount(3);
+        hits[0].Should().Be(new Hit(2, 0, "Rin", 83, RonarkLand, 640, 920, AdminPanelPacketWriter.FindOnlineFlag));
+        hits[2].Should().Be(new Hit(7, 0, "Rias", 70, Moradon, 812, 433, 0, 207, 2, (uint)new DateTimeOffset(LastWeek).ToUnixTimeSeconds()));
+    }
+
+    [Fact]
+    public async Task OnlinePlayersComeFirstAndOfflineOnesCarryWhenTheyWereLastSeen()
+    {
+        var (coordinator, _, client, sent, _, _) = Arrange();
+
+        await coordinator.HandleAsync(client, FindRequest(AdminPanelPacketWriter.FindPlayers, "r"));
+
+        var hits = ReadFind(sent).Hits;
+        hits.Select(h => h.Name).Should().Equal("Rin", "Ariel", "Rias");
+        hits[0].Flags.Should().Be(AdminPanelPacketWriter.FindOnlineFlag);
+        hits.Skip(1).Should().OnlyContain(h => h.Flags == 0 && h.LastSeen > 0);
+        hits[1].Nation.Should().Be(1);
     }
 
     [Fact]

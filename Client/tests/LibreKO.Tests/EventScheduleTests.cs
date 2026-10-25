@@ -77,6 +77,22 @@ public class EventScheduleTests
     }
 
     [Fact]
+    public void TodayListsOpenEventsFirstThenTheRestOfTheLocalDay()
+    {
+        var live = new EventNow(EventKind.Temple, 2, "BDW", EventPhase.SignUp, 300, 20, 83);
+        var schedule = Schedule([live],
+            Event("BDW", 20, 83, new EventSlot(EventSchedule.EveryDay, 9, 0)),
+            Event("Evening", 0, 0, new EventSlot(EventSchedule.EveryDay, 19, 0)),
+            Event("Night", 0, 0, new EventSlot(EventSchedule.EveryDay, 23, 30)));
+
+        var today = schedule.Today(Wednesday1000, TimeSpan.FromHours(2));
+
+        Assert.Equal(new[] { "BDW", "Evening" }, today.Select(e => e.Name));
+        Assert.Equal(EventPhase.SignUp, today[0].Open);
+        Assert.Equal(new DateTime(2026, 10, 7, 21, 0, 0), today[1].LocalStart);
+    }
+
+    [Fact]
     public void AGmMovedClockCountsDownFromTheMovedTime()
     {
         var bdw = Event("BDW", 20, 83, new EventSlot(EventSchedule.EveryDay, 20, 0));

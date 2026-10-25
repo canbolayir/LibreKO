@@ -52,6 +52,7 @@ internal sealed partial class ChatSystem
         input.TextChanged += OnInputChanged;
         input.GuiInput += OnInputKey;
         input.FocusExited += () => Callable.From(Suspend).CallDeferred();
+        input.FocusEntered += () => InputFocused?.Invoke();
         input.TreeEntered += () =>
         {
             inputBare = null;

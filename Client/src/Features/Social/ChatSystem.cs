@@ -38,6 +38,8 @@ internal sealed partial class ChatSystem
     private HudLogText scroll = null!;
     private HBoxContainer inputRow = null!;
     private LineEdit input = null!;
+
+    internal event Action? InputFocused;
     private StyleBoxFlat panelStyle = null!;
     private HudLayout layout = null!;
     private bool active;
@@ -655,18 +657,13 @@ internal sealed partial class ChatSystem
     private bool IsSelf(string name) =>
         string.Equals(name, self.LastEnter.Name, StringComparison.OrdinalIgnoreCase);
 
-    private static bool Understandable(ChatLine line, int ownNation, bool zoneCanTalk)
-        => line.IsGm
-        || line.Nation == 0
-        || line.Nation == ownNation
-        || zoneCanTalk
-        || line.Type is not (ChatType.General or ChatType.Private or ChatType.Shout or ChatType.GameMaster
-            or ChatType.Merchant);
+    internal static string ReadableText(ChatLine line, bool viewerIsGm, int viewerNation, bool zoneCanTalk) =>
+        ChatSender.Understandable(line.Type, line.IsGm, line.Nation, viewerIsGm, viewerNation, zoneCanTalk)
+            ? line.Message
+            : Garble(line.Message);
 
-    internal static string ReadableText(ChatLine line, int ownNation, bool zoneCanTalk) =>
-        Understandable(line, ownNation, zoneCanTalk) ? line.Message : Garble(line.Message);
-
-    private string ReadableText(ChatLine line) => ReadableText(line, self.Nation, zoneAbility.CurrentZoneAbility.CanTalk);
+    private string ReadableText(ChatLine line) =>
+        ReadableText(line, self.IsGm, self.Nation, zoneAbility.CurrentZoneAbility.CanTalk);
 
     private static string Garble(string message)
     {
@@ -789,4 +786,7 @@ internal sealed partial class ChatSystem
     private void Info(string msg) => StatusNotice?.Invoke(msg);
 
     internal void AppendShout(string message) => AddEntry(ChatEntry.Plain(ChatCategory.Shout, (byte)ChatType.Shout, message));
+
+    internal void AppendNpcShout(string name, string text) =>
+        AddEntry(ChatEntry.Plain(ChatCategory.General, (byte)ChatType.NpcShout, $"{name} : {text}"));
 }

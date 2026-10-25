@@ -13,7 +13,7 @@ internal sealed partial class QuestFeature : IFeature
     private readonly MapFeature map;
     private readonly QuestTrackerFeature tracker;
 
-    public QuestFeature(IWorldContext context, NpcQuestSession npcQuest, QuestBook questBook, SelfSession self, INpcQuestRequests npcQuestRequests, QuestMarkersFeature markers, MapFeature map, QuestTrackerFeature tracker)
+    public QuestFeature(IWorldContext context, NpcQuestSession npcQuest, QuestBook questBook, SelfSession self, INpcQuestRequests npcQuestRequests, QuestMarkersFeature markers, MapFeature map, QuestTrackerFeature tracker, QuestPrefsFeature questPrefs)
     {
         this.context = context;
         npc = npcQuest;
@@ -23,11 +23,15 @@ internal sealed partial class QuestFeature : IFeature
         this.markers = markers;
         this.map = map;
         this.tracker = tracker;
+        this.questPrefs = questPrefs;
     }
+
+    private readonly QuestPrefsFeature questPrefs;
 
     private const int FilterAvailable = 0;
     private const int FilterActive = 1;
     private const int FilterCompleted = 2;
+    private const int FilterRepeatable = 3;
     private const float DetailWidth = 244f;
     private const float ListWidth = 408f;
 
@@ -121,6 +125,7 @@ internal sealed partial class QuestFeature : IFeature
                      ("In Progress", FilterActive),
                      ("Available", FilterAvailable),
                      ("Completed", FilterCompleted),
+                     ("Repeatable", FilterRepeatable),
                  })
         {
             int f = filter;
@@ -289,6 +294,7 @@ internal sealed partial class QuestFeature : IFeature
     {
         FilterCompleted => "Completed",
         FilterAvailable => "Available",
+        FilterRepeatable => "Repeatable",
         _ => "In Progress",
     };
 
@@ -311,8 +317,13 @@ internal sealed partial class QuestFeature : IFeature
     private List<(int QuestId, int State)> QuestsInView()
     {
         var rows = new List<(int, int)>();
+        if (filter == FilterRepeatable)
+        {
+            foreach (var view in book.Views.Values)
+                if (view.Repeatable) rows.Add((view.QuestId, book.StateOf(view.QuestId)));
+        }
         foreach (var q in book.Entries)
-            if (InFilter(q.State) && (Config.LegacyQuestFallback || book.Views.ContainsKey(q.QuestId)))
+            if (InFilter(q.State) && (Config.LegacyQuestFallback || book.Listed(q.QuestId)))
                 rows.Add((q.QuestId, q.State));
 
         if (filter == FilterAvailable)
@@ -376,6 +387,7 @@ internal sealed partial class QuestFeature : IFeature
                 {
                     FilterCompleted => "Nothing finished yet.",
                     FilterAvailable => "No quests are open to you right now.",
+                    FilterRepeatable => "No repeatable quests known yet.",
                     _ => "No quests in progress.\nTalk to NPCs to find some.",
                 },
                 13, UiTheme.TextLo, HorizontalAlignment.Center);
@@ -507,7 +519,8 @@ internal sealed partial class QuestFeature : IFeature
 
     private void SetTracked(int questId, bool tracked)
     {
-        if (!book.Track(questId, tracked)) return;
+        if (book.Tracked.Contains(questId) == tracked) return;
+        questPrefs.SetTracked(questId, tracked);
         tracker.RefreshTracker();
         RefreshDetail();
     }
@@ -592,13 +605,14 @@ internal sealed partial class QuestFeature : IFeature
             rewardOptionBox.AddChild(RewardTile(option.DisplayItemId, option.Count));
         rewardOptionTitle.Visible = rewardOptionBox.GetChildCount() > 0;
 
+        bool taken = state is QuestStates.Active or QuestStates.ReadyToTurnIn;
         trackBtn.Text = book.Tracked.Contains(questId) ? "Untrack" : "Track";
-        trackBtn.Disabled = state is not (QuestStates.Active or QuestStates.ReadyToTurnIn);
-        abandonBtn.Disabled = state is not (QuestStates.Active or QuestStates.ReadyToTurnIn)
-            || book.Views.TryGetValue(questId, out var autoView) && autoView.AutoAccepted;
-        completeBtn.Disabled = book.Views.TryGetValue(questId, out var actionView)
-            ? !actionView.CanClaim || actionView.Options.Length > 0
-            : state != QuestStates.ReadyToTurnIn;
+        trackBtn.Visible = taken;
+        abandonBtn.Visible = taken;
+        abandonBtn.Disabled = book.Views.TryGetValue(questId, out var autoView) && autoView.AutoAccepted;
+        completeBtn.Visible = book.Views.TryGetValue(questId, out var actionView)
+            ? actionView.CanClaim && actionView.Options.Length == 0
+            : state == QuestStates.ReadyToTurnIn;
     }
 
     private string PlaceFacts(int questId, int state, int zone)

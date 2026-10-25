@@ -90,9 +90,15 @@ internal sealed class CameraSystem : IFeature
         halfTurnStartYaw = CamYaw;
     }
 
+    private IEdgePanPause? edgePanPause;
+
+    internal void AttachEdgePanPause(IEdgePanPause edgePanPause) => this.edgePanPause = edgePanPause;
+
+    internal void DetachEdgePanPause() => edgePanPause = null;
+
     private void CameraEdgePanTick(double delta)
     {
-        if (!Config.CamEdgePan) return;
+        if (!Config.CamEdgePan || edgePanPause?.EdgePanPaused == true) return;
         if (DisplayServer.WindowGetMode() is not (DisplayServer.WindowMode.Fullscreen
             or DisplayServer.WindowMode.ExclusiveFullscreen)) return;
 

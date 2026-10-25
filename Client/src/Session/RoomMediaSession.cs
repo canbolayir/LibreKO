@@ -206,4 +206,4 @@ public sealed class RoomMediaSession
     }
 }
 
-public readonly record struct OpenWhisper(string Name, float X, float Y, bool Minimized, bool Unread);
+public readonly record struct OpenWhisper(string Name, float X, float Y, bool Minimized, bool Unread, bool Moved = false);

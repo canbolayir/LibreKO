@@ -8,11 +8,28 @@ internal static class StealthLook
 
     private const string StealthShadowMeta = "stealth_shadow";
     private const string StealthVisibleMeta = "stealth_visible";
+    private const string LookOpacityMeta = "look_opacity";
 
     internal static bool HiddenFromMe(EntityView e) => e.Infiltrating || (e.StealthUndetected && e.Attackable);
 
+    internal static void SetLookOpacity(Node3D body, float opacity)
+    {
+        if (opacity >= LookOpacity.Opaque) return;
+        body.SetMeta(LookOpacityMeta, opacity);
+        foreach (var node in StealthDescendants(body))
+            if (node is GeometryInstance3D gi and not Label3D)
+            {
+                Fx.SetTransparency(gi, 1f - opacity);
+                if (opacity <= 0f) gi.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
+            }
+    }
+
+    internal static float LookOpacityOf(Node3D body) =>
+        body.HasMeta(LookOpacityMeta) ? (float)body.GetMeta(LookOpacityMeta).AsDouble() : LookOpacity.Opaque;
+
     internal static void StealthSetBodyAlpha(Node3D body, float alpha)
     {
+        alpha = LookOpacity.Shown(alpha, LookOpacityOf(body));
         float transparency = Mathf.Clamp(1f - alpha, 0f, 1f);
         bool hidden = alpha <= StealthHiddenAlpha;
         foreach (var node in StealthDescendants(body))

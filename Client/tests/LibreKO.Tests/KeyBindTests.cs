@@ -22,7 +22,9 @@ public class KeyBindTests
         foreach (var entry in KeyBinds.All)
         {
             var optional = entry.Action is KeyAction.PotionHp or KeyAction.PotionMp
-                or KeyAction.CameraTurn or KeyAction.GameMenu or KeyAction.HotPageNext or KeyAction.NamePlates;
+                or KeyAction.CameraTurn or KeyAction.GameMenu or KeyAction.HotPageNext or KeyAction.NamePlates
+                or KeyAction.PartyDrops or KeyAction.Party or KeyAction.Friends or KeyAction.Helmet or KeyAction.MyShop
+                or KeyAction.Achievements;
             Assert.Equal(!optional, entry.Default.Assigned);
             if (optional) continue;
             var key = (KeyBinds.LayerOf(entry.Action), entry.Default);
@@ -31,6 +33,20 @@ public class KeyBindTests
             seen[key] = entry.Action;
         }
     }
+
+    [Theory]
+    [InlineData(KeyAction.Pet, Godot.Key.P)]
+    [InlineData(KeyAction.TargetHostileAlt, Godot.Key.Q)]
+    [InlineData(KeyAction.ToggleRun, Godot.Key.Y)]
+    [InlineData(KeyAction.WhisperTarget, Godot.Key.F11)]
+    [InlineData(KeyAction.HotPageBack, Godot.Key.Pageup)]
+    [InlineData(KeyAction.HotPageForward, Godot.Key.Pagedown)]
+    public void TheKeysMeanWhatTheyMeanInTwentySixNineteen(KeyAction action, Godot.Key key) =>
+        Assert.Equal(key, KeyBinds.All.Single(e => e.Action == action).Default.Key);
+
+    [Fact]
+    public void NoWindowOfOursSitsOnTheTwentySixNineteenRenderToggle() =>
+        Assert.DoesNotContain(KeyBinds.All, e => e.Default.Key == Godot.Key.O && !e.Default.Ctrl && !e.Default.Shift && !e.Default.Alt);
 
     [Fact]
     public void HotbarActionsAreContiguous()

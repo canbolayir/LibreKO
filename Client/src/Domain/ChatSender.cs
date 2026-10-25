@@ -29,6 +29,15 @@ public static class ChatSender
         return 0;
     }
 
+    public static bool Understandable(ChatType type, bool senderIsGm, int senderNation, bool viewerIsGm, int viewerNation,
+        bool zoneCanTalk) =>
+        viewerIsGm
+        || senderIsGm
+        || senderNation == 0
+        || senderNation == viewerNation
+        || zoneCanTalk
+        || type is not (ChatType.General or ChatType.Private or ChatType.Shout or ChatType.GameMaster or ChatType.Merchant);
+
     public static string Flatten(ChatType type, string message) =>
         type == ChatType.Private ? message : message.Replace(LineBreak, FlattenedBreak);
 }

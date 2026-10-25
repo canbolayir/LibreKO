@@ -106,6 +106,7 @@ public partial class StatBar : Control
     }
 
     private int cur = -1, max = -1;
+    private int textScale = 1;
     private string? fullText;
     private BarGlide? glide;
     private bool snapNext = true;
@@ -118,6 +119,19 @@ public partial class StatBar : Control
 
     public void SnapNext() => snapNext = true;
 
+    public int TextScale
+    {
+        get => textScale;
+        set
+        {
+            if (textScale == value) return;
+            textScale = value;
+            if (cur >= 0 && max >= 0) textLabel.Text = ValueText();
+        }
+    }
+
+    private string ValueText() => $"{cur * textScale} / {max * textScale}";
+
     public void Set(int cur, int max)
     {
         if (cur == this.cur && max == this.max) return;
@@ -125,7 +139,7 @@ public partial class StatBar : Control
         this.max = max;
         fullText = null;
         float frac = max > 0 ? Mathf.Clamp((float)cur / max, 0f, 1f) : 0f;
-        textLabel.Text = $"{cur} / {max}";
+        textLabel.Text = ValueText();
         if (glide == null || snapNext)
         {
             snapNext = false;

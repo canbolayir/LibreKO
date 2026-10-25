@@ -36,6 +36,10 @@ public sealed class GenieSession
         RaiseGenieSystemState(running, minutes);
     }
 
+    public event Action? GenieSpiritUsedEvent;
+
+    internal void RaiseSpiritUsed() => GenieSpiritUsedEvent?.Invoke();
+
     internal void ApplyRemainingTime(int minutes)
     {
         if (minutes == 0) GenieRunning = false;

@@ -18,6 +18,10 @@ public sealed class ChatSession
 
     internal void RaiseKrowazNotice(int value) => KrowazNoticeEvent?.Invoke(value);
 
+    public event Action? MonsterNotAttackableEvent;
+
+    internal void RaiseMonsterNotAttackable() => MonsterNotAttackableEvent?.Invoke();
+
     public event Action<MonumentNotice>? MonumentNoticeEvent;
 
     internal void RaiseMonumentNotice(MonumentNotice monumentNotice) => MonumentNoticeEvent?.Invoke(monumentNotice);

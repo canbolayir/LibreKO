@@ -4,9 +4,7 @@ namespace LibreKO.Features.Windows;
 
 internal sealed class AdminCommandsTab
 {
-    private const int CommandsWidth = 720;
-    private const int CommandsHeight = 380;
-    private const float CommandColumnWidth = 340;
+    private const float CommandColumnWidth = 420;
 
     private LineEdit commandSearch = null!;
     private VBoxContainer commandList = null!;
@@ -16,9 +14,8 @@ internal sealed class AdminCommandsTab
 
     internal Control Build()
     {
-        var box = new VBoxContainer { CustomMinimumSize = new Vector2(CommandsWidth, 0) };
+        var box = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         box.AddThemeConstantOverride("separation", 6);
-        box.AddChild(UiTheme.SectionTitle("GM commands", UiIcons.Get("system/help")));
 
         commandSearch = new LineEdit { PlaceholderText = "Search commands", ClearButtonEnabled = true };
         commandSearch.AddThemeFontSizeOverride("font_size", 12);
@@ -27,7 +24,7 @@ internal sealed class AdminCommandsTab
 
         var scroll = new ScrollContainer
         {
-            CustomMinimumSize = new Vector2(CommandsWidth, CommandsHeight),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
         box.AddChild(scroll);

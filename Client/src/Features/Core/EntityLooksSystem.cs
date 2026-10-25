@@ -266,7 +266,7 @@ internal sealed class EntityLooksSystem : IFeature
         }
         if (anim != null)
             using (Perf.Measure(Perf.Section.BuildMeta))
-                ModelAnimation.RegisterAnimationMetadata(anim, scene.ResourcePath.GetBaseName() + ".anim.json");
+                ModelAnimation.RegisterAnimationMetadata(anim, scene.ResourcePath.GetBaseName() + ModelAnimation.MetadataSuffix);
 
         ModelNodes.AttachNameLabel(body, name, ModelMetrics.TopY(inst) * scale + 0.35f);
         return (body, anim);
@@ -412,13 +412,15 @@ internal sealed class EntityLooksSystem : IFeature
             int baseItemId = WeaponCatalog.ResolveBaseId(gear[slot]);
             if (!weapons.TryGetValue(baseItemId, out var w)) continue;
             if (ModelNodes.KeptScene($"res://assets/items/weapon/{w.Stem}.glb") is not { } scene) continue;
-            int bone = WeaponMount.Bone(skel, right, gear[slot]);
-            if (bone < 0) continue;
+            int bone = wearer.ItemJoint ? w.Joint : WeaponMount.Bone(skel, right, gear[slot]);
+            if (bone < 0 || bone >= skel.GetBoneCount()) continue;
             var attach = new BoneAttachment3D { Name = $"{WeaponMounts.WeaponNodePrefix}{slot}" };
             skel.AddChild(attach);
             attach.BoneIdx = bone;
             var mesh = scene.Instantiate<Node3D>();
-            mesh.Transform = WeaponMount.HandPlugLocal(w.Pose, w.Version, w.RaceBlocks, right, wearer, bindHeight);
+            mesh.Transform = wearer.ItemJoint
+                ? WeaponMount.PlugLocal(w.Pose)
+                : WeaponMount.HandPlugLocal(w.Pose, w.Version, w.RaceBlocks, right, wearer, bindHeight);
             ModelNodes.ForceDoubleSided(mesh);
             attach.AddChild(mesh);
             WeaponIdle.Start(mesh, w.Anim);
@@ -589,7 +591,7 @@ internal sealed class EntityLooksSystem : IFeature
         CharacterMerge.Remove(e.Body);
         RestorePartDefaults(e.Body, e.DefaultParts);
         GraftEquipment(e.Body, e.LookRace, e.Face, e.Gear, e.Hair, e.HelmetHidden, e.CostumeHidden);
-        AttachWeapons(e.Body, e.Gear, WeaponMounts.WeaponWearer(e.IsNpc, e.Statue, e.Race, e.NpcId, e.Size, e.ModelId));
+        AttachWeapons(e.Body, e.Gear, WeaponMounts.WeaponWearer(e.IsNpc, e.Statue, e.Race, e.NpcId, e.Size, e.ModelId, e.BossPhase));
         e.WingAnims = DressAccessories(e.Body, CosmeticsFeature.ShownCospre(e.Gear), e.Race);
         System.Array.Clear(e.WingClips);
         if (e.Sitting)

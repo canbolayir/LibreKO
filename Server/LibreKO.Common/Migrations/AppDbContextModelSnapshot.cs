@@ -417,6 +417,10 @@ namespace LibreKO.Common.Migrations
                     b.Property<byte>("Race")
                         .HasColumnType("tinyint unsigned");
 
+                    b.Property<byte[]>("RankMarks")
+                        .IsRequired()
+                        .HasColumnType("longblob");
+
                     b.Property<byte>("RebDex")
                         .HasColumnType("tinyint unsigned");
 
@@ -1025,8 +1029,14 @@ namespace LibreKO.Common.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
+                    b.Property<DateOnly?>("Date")
+                        .HasColumnType("date");
+
                     b.Property<int?>("Day")
                         .HasColumnType("int");
+
+                    b.Property<byte>("DayOfMonth")
+                        .HasColumnType("tinyint unsigned");
 
                     b.Property<byte>("Hour")
                         .HasColumnType("tinyint unsigned");
@@ -1037,11 +1047,60 @@ namespace LibreKO.Common.Migrations
                     b.Property<int>("RaceId")
                         .HasColumnType("int");
 
+                    b.Property<byte>("Repeat")
+                        .HasColumnType("tinyint unsigned");
+
                     b.HasKey("Id");
 
                     b.HasIndex("RaceId");
 
                     b.ToTable("CollectionRaceSchedules", (string)null);
+                });
+
+            modelBuilder.Entity("LibreKO.Common.Domain.Entities.GameData.EventDurationData", b =>
+                {
+                    b.Property<byte>("Kind")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<int>("Minutes")
+                        .HasColumnType("int");
+
+                    b.HasKey("Kind");
+
+                    b.ToTable("EventDurations", (string)null);
+                });
+
+            modelBuilder.Entity("LibreKO.Common.Domain.Entities.GameData.EventStartData", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly?>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int?>("Day")
+                        .HasColumnType("int");
+
+                    b.Property<byte>("DayOfMonth")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<byte>("Hour")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<byte>("Kind")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<byte>("Minute")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<byte>("Repeat")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Kind");
+
+                    b.ToTable("EventStarts", (string)null);
                 });
 
             modelBuilder.Entity("LibreKO.Common.Domain.Entities.GameData.EventTriggerData", b =>
@@ -1134,6 +1193,51 @@ namespace LibreKO.Common.Migrations
                     b.HasKey("ZoneNum", "EventNum");
 
                     b.ToTable("GameEvents", (string)null);
+                });
+
+            modelBuilder.Entity("LibreKO.Common.Domain.Entities.GameData.GameplayTipData", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<byte>("Language")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("GameplayTips", (string)null);
+                });
+
+            modelBuilder.Entity("LibreKO.Common.Domain.Entities.GameData.GameplayTipSettingsData", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("IntervalMinutes")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("GameplayTipSettings", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Enabled = true,
+                            IntervalMinutes = 5
+                        });
                 });
 
             modelBuilder.Entity("LibreKO.Common.Domain.Entities.GameData.HomeData", b =>
@@ -2046,8 +2150,14 @@ namespace LibreKO.Common.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
+                    b.Property<DateOnly?>("Date")
+                        .HasColumnType("date");
+
                     b.Property<int?>("Day")
                         .HasColumnType("int");
+
+                    b.Property<byte>("DayOfMonth")
+                        .HasColumnType("tinyint unsigned");
 
                     b.Property<byte>("Hour")
                         .HasColumnType("tinyint unsigned");
@@ -2056,6 +2166,9 @@ namespace LibreKO.Common.Migrations
                         .HasColumnType("int");
 
                     b.Property<byte>("Minute")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<byte>("Repeat")
                         .HasColumnType("tinyint unsigned");
 
                     b.HasKey("Id");
@@ -3071,6 +3184,65 @@ namespace LibreKO.Common.Migrations
                     b.ToTable("PusItems", (string)null);
                 });
 
+            modelBuilder.Entity("LibreKO.Common.Domain.Entities.GameData.RentalListingData", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Collected")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("DailyPrice")
+                        .HasColumnType("int");
+
+                    b.Property<short>("Durability")
+                        .HasColumnType("smallint");
+
+                    b.Property<long>("Earnings")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte>("Flag")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ListedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("ListingEndsAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("OwnerCharacterId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OwnerName")
+                        .IsRequired()
+                        .HasMaxLength(21)
+                        .HasColumnType("varchar(21)");
+
+                    b.Property<DateTime?>("RentedUntil")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("RenterCharacterId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UniqueId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ListingEndsAt");
+
+                    b.HasIndex("OwnerCharacterId");
+
+                    b.ToTable("RentalListings", (string)null);
+                });
+
             modelBuilder.Entity("LibreKO.Common.Domain.Entities.GameData.ServerResourceData", b =>
                 {
                     b.Property<int>("ResourceId")
@@ -3535,8 +3707,14 @@ namespace LibreKO.Common.Migrations
                         .HasColumnType("tinyint unsigned")
                         .HasDefaultValue((byte)10);
 
+                    b.Property<DateOnly?>("Date")
+                        .HasColumnType("date");
+
                     b.Property<int?>("Day")
                         .HasColumnType("int");
+
+                    b.Property<byte>("DayOfMonth")
+                        .HasColumnType("tinyint unsigned");
 
                     b.Property<byte>("Event")
                         .HasColumnType("tinyint unsigned");
@@ -3555,6 +3733,9 @@ namespace LibreKO.Common.Migrations
                         .HasDefaultValue((byte)20);
 
                     b.Property<byte>("Minute")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<byte>("Repeat")
                         .HasColumnType("tinyint unsigned");
 
                     b.HasKey("Id");

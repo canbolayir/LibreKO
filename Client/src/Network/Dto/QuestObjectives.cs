@@ -4,7 +4,30 @@ public sealed record QuestKillGroup(int Count, int[] Monsters, string? Name = nu
 
 public sealed record QuestObjectives(int QuestId, bool AnyWillDo, QuestKillGroup[] Groups)
 {
+    public const int BatchMax = 200;
+
     public static QuestObjectives Read(Packet packet)
+    {
+        var objectives = ReadOne(packet);
+        if (packet.RemainingBytes != 0)
+            throw new InvalidDataException("Unexpected quest objective data.");
+        return objectives;
+    }
+
+    public static QuestObjectives[] ReadBatch(Packet packet)
+    {
+        var count = packet.ReadUShort();
+        if (count is 0 or > BatchMax)
+            throw new InvalidDataException("Invalid quest objective batch.");
+        var all = new QuestObjectives[count];
+        for (var index = 0; index < all.Length; index++)
+            all[index] = ReadOne(packet);
+        if (packet.RemainingBytes != 0)
+            throw new InvalidDataException("Unexpected quest objective data.");
+        return all;
+    }
+
+    private static QuestObjectives ReadOne(Packet packet)
     {
         var questId = packet.ReadShort();
         var rule = packet.ReadByte();
@@ -28,8 +51,6 @@ public sealed record QuestObjectives(int QuestId, bool AnyWillDo, QuestKillGroup
             }
             groups[index] = new QuestKillGroup(count, monsters);
         }
-        if (packet.RemainingBytes != 0)
-            throw new InvalidDataException("Unexpected quest objective data.");
         return new QuestObjectives(questId, rule == 1, groups);
     }
 

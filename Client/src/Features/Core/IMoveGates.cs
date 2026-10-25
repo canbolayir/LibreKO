@@ -4,7 +4,5 @@ internal interface IMoveGates
 {
     bool InputHeld { get; }
 
-    bool WhisperHasFocus { get; }
-
     bool StallBlocksMove();
 }

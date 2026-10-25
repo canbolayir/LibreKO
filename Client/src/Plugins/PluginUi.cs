@@ -16,6 +16,10 @@ public enum HudPart
     Party,
     WarBoard,
     GenieSub,
+    DrakiPlate,
+    DrakiFloor,
+    TempleSignUp,
+    ManesSurvival,
 }
 
 public readonly record struct PlayerMenuRow(string Key, string Caption, Action Run);
@@ -258,13 +262,13 @@ public sealed class PluginUi
     public static readonly string[] KnownWindowIds =
     {
         "achievements", "admin_panel", "anvil", "attendance", "bounty", "cape", "changehair", "character_info",
-        "chat_room", "clan", "clanwarehouse", "class_change", "collectionrace", "combinerecipes", "disguise",
+        "chat_room", "clan", "clanwarehouse", "class_change", "collectionrace", "combinerecipes", "disguise", "draki_board",
         "equipview", "exchange", "fishinghall", "forces", "fortune", "genie", "globalmap",
         "inventory", "itemcombine", "kingballot", "kingelection", "kingnominate", "kingplan", "kingvote", "lottery",
         "mail", "mailcompose", "mailread", "marketprice", "merchantmenu", "messenger", "namechange", "nation_chat",
-        "nation_chat_create", "nation_chat_password", "nationintro",
+        "nation_chat_create", "nation_chat_password", "nationintro", "party_drops",
         "nationtax", "nationtaxrate", "npc_dialog", "party", "pet", "piecechange", "presets", "quest_available",
-        "quest_receipt", "quest_target", "quests", "rank", "rebirth", "repair", "report", "repurchase", "roulette", "seal",
+        "quest_receipt", "quest_target", "quests", "quickslot_saves", "rank", "rebirth", "repair", "report", "repurchase", "roulette", "seal",
         "seek_party", "sellstall", "shop", "shoppingmall", "siegechallengers", "siegedefenders", "siegeguard",
         "siegeoffice", "siegeschedule", "siegetaxlist", "siegetaxrate", "skills", "specialauction", "titles",
         "tournament", "user_vote", "user_vote_ask", "user_vote_notice", "userinfo", "vendor", "vipwarehouse", "wantedstall", "warehouse", "warp", "whisper_*",

@@ -5,13 +5,15 @@ public static class WeatherRules
     public const int Fine = 1;
     public const int Rain = 2;
     public const int Snow = 3;
-    public const int DrawnSunny = 7;
+    public const int Unchanged = 6;
     public const int MinAmount = 20;
     public const int FineMaxAmount = 100;
     public const int OtherMaxAmount = 70;
 
     private const int NoWeatherZone = 86;
-    private const int DrawnSunnyZone = 66;
+    private const int PetalsWire = 4;
+    private const int PetalRainWire = 5;
+    private const int EmbersWire = 7;
     private const float FineLightFloor = 0.5f;
     private const float RainLightFloor = 0.25f;
     private const float LightMin = 0.25f;
@@ -25,8 +27,12 @@ public static class WeatherRules
     public static int Type(int zone, int type)
     {
         if (System.Array.IndexOf(FineZones, zone) >= 0) return Fine;
-        if (zone == DrawnSunnyZone) return DrawnSunny;
-        return type;
+        return type switch
+        {
+            PetalRainWire => Rain,
+            PetalsWire or EmbersWire => Fine,
+            _ => type,
+        };
     }
 
     public static int Amount(int type, int amount) =>

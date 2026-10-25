@@ -37,7 +37,8 @@ public static class CharacterReconnectZoneRepair
             or (short)ZoneId.MonsterStone2
             or (short)ZoneId.MonsterStone3
             or (short)ZoneId.DrakiTower
-            or (short)ZoneId.Bifrost;
+            or (short)ZoneId.Bifrost
+            or >= (short)ZoneId.ManesSurvival1 and <= (short)ZoneId.ManesSurvival4;
 
     public static bool IsEventZone(byte zoneId) => IsEventZone((short)zoneId);
 

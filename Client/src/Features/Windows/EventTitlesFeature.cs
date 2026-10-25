@@ -26,8 +26,7 @@ internal sealed class EventTitlesFeature : IFeature
     public void Build()
     {
         BuildTitleColumn();
-        premium.Layer.AddChild(TitleColumn);
-        premium.Chip.Resized += Place;
+        premium.AttachBelow(TitleColumn);
         zone.EventTitlesChangedEvent += Refresh;
         Refresh();
     }
@@ -36,18 +35,9 @@ internal sealed class EventTitlesFeature : IFeature
     {
         TitleColumn = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         TitleColumn.AddThemeConstantOverride("separation", TitleGap);
-        TitleColumn.Resized += Place;
     }
 
     public void Dispose() => zone.EventTitlesChangedEvent -= Refresh;
-
-    private void Place()
-    {
-        if (!GodotObject.IsInstanceValid(TitleColumn) || !GodotObject.IsInstanceValid(premium.Chip)) return;
-        HudAnchor.Pin(TitleColumn, HudAnchor.Spot.TopRight, new Vector2(
-            HudAnchor.Edge + MiniMap.SquareSize + UiKit.StatusHudGap,
-            HudAnchor.Edge + premium.Chip.Size.Y + TitleGap));
-    }
 
     internal void Refresh()
     {
@@ -61,8 +51,6 @@ internal sealed class EventTitlesFeature : IFeature
         for (int i = 0; i < titles.ShownCount; i++)
             TitleColumn.AddChild(TitleChip(titles.Entries[i], i == 0 && titles.HasToggle ? titles.Expanded : null));
         TitleColumn.Visible = titles.ShownCount > 0;
-        TitleColumn.ResetSize();
-        Callable.From(Place).CallDeferred();
     }
 
     private Control TitleChip(EventTitle entry, bool? expanded)

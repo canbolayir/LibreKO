@@ -243,6 +243,7 @@ internal sealed partial class VipWarehouseFeature : IFeature, IClosableWindow
             PlaceholderText = "1234",
             MaxLength = 4,
             Secret = true,
+            VirtualKeyboardType = LineEdit.VirtualKeyboardTypeEnum.Password,
             CustomMinimumSize = new Vector2(160, 0),
         };
         pinEdit.TextSubmitted += _ => SubmitPin();

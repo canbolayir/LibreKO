@@ -65,6 +65,8 @@ public class GameDataService(IServiceScopeFactory scopeFactory, ILogger<GameData
     public ILookup<int, LotteryRewardData> LotteryRewardsByEvent { get; private set; } = Enumerable.Empty<LotteryRewardData>().ToLookup(x => x.LotteryId);
     public ILookup<int, LotteryScheduleData> LotterySchedulesByEvent { get; private set; } = Enumerable.Empty<LotteryScheduleData>().ToLookup(x => x.LotteryId);
     public IReadOnlyList<TempleEventScheduleData> TempleEventSchedules { get; private set; } = [];
+    public IReadOnlyList<EventStartData> EventStarts { get; private set; } = [];
+    public IReadOnlyList<EventDurationData> EventDurations { get; private set; } = [];
     public IReadOnlyList<TempleEventRewardData> TempleEventRewards { get; private set; } = [];
     public IReadOnlyList<ForgottenTempleWaveData> ForgottenTempleWaves { get; private set; } = [];
     public ILookup<int, ItemOpData> ItemOpsByItemId { get; private set; } = Enumerable.Empty<ItemOpData>().ToLookup(x => x.ItemId);
@@ -200,6 +202,12 @@ public class GameDataService(IServiceScopeFactory scopeFactory, ILogger<GameData
         return NpcItemTable.TryGetValue((index, isMonster), out var data) ? data : null;
     }
 
+    public void PutNpcItem(NpcItemData row) =>
+        NpcItemTable = new Dictionary<(short, bool), NpcItemData>(NpcItemTable) { [(row.Index, row.IsMonster)] = row };
+
+    public void PutItemGroup(int group, int[] items) =>
+        MakeItemGroupTable = new Dictionary<int, int[]>(MakeItemGroupTable) { [group] = items };
+
     public IEnumerable<ItemOpData> GetItemOps(int itemId)
     {
         return ItemOpsByItemId[itemId];
@@ -226,6 +234,26 @@ public class GameDataService(IServiceScopeFactory scopeFactory, ILogger<GameData
             PremiumPropertyType.ItemSell => premium.ItemSellPercent,
             _ => 0
         };
+    }
+
+    public async Task ReloadEventsAsync(CancellationToken cancellationToken = default)
+    {
+        using var scope = scopeFactory.CreateScope();
+        await LoadEventsAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), cancellationToken);
+    }
+
+    private async Task LoadEventsAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        CollectionRaceTable = await LoadDictionaryAsync(db.CollectionRaces, x => x.Id, "collection races", cancellationToken);
+        CollectionRaceObjectivesByRace = await LoadLookupAsync(db.CollectionRaceObjectives.OrderBy(x => x.Ordinal), x => x.RaceId, "collection race objectives", cancellationToken);
+        CollectionRaceRewardsByRace = await LoadLookupAsync(db.CollectionRaceRewards, x => x.RaceId, "collection race rewards", cancellationToken);
+        CollectionRaceSchedulesByRace = await LoadLookupAsync(db.CollectionRaceSchedules, x => x.RaceId, "collection race schedules", cancellationToken);
+        LotteryEventTable = await LoadDictionaryAsync(db.LotteryEvents, x => x.Id, "lottery events", cancellationToken);
+        LotteryRewardsByEvent = await LoadLookupAsync(db.LotteryRewards.OrderBy(x => x.Place), x => x.LotteryId, "lottery rewards", cancellationToken);
+        LotterySchedulesByEvent = await LoadLookupAsync(db.LotterySchedules, x => x.LotteryId, "lottery schedules", cancellationToken);
+        TempleEventSchedules = await LoadListAsync(db.TempleEventSchedules.OrderBy(x => x.Id), "temple event schedules", cancellationToken);
+        EventStarts = await LoadListAsync(db.EventStarts.OrderBy(x => x.Id), "event starts", cancellationToken);
+        EventDurations = await LoadListAsync(db.EventDurations.OrderBy(x => x.Kind), "event durations", cancellationToken);
     }
 
     public async Task ReloadAsync(CancellationToken cancellationToken = default)
@@ -340,14 +368,7 @@ public class GameDataService(IServiceScopeFactory scopeFactory, ILogger<GameData
             ZoneInfoTable = await LoadDictionaryAsync(db.ZoneInfos, x => x.ZoneNo, "zone info entries", cancellationToken);
             GameEventsByZone = await LoadLookupAsync(db.GameEvents, x => x.ZoneNum, "game events", cancellationToken);
             MapObjectsByZone = await LoadLookupAsync(db.MapObjects, x => x.ZoneId, "map objects", cancellationToken);
-            CollectionRaceTable = await LoadDictionaryAsync(db.CollectionRaces, x => x.Id, "collection races", cancellationToken);
-            CollectionRaceObjectivesByRace = await LoadLookupAsync(db.CollectionRaceObjectives.OrderBy(x => x.Ordinal), x => x.RaceId, "collection race objectives", cancellationToken);
-            CollectionRaceRewardsByRace = await LoadLookupAsync(db.CollectionRaceRewards, x => x.RaceId, "collection race rewards", cancellationToken);
-            CollectionRaceSchedulesByRace = await LoadLookupAsync(db.CollectionRaceSchedules, x => x.RaceId, "collection race schedules", cancellationToken);
-            LotteryEventTable = await LoadDictionaryAsync(db.LotteryEvents, x => x.Id, "lottery events", cancellationToken);
-            LotteryRewardsByEvent = await LoadLookupAsync(db.LotteryRewards.OrderBy(x => x.Place), x => x.LotteryId, "lottery rewards", cancellationToken);
-            LotterySchedulesByEvent = await LoadLookupAsync(db.LotterySchedules, x => x.LotteryId, "lottery schedules", cancellationToken);
-            TempleEventSchedules = await LoadListAsync(db.TempleEventSchedules.OrderBy(x => x.Id), "temple event schedules", cancellationToken);
+            await LoadEventsAsync(db, cancellationToken);
             TempleEventRewards = await LoadListAsync(db.TempleEventRewards.OrderBy(x => x.Id), "temple event rewards", cancellationToken);
             ForgottenTempleWaves = await LoadListAsync(db.ForgottenTempleWaves.OrderBy(x => x.Id), "forgotten temple waves", cancellationToken);
             SiegeWarfare = await db.SiegeWarfare.AsNoTracking().OrderBy(x => x.CastleIndex).FirstOrDefaultAsync(cancellationToken);

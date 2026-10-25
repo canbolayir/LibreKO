@@ -169,9 +169,9 @@ public class BuffExpiryService(
                 {
                     var killer = sessionManager.GetByCharacterId(effect.CasterId)
                         ?? (npc.TopDamagerCharId > 0 ? sessionManager.GetByCharacterId(npc.TopDamagerCharId) : null);
-                    var damage = killer != null
+                    var damage = npc.DamageTaken(killer != null
                         ? GmMode.Dealt(killer, npc.Hp, -effect.TickAmount)
-                        : -effect.TickAmount;
+                        : -effect.TickAmount, basicHit: false);
                     npc.Hp = Math.Max(0, npc.Hp - damage);
 
                     if (killer != null)

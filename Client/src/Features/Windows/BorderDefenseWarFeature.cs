@@ -336,7 +336,7 @@ internal sealed class BorderDefenseWarFeature : IFeature
         warRankExp.Text = text;
     }
 
-    private static void FillWarRankColumn(VBoxContainer rows, IReadOnlyList<BorderWarRankRow> entries)
+    private void FillWarRankColumn(VBoxContainer rows, IReadOnlyList<BorderWarRankRow> entries)
     {
         foreach (var child in rows.GetChildren()) child.QueueFree();
         if (entries.Count == 0)
@@ -347,9 +347,18 @@ internal sealed class BorderDefenseWarFeature : IFeature
         for (int i = 0; i < entries.Count; i++)
         {
             var entry = entries[i];
+            var frame = new PanelContainer();
+            bool mine = string.Equals(entry.Name, self.LastEnter.Name, StringComparison.OrdinalIgnoreCase);
+            var highlight = UiTheme.Row(selected: true);
+            frame.AddThemeStyleboxOverride("panel", mine ? highlight : new StyleBoxEmpty
+            {
+                ContentMarginLeft = highlight.ContentMarginLeft, ContentMarginRight = highlight.ContentMarginRight,
+                ContentMarginTop = highlight.ContentMarginTop, ContentMarginBottom = highlight.ContentMarginBottom,
+            });
+            rows.AddChild(frame);
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", 6);
-            rows.AddChild(row);
+            frame.AddChild(row);
             var place = UiTheme.Text($"{i + 1}.", 12, UiTheme.GoldBright);
             place.CustomMinimumSize = new Vector2(WarRankingPlaceWidth, 0);
             row.AddChild(place);

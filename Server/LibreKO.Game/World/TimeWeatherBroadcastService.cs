@@ -16,11 +16,9 @@ public class TimeWeatherBroadcastService(
     public const byte WeatherFine = (byte)Common.Enums.WeatherType.Fine;
     public const byte WeatherRain = (byte)Common.Enums.WeatherType.Rain;
     public const byte WeatherSnow = (byte)Common.Enums.WeatherType.Snow;
-    public const byte WeatherLeaves = (byte)Common.Enums.WeatherType.Leaves;
 
     private const int SnowChance = 2;
     private const int RainChance = 7;
-    private const int LeafChance = 12;
     private const int FineAmountFloor = 70;
 
     // A full in-game day/night cycle takes this many REAL seconds (4 hours), so game time runs 6x.
@@ -43,19 +41,16 @@ public class TimeWeatherBroadcastService(
     public byte DropEventAmount { get; set; }
     public byte SantaOrAngel { get; set; }
 
+    private readonly Dictionary<RateEvent, DateTime> rateEnds = new();
+    private readonly Lock rateEndsLock = new();
+
     public long ApplyExpBonus(long baseExp) =>
         ExpEventAmount == 0 ? baseExp : baseExp * (100 + ExpEventAmount) / 100;
-
-    public int ApplyCoinBonus(int baseAmount) =>
-        CoinEventAmount == 0 ? baseAmount : (int)((long)baseAmount * (100 + CoinEventAmount) / 100);
 
     public int ApplyNpBonus(int baseAmount) =>
         NpEventAmount == 0 || baseAmount <= 0
             ? baseAmount
             : (int)((long)baseAmount * (100 + NpEventAmount) / 100);
-
-    public int ApplyDropBonus(int baseRate) =>
-        DropEventAmount == 0 ? baseRate : (int)((long)baseRate * (100 + DropEventAmount) / 100);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -74,6 +69,7 @@ public class TimeWeatherBroadcastService(
         {
             try
             {
+                await EndDueRatesAsync(DateTime.UtcNow);
                 if (sessionManager.OnlineCount == 0) continue;
                 await sessionManager.BroadcastToAll(BuildCurrentTimePacket());
             }
@@ -101,6 +97,38 @@ public class TimeWeatherBroadcastService(
             {
                 logger.LogError(ex, "Weather broadcast tick failed");
             }
+        }
+    }
+
+    public void EndRateAt(RateEvent kind, DateTime? endUtc)
+    {
+        lock (rateEndsLock)
+        {
+            if (endUtc is { } end) rateEnds[kind] = end;
+            else rateEnds.Remove(kind);
+        }
+    }
+
+    public DateTime? RateEnd(RateEvent kind)
+    {
+        lock (rateEndsLock)
+            return rateEnds.TryGetValue(kind, out var end) ? end : null;
+    }
+
+    public async Task EndDueRatesAsync(DateTime nowUtc)
+    {
+        List<RateEvent> due;
+        lock (rateEndsLock)
+        {
+            due = rateEnds.Where(entry => entry.Value <= nowUtc).Select(entry => entry.Key).ToList();
+            foreach (var kind in due) rateEnds.Remove(kind);
+        }
+
+        foreach (var kind in due)
+        {
+            RateEvents.Set(this, kind, 0);
+            await sessionManager.BroadcastToAll(NoticePacketWriter.EventTitleRemoved(RateEvents.Title(kind)));
+            logger.LogInformation("{Event} ended on its timer", RateEvents.Title(kind));
         }
     }
 
@@ -167,7 +195,6 @@ public class TimeWeatherBroadcastService(
         {
             < SnowChance => WeatherSnow,
             < RainChance => WeatherRain,
-            < LeafChance => WeatherLeaves,
             _ => WeatherFine,
         };
 

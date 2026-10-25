@@ -44,6 +44,7 @@ public static class HudPlacement
     public static Slot LotteryIcon => SideIcon(5);
     public static Slot DailyRankIcon => SideIcon(6);
     public static Slot TimedItemsIcon => SideIcon(7);
+    public static Slot CraftIcon => SideIcon(8);
 
     public static Slot QuestTracker => Platform.TouchUi
         ? new(HudAnchor.Spot.TopRight,
@@ -95,9 +96,7 @@ public static class HudPlacement
         : new(HudAnchor.Spot.TopRight,
               new Vector2(HudAnchor.Edge, HudAnchor.Edge), Vector2.Zero);
 
-    public static Slot Stats(Vector2 pointerMargin) => Platform.TouchUi
-        ? new(HudAnchor.Spot.BottomCenter, new Vector2(0f, ExpBarHeight + 2f), Vector2.Zero)
-        : new(HudAnchor.Spot.BottomRight, pointerMargin, Vector2.Zero);
+    public static Slot TouchStats => new(HudAnchor.Spot.BottomCenter, new Vector2(0f, ExpBarHeight + 2f), Vector2.Zero);
 
     public static HudAnchor.Spot ChatAnchor => Platform.TouchUi
         ? HudAnchor.Spot.TopLeft

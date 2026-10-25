@@ -32,6 +32,7 @@ public enum ChatConsultKind : byte
 public static class ChatWire
 {
     public const byte TypeDeathNotice = 26;
+    public const byte MonsterNotAttackable = 1;
     public const int MessageMaxLength = 128;
 
     private const int DeathNoticeMinBytes = 4 + 4 + 1 + 4 + 1 + 4;
@@ -85,4 +86,6 @@ public enum ChatType : byte
     MarqueeNotice = 37,
     InfoNotice = 38,
     AlarmNotice = 39,
+    GameplayTip = 152,
+    NpcShout = 153,
 }

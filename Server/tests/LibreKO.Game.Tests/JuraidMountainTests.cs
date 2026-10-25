@@ -288,7 +288,7 @@ public class JuraidMountainTests
     [Fact]
     public void JuraidMountainSchedule_SpecificDay_MatchesOnlyOnThatDay()
     {
-        var sundaySchedule = new TempleEventScheduleData { Id = 3, Event = TempleEvent.JuraidMountain, Day = DayOfWeek.Sunday, Hour = 13, Minute = 0 };
+        var sundaySchedule = new TempleEventScheduleData { Id = 3, Event = TempleEvent.JuraidMountain, Repeat = ScheduleRepeat.Weekly, Day = DayOfWeek.Sunday, Hour = 13, Minute = 0 };
 
         var sunday = new DateTime(2026, 9, 27, 13, 0, 0); // Sunday
         var monday = new DateTime(2026, 9, 28, 13, 0, 0); // Monday

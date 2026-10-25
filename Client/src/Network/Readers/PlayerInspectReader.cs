@@ -3,19 +3,22 @@
 internal sealed class PlayerInspectReader : IPacketReader
 {
     private readonly PlayerInspectSession playerInspect;
+    private readonly SelfSession self;
 
     private const int WornSlots =
             InventoryConstants.SlotMax + InventoryConstants.CospreWireMax;
 
-    public PlayerInspectReader(PlayerInspectSession playerInspect)
+    public PlayerInspectReader(PlayerInspectSession playerInspect, SelfSession self)
     {
         this.playerInspect = playerInspect;
+        this.self = self;
     }
 
     public void Register(PacketDispatcher dispatcher)
     {
         dispatcher.On(GameOpcodes.GS_USER_INFO, PlayerInspectSubOpcode.Detail, HandleUserInformation);
         dispatcher.On(GameOpcodes.GS_USER_INFO, PlayerInspectSubOpcode.Equipment, HandleEquipmentView);
+        dispatcher.On(GameOpcodes.GS_RANK_MARKS, p => self.ApplyRankMarks(UserInfoReply.ReadMarks(p)));
     }
 
     private void HandleUserInformation(Packet p)

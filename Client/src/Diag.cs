@@ -8,10 +8,19 @@ public static class Diag
 {
     private const int MaxLogBytes = 1 << 20;
     private const int TraceRing = 64;
+    private const int PacketRing = 32;
+    private const int NoSub = -1;
+    private const double SilentLoopSeconds = 8;
+    private const int WatchPollMs = 1000;
 
     private static readonly object Gate = new();
     private static readonly string[] trace = new string[TraceRing];
+    private static readonly (long UtcTicks, byte Opcode, short Sub, int Length)[] packets = new (long, byte, short, int)[PacketRing];
     private static int traceAt;
+    private static int packetAt;
+    private static long lastBeat;
+    private static volatile bool loopPaused;
+    private static bool stallReported;
     private static string path = "";
     private static bool installed;
 
@@ -52,6 +61,78 @@ public static class Diag
             Report("task", a.Exception);
             a.SetObserved();
         };
+        if (Engine.GetMainLoop() is SceneTree tree) StartWatchdog(tree);
+    }
+
+    private static void StartWatchdog(SceneTree tree)
+    {
+        Beat();
+        tree.ProcessFrame += Beat;
+        new System.Threading.Thread(WatchLoop) { IsBackground = true, Name = "loop-watchdog" }.Start();
+    }
+
+    private static void Beat() => System.Threading.Volatile.Write(ref lastBeat, System.Diagnostics.Stopwatch.GetTimestamp());
+
+    public static void LoopPaused(bool paused)
+    {
+        loopPaused = paused;
+        Beat();
+    }
+
+    private static void WatchLoop()
+    {
+        while (true)
+        {
+            System.Threading.Thread.Sleep(WatchPollMs);
+            if (loopPaused || System.Diagnostics.Debugger.IsAttached) continue;
+            double silent = (System.Diagnostics.Stopwatch.GetTimestamp() - System.Threading.Volatile.Read(ref lastBeat))
+                            / (double)System.Diagnostics.Stopwatch.Frequency;
+            if (silent < SilentLoopSeconds)
+            {
+                stallReported = false;
+                continue;
+            }
+            if (stallReported) continue;
+            stallReported = true;
+            Report("watchdog", null, $"main loop silent for {silent:0} s");
+        }
+    }
+
+    public static void Received(byte opcode, int sub, int length)
+    {
+        lock (Gate)
+        {
+            packets[packetAt] = (DateTime.UtcNow.Ticks, opcode, (short)sub, length);
+            packetAt = (packetAt + 1) % PacketRing;
+        }
+    }
+
+    public static void Received(byte opcode, int length) => Received(opcode, NoSub, length);
+
+    internal static List<string> RecentPackets()
+    {
+        var lines = new List<string>();
+        lock (Gate)
+        {
+            for (int i = 0; i < PacketRing; i++)
+            {
+                var (ticks, opcode, sub, length) = packets[(packetAt + i) % PacketRing];
+                if (ticks == 0) continue;
+                string at = new DateTime(ticks, DateTimeKind.Utc).ToLocalTime().ToString("HH:mm:ss.fff");
+                lines.Add($"{at} {PacketLine(opcode, sub, length)}");
+            }
+        }
+        return lines;
+    }
+
+    internal static string PacketLine(byte opcode, int sub, int length)
+    {
+        string name = Enum.IsDefined(typeof(LibreKO.Network.GameOpcodes), opcode)
+            ? ((LibreKO.Network.GameOpcodes)opcode).ToString()
+            : "?";
+        return sub == NoSub
+            ? $"{name} (0x{opcode:X2}), {length} bytes"
+            : $"{name} (0x{opcode:X2}) sub {sub}, {length} bytes";
     }
 
     public static void Step(string what)
@@ -72,6 +153,7 @@ public static class Diag
 
     public static void Report(string where, Exception? e, string? note = null)
     {
+        var recent = RecentPackets();
         string text;
         lock (Gate)
         {
@@ -92,6 +174,7 @@ public static class Diag
                 string? line = trace[(traceAt + i) % TraceRing];
                 if (line != null) sb.Append("  · ").AppendLine(line);
             }
+            foreach (string line in recent) sb.Append("  ‹ ").AppendLine(line);
             text = sb.ToString();
         }
         Append(text);

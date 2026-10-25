@@ -16,7 +16,8 @@ public sealed class AttackPacketWriter
     public const byte NoCritical = 0;
 
     public static Packet Create(
-        byte attackType, AttackResult result, int attackerId, int targetId, byte criticalHit = NoCritical)
+        byte attackType, AttackResult result, int attackerId, int targetId, byte criticalHit = NoCritical,
+        AttackPresentation? shown = null)
     {
         var packet = new Packet(GameOpcodes.GS_ATTACK);
         packet.WriteByte(attackType);
@@ -24,6 +25,7 @@ public sealed class AttackPacketWriter
         packet.WriteInt(attackerId);
         packet.WriteInt(targetId);
         packet.WriteByte(criticalHit);
+        shown?.Write(packet);
         return packet;
     }
 }

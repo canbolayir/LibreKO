@@ -235,6 +235,42 @@
   },
   {
     "ServerNo": 1,
+    "ZoneNo": 57,
+    "SmdName": "manes_survival.smd",
+    "MapName": "Manes' Survival",
+    "InitX": 51200,
+    "InitZ": 51200,
+    "InitY": 0
+  },
+  {
+    "ServerNo": 1,
+    "ZoneNo": 58,
+    "SmdName": "manes_survival.smd",
+    "MapName": "Manes' Survival",
+    "InitX": 51200,
+    "InitZ": 51200,
+    "InitY": 0
+  },
+  {
+    "ServerNo": 1,
+    "ZoneNo": 59,
+    "SmdName": "manes_survival.smd",
+    "MapName": "Manes' Survival",
+    "InitX": 51200,
+    "InitZ": 51200,
+    "InitY": 0
+  },
+  {
+    "ServerNo": 1,
+    "ZoneNo": 60,
+    "SmdName": "manes_survival.smd",
+    "MapName": "Manes' Survival",
+    "InitX": 51200,
+    "InitZ": 51200,
+    "InitY": 0
+  },
+  {
+    "ServerNo": 1,
     "ZoneNo": 61,
     "SmdName": "BattleZone.smd",
     "MapName": "Napies Gorge",

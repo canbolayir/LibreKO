@@ -103,7 +103,7 @@ public partial class Login : Control
         cardBox.AddChild(FieldLabel("Username"));
         cardBox.AddChild(user = new LineEdit { PlaceholderText = "username" });
         cardBox.AddChild(FieldLabel("Password"));
-        cardBox.AddChild(pass = new LineEdit { PlaceholderText = "password", Secret = true });
+        cardBox.AddChild(pass = new LineEdit { PlaceholderText = "password", Secret = true, VirtualKeyboardType = LineEdit.VirtualKeyboardTypeEnum.Password });
         Ui.StyleField(user);
         Ui.StyleField(pass);
         cardBox.AddChild(BuildRememberRow());

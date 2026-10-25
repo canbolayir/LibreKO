@@ -13,11 +13,13 @@ internal sealed class NpcDialogFeature : IFeature, IClosableWindow, INpcDialog
     private readonly ItemTooltipFeature itemTooltip;
     private readonly QuestNotificationsFeature questNotifications;
     private readonly IInteractionDialogs interactionDialogs;
+    private readonly QuestPrefsFeature questPrefs;
 
-    public NpcDialogFeature(IWorldContext context, NpcQuestSession npcQuest, QuestBook questBook, SelfSession self, INpcQuestRequests npcQuestRequests, ItemTooltipFeature itemTooltip, QuestNotificationsFeature questNotifications, NpcInteractionFeature npcInteraction, IInteractionDialogs interactionDialogs)
+    public NpcDialogFeature(IWorldContext context, NpcQuestSession npcQuest, QuestBook questBook, SelfSession self, INpcQuestRequests npcQuestRequests, ItemTooltipFeature itemTooltip, QuestNotificationsFeature questNotifications, NpcInteractionFeature npcInteraction, IInteractionDialogs interactionDialogs, QuestPrefsFeature questPrefs)
     {
         this.context = context;
         this.npcQuest = npcQuest;
+        this.questPrefs = questPrefs;
         this.questBook = questBook;
         this.self = self;
         questRequests = npcQuestRequests;
@@ -376,7 +378,10 @@ internal sealed class NpcDialogFeature : IFeature, IClosableWindow, INpcDialog
             questNotifications.Forget(view.QuestId);
         }
         if (view.Notification)
-            questNotifications.ShowNotification(view);
+        {
+            if (questNotifications.QuestNotifications.Any(q => q.QuestId == view.QuestId) || questPrefs.FirstOffer(view.QuestId))
+                questNotifications.ShowNotification(view);
+        }
         else if (view.Open && view.Page == QuestPageKind.Conversation)
             ShowQuestConversation(view);
         else if (view.Open)

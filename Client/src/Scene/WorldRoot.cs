@@ -104,11 +104,20 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
     internal PotionBarFeature PotionBar { get; private set; } = null!;
     internal ClanBattleWarFeature ClanBattleWar { get; private set; } = null!;
     internal TownRecallFeature TownRecall { get; private set; } = null!;
+    internal DrakiPlateFeature DrakiPlate { get; private set; } = null!;
+    internal PartyLootFeature PartyDrops { get; private set; } = null!;
+    internal QuickslotSavesFeature Quickslots { get; private set; } = null!;
     internal PortraitFeature Portrait { get; private set; } = null!;
     internal RenderFaultFeature RenderFault { get; private set; } = null!;
     internal ZoneAbilityFeature ZoneAbility { get; private set; } = null!;
     internal CosmeticsFeature Cosmetics { get; private set; } = null!;
     internal TargetQuestDropsFeature TargetQuestDrops { get; private set; } = null!;
+    internal TargetGmFeature TargetGm { get; private set; } = null!;
+    internal DurabilityFigureFeature DurabilityFigure { get; private set; } = null!;
+    internal MoviePlayerFeature Movie { get; private set; } = null!;
+    internal CaptionFeature Caption { get; private set; } = null!;
+    internal BossPhaseFeature BossPhase { get; private set; } = null!;
+    internal NpcBalloonsFeature NpcBalloons { get; private set; } = null!;
     internal RankerStatueFeature RankerStatueWindow { get; private set; } = null!;
     internal NpcGatesFeature NpcGates { get; private set; } = null!;
     internal TargetEffectsFeature TargetEffects { get; private set; } = null!;
@@ -117,6 +126,7 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
     internal ControlStateFeature ControlState { get; private set; } = null!;
     internal UserInfoFeature UserInfo { get; private set; } = null!;
     internal KnightRoyaleFeature KnightRoyaleWindow { get; private set; } = null!;
+    internal ManesSurvivalFeature ManesSurvivalWindow { get; private set; } = null!;
     internal ClanBoardFeature ClanBoard { get; private set; } = null!;
     internal WishBoardFeature WishBoard { get; private set; } = null!;
     internal PetFeature Pet { get; private set; } = null!;
@@ -195,6 +205,8 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
     internal EquipViewFeature EquipView { get; private set; } = null!;
     internal ExpSealFeature ExpSealWindow { get; private set; } = null!;
     internal SlaveMerchantFeature SlaveMerchantWindow { get; private set; } = null!;
+    internal ItemRentalFeature ItemRentalWindow { get; private set; } = null!;
+    internal QuestPrefsFeature QuestPrefs { get; private set; } = null!;
     internal SpecialAuctionFeature SpecialAuctionWindow { get; private set; } = null!;
     internal ExpBarFeature? ExpBar { get; set; }
     internal MsgOutFeature MsgOut { get; private set; } = null!;
@@ -296,8 +308,7 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
         Config.ApplyGraphicsToViewport();
         Cape.Enabled = Config.Capes;
 
-        string zoneLabel = $"Zone {info.Zone}";
-        foreach (var z in ZoneCatalog.All) if (z.Id == info.Zone) { zoneLabel = $"{z.Name} (zone {z.Id})"; break; }
+        string zoneLabel = ZoneCatalog.Find(info.Zone) is { } zoneName ? $"{zoneName} (zone {info.Zone})" : $"Zone {info.Zone}";
         if (!await LoadStep("Loading terrain…", 0.15f, zoneLabel)) return;
 
         bool hasTerrain = ScenerySystem.BuildTerrain(info.Zone);
@@ -399,8 +410,14 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
                 ButtonIndex: MouseButton.Left,
             } leftPress)
         {
-            PlayerSystem.CancelAutoRun();
+            if (GetViewport().GuiGetHoveredControl() == null) PlayerSystem.CancelAutoRun();
             Whispers.FocusWhisperAt(leftPress.Position);
+        }
+
+        if (Movie.Playing && ev is InputEventKey { Keycode: not Key.Escape })
+        {
+            GetViewport().SetInputAsHandled();
+            return;
         }
 
         if (ev is InputEventKey { Pressed: true, Echo: false } k)
@@ -416,7 +433,12 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
             { textField.ReleaseFocus(); GetViewport().SetInputAsHandled(); return; }
             if (GetViewport().GuiGetFocusOwner() is LineEdit or TextEdit or SpinBox) return;
             if (k.Keycode is Key.Enter or Key.KpEnter && Warp.TryEnter()) { GetViewport().SetInputAsHandled(); return; }
-            if (k.Keycode is Key.Enter or Key.KpEnter) { Chat.Open(); GetViewport().SetInputAsHandled(); return; }
+            if (k.Keycode is Key.Enter or Key.KpEnter)
+            {
+                if (!Whispers.FocusActiveWhisper()) Chat.Open();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
             PlayerSystem.NoteMoveKey(k);
             if (Hotkeys.TryPress(k))
             { GetViewport().SetInputAsHandled(); return; }
@@ -592,10 +614,10 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
         EntityLooksSystem = new EntityLooksSystem(this, Game.Session.Cosmetics, Game.Session.Self, Avatar, Game.Session.GmFx);
         EntityPlatesSystem = new EntityPlatesSystem(this, Game.Session.Clan, Game.Session.Self, Game.Session.Siege, Avatar, Game.Session.Party, Game.Session.Friends, EntityLooksSystem, PluginBridge);
         EntityActionSystem = new EntityActionSystem(this, Game.Session.Genie, Avatar, EntityLooksSystem, ScenerySystem);
-        EntityStatesSystem = new EntityStatesSystem(this, Game.Session.Achievement, Game.Session.Clan, Game.Session.Genie, Game.Session.Progress, Game.Session.Self, Game.Requests.Player, Game.Requests.Soccer, Avatar, EntityLooksSystem, EntityActionSystem, StealthSystem, EntityPlatesSystem);
+        EntityStatesSystem = new EntityStatesSystem(this, Game.Session.Achievement, Game.Session.Clan, Game.Session.Genie, Game.Session.Progress, Game.Session.ManesSurvival, Game.Session.Self, Game.Requests.Player, Game.Requests.Soccer, Avatar, EntityLooksSystem, EntityActionSystem, StealthSystem, EntityPlatesSystem);
         AudioSystem = new AudioSystem(this, Game.Session.Self, Avatar, EntityActionSystem, ScenerySystem, EntityLooksSystem, EntityStatesSystem);
         EntitySystem = new EntitySystem(this, Game.Session.Clan, Game.Session.GmFx, Game.Session.Self, Game.Session.Entities, Game.Session.Items, Game.Session.Achievement, Avatar, EntityPlatesSystem, AudioSystem, EntityActionSystem, EntityStatesSystem, EntityLooksSystem, StealthSystem, ScenerySystem);
-        BuffSystem = new BuffSystem(this, Game.Session.Combat, Game.Session.Self, Game.Session.Zone, Game.Requests.Combat, Game.Session.Progress, EntityStatesSystem);
+        BuffSystem = new BuffSystem(this, Game.Session.Combat, Game.Session.Self, Game.Session.Zone, Game.Requests.Combat, Game.Session.Progress, EntityStatesSystem, Game.Session.Pet);
         CombatFxSystem = new CombatFxSystem(this, EntityActionSystem, EntitySystem, AudioSystem, EntityLooksSystem, EntityStatesSystem, ScenerySystem);
         SoccerSystem = new SoccerSystem(this, Game.Session.Progress, Game.Session.Self, Game.Session.Soccer, Game.Requests.Soccer, Avatar, ScenerySystem, EntitySystem);
         MapInteractablesSystem = new MapInteractablesSystem(this, Avatar, Game.Requests.ObjectEvent, ScenerySystem);
@@ -642,10 +664,10 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
     internal void BuildFacets()
     {
         Features.Add(StatusHud = new StatusHudFeature(this, Game.Session.Self, CombatSystem));
-        Features.Add(TopIcons = new TopIconsFeature(this, () => ShoppingMall.OpenPowerUpStore(), () => Lottery.Toggle(), () => Genie.Toggle()));
+        Features.Add(TopIcons = new TopIconsFeature(this, () => ShoppingMall.OpenPowerUpStore(), () => Lottery.Toggle(), () => Genie.Toggle(), () => ItemCombineWindow.OpenRoyaleCraft()));
         Features.Add(EntryPopups = new EntryPopupsFeature(this));
         Facet(BuffSystem.BuildBuffBar);
-        Features.Add(Map = new MapFeature(this, Game.Session.QuestBook, Game.Requests.BattleEvent, ScenerySystem, BuffSystem, CameraSystem, PluginBridge));
+        Features.Add(Map = new MapFeature(this, Game.Session.QuestBook, Game.Requests.BattleEvent, ScenerySystem, BuffSystem, PluginBridge));
         Features.Add(NpcFinderWindow = new NpcFinderFeature(this, Game.Session.Self, Map));
         Facet(ScenerySystem.BuildClockHud);
         Facet(Selection.BuildRing);
@@ -656,10 +678,18 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
         Features.Add(LootFilterWindow = new LootFilterFeature(this, Game.Session.Self, Game.Session.TargetState, Game.Requests.TargetState));
         Features.Add(TargetQuestDrops = new TargetQuestDropsFeature(this, Game.Session.Combat));
         ClanMarks = new ClanMarksFeature(this, Game.Session.Clan, Game.Session.Self, Game.Requests.Clan, EntitySystem);
-        Features.Add(TargetHud = new TargetHudFeature(this, Game.Requests.Combat, SiegeTowerSystem, EntityPlatesSystem, EntitySystem, TargetEffects, TargetQuestDrops, LootFilterWindow, ClanMarks, Selection, PluginBridge));
+        Features.Add(TargetGm = new TargetGmFeature(this, Game.Session.Admin, Game.Requests.Admin));
+        Features.Add(DurabilityFigure = new DurabilityFigureFeature(this, Game.Session.Self, Game.Session.Mining));
+        Features.Add(Movie = new MoviePlayerFeature(this, Game.Session.Movie));
+        Features.Add(Caption = new CaptionFeature(this));
+        Features.Add(BossPhase = new BossPhaseFeature(this, EntitySystem, ScenerySystem, Caption, Movie));
+        Features.Add(NpcBalloons = new NpcBalloonsFeature(this, EntitySystem, Game.Session.Entities, Game.Session.Self));
+        Features.Add(new RainScreenFeature(this, ScenerySystem));
+        Features.Add(TargetHud = new TargetHudFeature(this, Game.Requests.Combat, SiegeTowerSystem, EntityPlatesSystem, EntitySystem, TargetEffects, TargetQuestDrops, LootFilterWindow, ClanMarks, Selection, PluginBridge, TargetGm));
         Features.Add(CapeWindow = new CapeFeature(this, Game.Session.Cape, Game.Session.Clan, Game.Session.GmFx, Game.Session.Self, Game.Requests.Cape, EntityLooksSystem, NpcInteraction));
         Features.Add(DebugInfo = new DebugInfoFeature(this, Selection, CapeWindow, ScenerySystem, CameraSystem));
-        Features.Add(GameMenu = new GameMenuFeature(this, Game.Session.Combat, Game.Session.Self, Game.Session.Pet, Game.Requests.ClientSettings));
+        Features.Add(GameMenu = new GameMenuFeature(this, Game.Session.Combat, Game.Session.Self, Game.Session.Pet, Game.Requests.ClientSettings,
+            CameraSystem));
         Facet(
             () => { Chat = new ChatSystem(this, Game.Session.Chat, Game.Session.King, Game.Session.Zone, Game.Session.Clan, Game.Session.Self,
                 Game.Session.Hostility, Game.Session.ZoneAbility, Game.Session.GmFx, Game.Requests.Chat, Game.Requests.King); Chat.Build(); },
@@ -675,17 +705,18 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
         Features.Add(Seal = new SealFeature(this, Game.Session.ItemUpgrade, Game.Session.Items, Game.Session.Self, Game.Requests.ItemUpgrade));
         Features.Add(PetHatch = new PetHatchFeature(this, Game.Session.Pet, Game.Session.Self, Game.Requests.Pet));
         Features.Add(Pet = new PetFeature(this, Game.Session.Pet, Game.Session.Self, Game.Requests.Pet, PetHatch));
-        Features.Add(InventoryWindow = new InventoryFeature(this, Game.Session.Items, Game.Session.Pet, Game.Session.Progress, Game.Session.Self, Game.Session.Vendor, Game.Requests.Items, Cosmetics, ItemTooltip, Seal, Pet, ItemRouting));
+        Features.Add(InventoryWindow = new InventoryFeature(this, Game.Session.Items, Game.Session.Pet, Game.Session.Progress, Game.Session.Self, Game.Session.Vendor, Game.Requests.Items, Game.Requests.ManesSurvival, Cosmetics, ItemTooltip, Seal, Pet, ItemRouting));
         Features.Add(ItemRouting);
         Features.Add(MonsterStone = new MonsterStoneFeature(this, Game.Session.MonsterStone, Game.Session.Party, Game.Session.Self, Game.Requests.MonsterStone, BasicAttackSystem));
-        Features.Add(Hotbar = new HotbarFeature(this, Game.Session.Chaos, Game.Session.Bifrost, Game.Session.Combat, Game.Session.Genie, Game.Session.Progress, Game.Session.Pvp, Game.Session.Self, Game.Session.SkillTimers, Game.Requests.Combat, MonsterStone, SoccerSystem, SkillCastSystem));
+        Features.Add(Hotbar = new HotbarFeature(this, Game.Session.Chaos, Game.Session.Bifrost, Game.Session.ManesSurvival, Game.Session.Combat, Game.Session.Genie, Game.Session.Progress, Game.Session.Pvp, Game.Session.Self, Game.Session.SkillTimers, Game.Requests.Combat, MonsterStone, SoccerSystem, SkillCastSystem));
         Features.Add(ChaosSkillWindow = new ChaosSkillWindowFeature(this, Hotbar));
         Features.Add(PotionBar = new PotionBarFeature(this, Hotbar, Game.Session.Self, Game.Session.SkillTimers));
         Features.Add(SkillPreset = new SkillPresetFeature(this, Game.Session.Preset, Game.Requests.Preset, Game.Session.Self));
-        Features.Add(SkillWindow = new SkillWindowFeature(this, Game.Session.Develop, Game.Requests.Develop, Hotbar, Game.Session.Self, SkillPreset));
+        Features.Add(Quickslots = new QuickslotSavesFeature(this, Hotbar, Game.Session.Self));
+        Features.Add(SkillWindow = new SkillWindowFeature(this, Game.Session.Develop, Game.Requests.Develop, Hotbar, Game.Session.Self, SkillPreset, Quickslots));
         Features.Add(Stats = new StatsFeature(this, Game.Session.Clan, Game.Session.Develop, Game.Session.Items, Game.Session.Progress, Game.Session.Self, Game.Requests.Progress, Hotbar, SkillPreset, SkillWindow));
         Features.Add(Progression = new ProgressionFeature(this, Stats, EntityPlatesSystem, Game.Session.Self, SkillWindow, Game.Session.Progress, Game.Session.Loot));
-        Features.Add(Friends = new FriendsFeature(this, Game.Session.Friends, Game.Session.Self, Game.Requests.Friends, PlayerMenu));
+        Features.Add(Friends = new FriendsFeature(this, Game.Session.Friends, Game.Session.Self, Game.Requests.Friends, PlayerMenu, SkillCastSystem));
         Features.Add(ClanMarks);
         Features.Add(ClanCreate = new ClanCreateFeature(this, Game.Session.Clan, Game.Session.Self, Game.Requests.Clan));
         Features.Add(ClanHandover = new ClanHandoverFeature(this, Game.Session.Clan, Game.Session.Self, Game.Requests.Clan));
@@ -712,16 +743,18 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
         Features.Add(PartyCommander = new PartyCommanderFeature(this, Game.Session.Clan, Game.Session.Party, Game.Session.Self, Game.Session.SkillTimers, Game.Requests.Party, Party));
         Features.Add(SeekParty = new SeekPartyFeature(this, Game.Session.Bifrost, Game.Session.Party, Game.Session.Self, Game.Requests.Bifrost, Game.Requests.Party, Game.Requests.Shout, EntryPopups, PartyInvites));
         Features.Add(WarBoard = new PartyWarBoardFeature(this, Game.Session.Party, Game.Session.PartyWarBoard, Game.Session.Self, Game.Requests.PartyWarBoard, Party));
-        Features.Add(Loot = new LootFeature(this, Game.Session.Items, Game.Session.Loot, Game.Session.Self, Game.Requests.Items, LootFilterWindow, Pet, EntityActionSystem, EntitySystem));
+        Features.Add(PartyDrops = new PartyLootFeature(this, Game.Session.Loot, Game.Session.Party, Game.Session.Self, Party));
+        Features.Add(Loot = new LootFeature(this, Game.Session.Items, Game.Session.Loot, Game.Session.Self, Game.Requests.Items, Game.Requests.ManesSurvival, LootFilterWindow, Pet, EntityActionSystem, EntitySystem));
         Features.Add(QuestNotifications = new QuestNotificationsFeature(this, Game.Session.Self, Game.Requests.NpcQuest));
         Features.Add(EventPlates = new EventPlatesFeature(this, TargetHud));
         Features.Add(QuestProgressToast = new QuestProgressToastFeature(this, EventPlates, Game.Session.QuestBook, Game.Session.Self));
         Features.Add(QuestMarkers = new QuestMarkersFeature(this, Game.Session.QuestBook, EntitySystem));
         Features.Add(QuestTracker = new QuestTrackerFeature(this, Game.Session.QuestBook, QuestProgressToast, Game.Session.Self));
-        Features.Add(Quest = new QuestFeature(this, Game.Session.NpcQuest, Game.Session.QuestBook, Game.Session.Self, Game.Requests.NpcQuest, QuestMarkers, Map, QuestTracker));
-        Features.Add(QuestTarget = new QuestTargetFeature(this, Game.Session.NpcQuest, Map, Game.Session.Self));
+        Features.Add(QuestPrefs = new QuestPrefsFeature(Game.Session.QuestBook, Game.Session.Self));
+        Features.Add(Quest = new QuestFeature(this, Game.Session.NpcQuest, Game.Session.QuestBook, Game.Session.Self, Game.Requests.NpcQuest, QuestMarkers, Map, QuestTracker, QuestPrefs));
+        Features.Add(QuestTarget = new QuestTargetFeature(this, Game.Session.NpcQuest, Map, Game.Session.Self, Game.Session.QuestBook));
         Features.Add(QuestReceipt = new QuestReceiptFeature(this, Game.Session.NpcQuest, Game.Session.QuestBook));
-        Features.Add(NpcDialogWindow = new NpcDialogFeature(this, Game.Session.NpcQuest, Game.Session.QuestBook, Game.Session.Self, Game.Requests.NpcQuest, ItemTooltip, QuestNotifications, NpcInteraction, NpcInteraction));
+        Features.Add(NpcDialogWindow = new NpcDialogFeature(this, Game.Session.NpcQuest, Game.Session.QuestBook, Game.Session.Self, Game.Requests.NpcQuest, ItemTooltip, QuestNotifications, NpcInteraction, NpcInteraction, QuestPrefs));
         Features.Add(NpcInteraction);
         Features.Add(MainWindows = new MainWindowsFeature(this, this, Game.Session.Self, BagCompanions));
         Features.Add(ChatHost = new ChatHostFeature(this, this, Game.Session.Clan, Game.Session.NearbyPlayers, Game.Session.Party, Game.Session.Self, Game.Session.Friends, Game.Requests.NearbyPlayers));
@@ -746,6 +779,7 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
         Features.Add(MarketPrice = new MarketPriceFeature(this, Game.Session.MarketPrice, Game.Requests.MarketPrice, Game.Session.Premium));
         Features.Add(Merchant = new MerchantFeature(this, Game.Session.Merchant, Game.Session.Premium, Game.Session.Progress, Game.Session.Self, Game.Requests.Merchant, EntityPlatesSystem, PlayerMenu, MerchantStalls, MarketPrice, Game.Session.SlaveMerchant, Game.Requests.SlaveMerchant));
         Features.Add(SlaveMerchantWindow = new SlaveMerchantFeature(this, Game.Session.Self, Game.Session.SlaveMerchant, Game.Requests.SlaveMerchant, Merchant));
+        Features.Add(ItemRentalWindow = new ItemRentalFeature(this, Game.Session.ItemRental, Game.Session.Self, Game.Requests.ItemRental));
         Features.Add(MerchantSearch = new MerchantSearchFeature(this, MarketPrice, Game.Requests.Merchant, Game.Requests.MerchantSearch, Game.Session.MerchantSearch, MerchantStalls, Whispers, Hotbar));
         Features.Add(MerchantBuy = new MerchantBuyFeature(this, Merchant, Game.Session.Merchant, Game.Requests.Merchant, Game.Session.Self, MerchantStalls, Game.Session.Progress));
         Features.Add(Premium = new PremiumFeature(this, Game.Session.Clan, Game.Session.Premium, Game.Session.Progress, Game.Requests.Premium, TopIcons));
@@ -754,14 +788,15 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
         Features.Add(ZoneAbility = new ZoneAbilityFeature(this, Game.Session.Entities, Game.Session.ZoneAbility, Game.Session.Hostility, Game.Session.Siege));
         Features.Add(Shout = new ShoutFeature(this, Game.Session.Shout, Game.Requests.Shout));
         Features.Add(ChaosGuide = new ChaosGuideFeature(this, EntryPopups, Rank));
-        Features.Add(Chaos = new ChaosFeature(this, Game.Session.Bifrost, Game.Session.Chaos, Game.Session.MonsterStone, Game.Session.Self, Game.Requests.Rank, MsgOut, Rank, EventPlates, ChaosGuide, Game.Requests.Bifrost));
-        Features.Add(KnightRoyaleWindow = new KnightRoyaleFeature(this, Game.Session.KnightRoyale, Game.Requests.KnightRoyale, Map));
+        Features.Add(Chaos = new ChaosFeature(this, Game.Session.Chaos, Game.Session.MonsterStone, Game.Session.Self, Game.Requests.Rank, MsgOut, Rank, EventPlates, ChaosGuide));
+        Features.Add(KnightRoyaleWindow = new KnightRoyaleFeature(this, Game.Session.KnightRoyale, Game.Requests.KnightRoyale, Map, Caption));
+        Features.Add(ManesSurvivalWindow = new ManesSurvivalFeature(this, Game.Session.ManesSurvival, Game.Session.Self, Game.Requests.ManesSurvival, Map, Caption, Hotbar, EntityPlatesSystem));
         Features.Add(Challenge = new ChallengeFeature(this, Game.Session.Challenge, Game.Requests.Challenge));
         Features.Add(Warp = new WarpFeature(this, Game.Session.NpcQuest, Game.Session.Progress, Game.Session.Self, Game.Session.Warp, Game.Requests.Warp, MapInteractablesSystem, NpcInteraction));
         Features.Add(PowerUpStoreGift = new PowerUpStoreGiftFeature(Game.Session.Clan, Game.Session.Friends, Game.Session.Self, Game.Session.ShoppingMall, Game.Requests.Clan, Game.Requests.Friends, Game.Requests.ShoppingMall));
         Features.Add(ShoppingMall = new ShoppingMallFeature(this, Game.Session.Self, Game.Session.ShoppingMall, Game.Requests.ShoppingMall, PowerUpStoreGift));
         Features.Add(BattleEvent = new BattleEventFeature(this, Game.Session.BattleEvent, Game.Session.Self, Game.Requests.BattleEvent, EventPlates));
-        Features.Add(PetSkillBar = new PetSkillBarFeature(this, Hotbar, Game.Session.Combat, Game.Session.Pet, Game.Requests.Pet));
+        Features.Add(PetSkillBar = new PetSkillBarFeature(this, Hotbar, Game.Session.Combat, Game.Session.Pet, Game.Requests.Pet, Game.Session.Self));
         Features.Add(Rebirth = new RebirthFeature(this, Game.Session.Develop, Game.Session.Self, Game.Requests.Develop));
         Features.Add(GenderChangeWindow = new GenderChangeFeature(this, Game.Session.GenderChange, Game.Session.Self, Game.Requests.GenderChange));
         Features.Add(NationTransfer = new NationTransferFeature(this, Game.Session.NationTransfer, Game.Requests.NationTransfer));
@@ -796,14 +831,14 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
         Facet(StealthSystem.StealthInit, StealthSystem.StealthDispose);
         Features.Add(Awaken = new AwakenFeature(this, Game.Session.Awaken));
         Features.Add(ChangeHair = new ChangeHairFeature(this, Game.Session.ChangeHair, Game.Session.Self, Game.Requests.ChangeHair, GenderChangeWindow));
-        Features.Add(TownRecall = new TownRecallFeature(this, Game.Session.Self, Game.Requests.Player, SiegeTowerSystem));
+        Features.Add(TownRecall = new TownRecallFeature(this, Game.Session.Self, Game.Requests.Player, SiegeTowerSystem, Game.Requests.Bifrost));
         Features.Add(SpecialAuctionWindow = new SpecialAuctionFeature(this, Game.Session.Self, Game.Session.SpecialAuction, Game.Requests.SpecialAuction, UpgradeNotice));
         Features.Add(Attendance = new AttendanceFeature(this, Game.Session.Attendance, Game.Requests.Attendance, TopIcons));
         Features.Add(AchievementTrophy = new AchievementTrophyFeature(this, Game.Session.Achievement, TopIcons));
         Features.Add(TitlePicker = new TitlePickerFeature(this, Game.Session.Achievement, Game.Requests.Achievement));
         Features.Add(Achievement = new AchievementFeature(this, Game.Session.Achievement, Game.Requests.Achievement, AchievementTrophy, TitlePicker));
         Features.Add(Lottery = new LotteryFeature(this, Game.Session.Lottery, Game.Session.Self, Game.Requests.Lottery, TopIcons));
-        Features.Add(Events = new EventsFeature(this, Game.Session.EventSchedule, Game.Session.Self, Game.Requests.EventSchedule, Bifrost, Lottery, TopIcons));
+        Features.Add(Events = new EventsFeature(this, Game.Session.EventSchedule, Game.Session.Self, Game.Requests.EventSchedule, Bifrost, ManesSurvivalWindow, Lottery, TopIcons));
         Facet(EntityPlatesSystem.SiegeNamesInit, EntityPlatesSystem.SiegeNamesDispose);
         Facet(SiegeTowerSystem.SiegeTowerInit, SiegeTowerSystem.SiegeTowerDispose);
         Features.Add(VanguardWindow = new VanguardFeature(this, Game.Session.Self, Game.Session.Vanguard, Game.Requests.Vanguard, Merchant, Map));
@@ -822,7 +857,8 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
         Features.Add(Fortune = new FortuneFeature(this));
         Features.Add(Yut = new YutGameFeature(this, Game.Session.Mining, Game.Session.Self, Game.Requests.Mining));
         Features.Add(DrakiBoard = new DrakiBoardFeature(this, Game.Session.Bifrost, Game.Session.Self, Game.Requests.Bifrost));
-        Features.Add(ItemCombineWindow = new ItemCombineFeature(this, Game.Session.ItemCombine, Game.Session.Self, Game.Requests.ItemCombine, Vendor, NpcInteraction));
+        Features.Add(DrakiPlate = new DrakiPlateFeature(this, Game.Session.Bifrost, EventPlates, Caption, TownRecall, DrakiBoard));
+        Features.Add(ItemCombineWindow = new ItemCombineFeature(this, Game.Session.ItemCombine, Game.Session.Self, Game.Requests.ItemCombine, Game.Requests.KnightRoyale, Vendor, NpcInteraction, TopIcons));
         Features.Add(Roulette = new RouletteFeature(this, Game.Session.Roulette, Game.Requests.Roulette));
         Features.Add(FishingHall = new FishingHallFeature(this, Game.Session.FishingHall, Game.Session.Self, Game.Requests.FishingHall));
         Features.Add(PluginBridge);
@@ -833,7 +869,7 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
         Features.Add(GeniePotions = new GeniePotionsFeature(this, Hotbar, Game.Session.Pet, Game.Requests.Pet, Pet, Game.Session.Self, PotionBar, PetSkillBar));
         Features.Add(GenieScrolls = new GenieScrollsFeature(this, Game.Session.Genie, Hotbar, Game.Session.Self, SkillCastSystem));
         Features.Add(GenieTown = new GenieTownFeature(this, GeniePotions, Game.Session.Party, Game.Requests.Genie, Game.Session.Self, TownRecall));
-        Features.Add(Genie = new GenieFeature(this, Game.Session.Chat, Game.Session.Combat, Game.Session.Genie, Game.Session.Party, Game.Session.Self, Game.Requests.Genie, PartyInvites, EntityActionSystem, MerchantStalls, SkillCastSystem, BasicAttackSystem, GenieHammer, GeniePotions, GenieScrolls, GenieTown));
+        Features.Add(Genie = new GenieFeature(this, Game.Session.Chat, Game.Session.Combat, Game.Session.Genie, Game.Session.Party, Game.Session.Self, Game.Session.Zone, Game.Requests.Genie, PartyInvites, EntityActionSystem, MerchantStalls, SkillCastSystem, BasicAttackSystem, GenieHammer, GeniePotions, GenieScrolls, GenieTown));
         Features.Add(GenieSub = new GenieSubFeature(this, Genie, Game.Session.Genie));
         Facet(EntityStatesSystem.GenieAuraInit, EntityStatesSystem.GenieAuraDispose);
         Facet(() => PluginHost.Game.AttachGenie(CreatePluginGenie()));
@@ -842,7 +878,7 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
         Features.Add(PlayerMenu);
         Features.Add(EquipView = new EquipViewFeature(this, Game.Session.PlayerInspect, Game.Requests.PlayerInspect));
         Features.Add(Cursor = new CursorFeature(this, Game.Session.Self, BuffSystem, Repair, Selection, BasicAttackSystem));
-        Features.Add(AdminPanel = new AdminPanelFeature(this, Game.Session.Admin, Game.Session.Self, Game.Session.ShoppingMall, Game.Requests.Admin, Stats, PlayerSystem, SkillWindow));
+        Features.Add(AdminPanel = new AdminPanelFeature(this, Game.Session.Admin, Game.Session.Self, Game.Session.ShoppingMall, Game.Requests.Admin, Stats, PlayerSystem, SkillWindow, Game.Requests.Chat));
         Features.Add(GmFx = new GmFxFeature(this, Game.Session.GmFx, EntityLooksSystem, EntitySystem));
         Features.Add(RankerMessageWindow = new RankerMessageFeature(this, Game.Session.RankerMessage, Game.Session.Self, Game.Requests.RankerMessage));
         Features.Add(RankBoardWindow = new RankBoardFeature(this, Game.Session.BattleEvent, Game.Session.Self, Rank, ClanMarks));
@@ -879,7 +915,7 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
 
     internal void ConnectPlugins() => PluginBridge.Connect(CreatePluginAdapters());
 
-    internal PluginGenieBridge CreatePluginGenie() => new(Genie, GeniePotions, GenieSub, PluginBridge, Log, Game.Session.Genie, Game.Session.Self, Game.Requests.Genie);
+    internal PluginGenieBridge CreatePluginGenie() => new(Genie, GeniePotions, GenieSub, PluginBridge, Log, Game.Session.Genie, Game.Session.Self);
 
     internal PluginAdapters CreatePluginAdapters()
     {
@@ -915,9 +951,9 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
 
     private void BuildEscapeOrder() => escapeOrder =
     [
-        SkillAreaSystem, Map, QuestNotifications, NpcDialogWindow, Vendor, Loot, Repair, Warehouse.AmountPromptPanel, Events,
+        Movie, SkillAreaSystem, Map, QuestNotifications, NpcDialogWindow, Vendor, Loot, Repair, Warehouse.AmountPromptPanel, Events,
         Warehouse, Upgrade, Seal, PieceChange, ClassChange, GenderChangeWindow, NationTransfer, NameChange, Exchange,
-        MarketPrice, Merchant, MerchantSearch, MerchantBuy, SlaveMerchantWindow, Merchant.SellStallAndMenu, ClanCreate, ClanPoints, Warp, Rank, PetHatch, Pet, ShoppingMall, Rebirth, AdminPanel.SpawnPanel, KingTreasury, KingElection, Siege,
+        MarketPrice, Merchant, MerchantSearch, MerchantBuy, SlaveMerchantWindow, ItemRentalWindow, Merchant.SellStallAndMenu, ClanCreate, ClanPoints, Warp, Rank, PetHatch, Pet, ShoppingMall, Rebirth, AdminPanel.SpawnPanel, AdminPanel.GroupPickerPanel, AdminPanel.ItemGroupPanel, AdminPanel.LotteryPanel, AdminPanel.RacePanel, AdminPanel.PickerPanel, AdminPanel.MonsterPickerPanel, AdminPanel.StartPanel, AdminPanel.TipPanel, KingTreasury, KingElection, Siege,
         CapeWindow, ClanWarehouse.AmountPromptPanel, ClanWarehouse, VipWarehouse.AmountPromptPanel, VipWarehouse, Report, EquipView, ChangeHair, Achievement, MailCompose, Mail, Lottery,
         SpecialAuctionWindow, Attendance, Bounty, Tournament, DisguiseWindow, SkillPreset, TitlePicker, ChatHost,
         Messenger, Forces, ChatRoom, NationChannels, Fortune, DrakiBoard, ItemCombineWindow, Roulette, FishingHall, GlobalMap, Genie, AdminPanel,
@@ -962,7 +998,7 @@ public partial class WorldRoot : Node3D, IWorldContext, IHudLayout
                  {
                      Map.MiniMap, ScenerySystem.ClockLabel, HudLauncher.Root, HudLauncher.TownButton, AchievementTrophy.Trophy, Attendance.Gift,
                      MailIcon.IconButton, TopIcons.Icon(TopIconSlot.PowerUpStore), TopIcons.Icon(TopIconSlot.Lottery), StatusHud.Root, Hotbar.Box, BuffSystem.BuffPanel,
-                     Premium.Chip, Log.Frame, Chat?.Panel,
+                     Premium.StatusColumn, Log.Frame, Chat?.Panel,
                  })
             if (hud != null && GodotObject.IsInstanceValid(hud) && hud.IsVisibleInTree())
                 rects.Add(hud.GetGlobalRect());

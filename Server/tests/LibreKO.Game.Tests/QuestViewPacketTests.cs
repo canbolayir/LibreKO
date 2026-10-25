@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using LibreKO.Game.Protocol.Writers;
 using LibreKO.Quests.Binding;
 using LibreKO.Quests.Runtime;
@@ -100,6 +100,32 @@ public class QuestViewPacketTests
         (closed[12] & 32).Should().Be(32);
         (closed[12] & 64).Should().Be(0);
         (closed[12] & 4).Should().Be(0);
+    }
+
+    [Fact]
+    public void LoginObjectivesTravelTogetherInBatches()
+    {
+        var one = new QuestObjectives(62, [new(5, [10100, 10101], 0)]);
+        var many = Enumerable.Range(1, QuestPacketWriter.ObjectivesPerBatch + 1)
+            .Select(id => new QuestObjectives(id, [new(1, [10100], 0)])).ToList();
+
+        var single = QuestPacketWriter.ObjectivesBatches([one]).Single().GetData();
+        var split = QuestPacketWriter.ObjectivesBatches(many).ToList();
+
+        Convert.ToHexString(single).Should().Be("1201003E0000010500027427000075270000");
+        split.Should().HaveCount(2);
+        BitConverter.ToUInt16(split[0].GetData(), 1).Should().Be((ushort)QuestPacketWriter.ObjectivesPerBatch);
+        BitConverter.ToUInt16(split[1].GetData(), 1).Should().Be(1);
+    }
+
+    [Fact]
+    public void ARepeatableQuestSetsTheRepeatableBit()
+    {
+        var pirates = Pirates(QuestPageKind.Quest);
+        var repeatable = pirates with { Text = pirates.Text with { Repeat = true } };
+
+        (QuestPacketWriter.View(pirates, 32557, true, 0, t => t).GetData()[12] & 64).Should().Be(0);
+        (QuestPacketWriter.View(repeatable, 32557, true, 0, t => t).GetData()[12] & 64).Should().Be(64);
     }
 
     [Fact]

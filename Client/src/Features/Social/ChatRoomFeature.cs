@@ -882,7 +882,7 @@ internal sealed partial class ChatRoomFeature : IFeature, IEscapable
         column.AddChild(roomConfigOption);
         roomConfigPasswordTitle = UiTheme.Text("Password", 12, UiTheme.TextLo);
         column.AddChild(roomConfigPasswordTitle);
-        roomConfigPassword = new LineEdit { MaxLength = NationChatRules.PasswordMaxLength, Secret = true };
+        roomConfigPassword = new LineEdit { MaxLength = NationChatRules.PasswordMaxLength, Secret = true, VirtualKeyboardType = LineEdit.VirtualKeyboardTypeEnum.Password };
         roomConfigPassword.TextSubmitted += _ => SaveConfig();
         column.AddChild(roomConfigPassword);
         column.AddChild(UiTheme.Text("Max admissions", 12, UiTheme.TextLo));

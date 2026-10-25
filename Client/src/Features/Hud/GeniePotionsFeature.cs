@@ -99,6 +99,18 @@ internal sealed class GeniePotionsFeature : IFeature
         context.Plugins.Genie();
     }
 
+    internal bool ChooseFromBag(int itemId)
+    {
+        int target = ItemData.PotionHeal(itemId, HealTarget.Hp) > 0 ? HealTarget.Hp
+            : ItemData.PotionHeal(itemId, HealTarget.Mp) > 0 ? HealTarget.Mp
+            : 0;
+        if (target == 0) return false;
+        SetPotionItem(target, itemId);
+        RefreshPotionSelectors();
+        context.Log.Notice($"The Genie will use {ItemData.DisplayName(itemId)} for {(target == HealTarget.Hp ? "HP" : "MP")}.");
+        return true;
+    }
+
     private Button GeniePotionButton(int target) =>
         target == HealTarget.Hp ? hpSelect : target == HealTarget.Mp ? mpSelect : petSelect;
 

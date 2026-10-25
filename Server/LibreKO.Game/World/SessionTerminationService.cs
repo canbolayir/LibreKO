@@ -26,6 +26,7 @@ public class SessionTerminationService(
     InstanceRoomRegistry instanceRooms,
     IBorderDefenseWarService borderDefenseWarService,
     IChaosDungeonService chaosDungeonService,
+    IManesSurvivalService manesSurvivalService,
     IKnightsRuntimeService knightsRuntime,
     IPetService petService,
     ISoccerService soccerService,
@@ -254,7 +255,8 @@ public class SessionTerminationService(
 
         if (session.ZoneId == (byte)ZoneId.BorderDefenseWar)
             await borderDefenseWarService.OnPlayerLogoutOrLeaveAsync(session);
-            await chaosDungeonService.OnPlayerLogoutOrLeaveAsync(session);
+        await chaosDungeonService.OnPlayerLogoutOrLeaveAsync(session);
+        await manesSurvivalService.OnPlayerLogoutAsync(session);
     }
 
     private async Task MarkOfflineAsync(int characterId, CancellationToken cancellationToken)

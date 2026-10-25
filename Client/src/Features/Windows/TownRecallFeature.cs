@@ -8,13 +8,15 @@ internal sealed class TownRecallFeature : IFeature
     private readonly SelfSession self;
     private readonly IPlayerRequests playerRequests;
     private readonly SiegeTowerSystem siegeTower;
+    private readonly IBifrostRequests bifrostRequests;
 
-    public TownRecallFeature(IWorldContext context, SelfSession self, IPlayerRequests playerRequests, SiegeTowerSystem siegeTower)
+    public TownRecallFeature(IWorldContext context, SelfSession self, IPlayerRequests playerRequests, SiegeTowerSystem siegeTower, IBifrostRequests bifrostRequests)
     {
         this.context = context;
         this.self = self;
         this.playerRequests = playerRequests;
         this.siegeTower = siegeTower;
+        this.bifrostRequests = bifrostRequests;
     }
 
     public void Dispose()
@@ -41,14 +43,22 @@ internal sealed class TownRecallFeature : IFeature
 
     public void TryOpen()
     {
-        if (!Ready()) return;
+        if (!Ready() || AskedDrakiTown()) return;
         dialog.PopupCentered();
     }
 
     internal void Press()
     {
-        if (!Ready()) return;
+        if (!Ready() || AskedDrakiTown()) return;
         Confirm();
+    }
+
+    private bool AskedDrakiTown()
+    {
+        if (context.Zone != DrakiTower.Zone) return false;
+        Notice.Confirm(context.Root, ItemData.Text(DrakiTower.TownQuestionText, DrakiTower.TownQuestionFallback),
+            "OK", "Cancel", bifrostRequests.DrakiTown);
+        return true;
     }
 
     private bool Ready()

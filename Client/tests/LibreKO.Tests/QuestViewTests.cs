@@ -111,6 +111,17 @@ public class QuestViewTests
         Assert.Throws<InvalidDataException>(() => Read(bytes));
     }
 
+    [Fact]
+    public void TheRepeatableBitMarksAQuestThatCanBeTakenAgain()
+    {
+        var bytes = Convert.FromHexString(Fixture);
+        Assert.False(Read(bytes).Repeatable);
+        bytes[12] = 13 | 64;
+        Assert.True(Read(bytes).Repeatable);
+        bytes[12] = 13 | 128;
+        Assert.Throws<InvalidDataException>(() => Read(bytes));
+    }
+
     [Theory]
     [InlineData(2)]
     [InlineData(4)]

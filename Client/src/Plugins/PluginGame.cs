@@ -103,10 +103,12 @@ public interface IGameCharacter
 
     int Sp => 0;
     int MaxSp => 0;
+    int HpTextScale => 1;
     int RebirthLevel => 0;
     int RebirthStat(int statRow) => 0;
     int StatBonus(int statRow) => 0;
     string ClanName => "";
+    IReadOnlyList<GameRankRibbon> RankMarks => [];
     bool HasRankAura => false;
     bool RankAuraShown => true;
     void SetRankAuraShown(bool shown)
@@ -274,6 +276,8 @@ public interface IGameQuests
 {
     IReadOnlyList<GameQuestTrack> Tracked { get; }
 
+    void Open(int questId);
+
     event Action? Changed;
 }
 
@@ -428,6 +432,11 @@ public sealed partial class PluginGame
         warehouse.Source = null;
         vipVault.Source = null;
         attendance.Source = null;
+        events.Source = null;
+        zoneUsers.Source = null;
+        draki.Source = null;
+        templeSignUps.Source = null;
+        manesSurvival.Source = null;
         userInfo.Source = null;
         repurchase.Source = null;
         userVote.Source = null;
@@ -530,10 +539,12 @@ public sealed partial class PluginGame
         public void AllocateStat(int statRow) => Source?.AllocateStat(statRow);
         public int Sp => Source?.Sp ?? 0;
         public int MaxSp => Source?.MaxSp ?? 0;
+        public int HpTextScale => Source?.HpTextScale ?? 1;
         public int RebirthLevel => Source?.RebirthLevel ?? 0;
         public int RebirthStat(int statRow) => Source?.RebirthStat(statRow) ?? 0;
         public int StatBonus(int statRow) => Source?.StatBonus(statRow) ?? 0;
         public string ClanName => Source?.ClanName ?? "";
+        public IReadOnlyList<GameRankRibbon> RankMarks => Source?.RankMarks ?? [];
         public bool HasRankAura => Source?.HasRankAura ?? false;
         public bool RankAuraShown => Source?.RankAuraShown ?? true;
         public void SetRankAuraShown(bool shown) => Source?.SetRankAuraShown(shown);
@@ -697,6 +708,7 @@ public sealed partial class PluginGame
         internal void Raise() => Changed?.Invoke();
 
         public IReadOnlyList<GameQuestTrack> Tracked => Source?.Tracked ?? Array.Empty<GameQuestTrack>();
+        public void Open(int questId) => Source?.Open(questId);
     }
 
     private sealed class SkillsProxy : IGameSkills

@@ -73,6 +73,13 @@ public class ItemMoveService(
         }
 
         var direction = (ItemMoveDirection)directionByte;
+        if (session.ManesSurvival != null && direction != ItemMoveDirection.InventoryToInventory)
+        {
+            logger.LogDebug("Rejected item move for {Name}: only bag-to-bag moves in Manes' Survival", session.Name);
+            await SendItemMoveResponseAsync(session, 0);
+            return;
+        }
+
         var itemId = packet.ReadInt();
         var sourcePosition = packet.ReadByte();
         var destinationPosition = packet.ReadByte();

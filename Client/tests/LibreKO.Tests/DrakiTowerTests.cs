@@ -86,8 +86,112 @@ public class DrakiTowerTests
         dispatcher.Dispatch(p);
 
         Assert.Equal(new DrakiStageEnd(4, 2, 310, GaveUp: true), session.Bifrost.DrakiFinish);
-        Assert.Equal(0UL, session.Bifrost.DrakiEndsAtMs);
+        Assert.Equal(new DrakiPlateView(4, 2, 0, 310, Finished: true, GaveUp: true), session.Bifrost.DrakiPlate(60_000));
     }
+
+    [Fact]
+    public void TheLimitCountsDownAndTheElapsedTimeUpFromTheTimerPacket()
+    {
+        var bifrost = new BifrostSession();
+        bifrost.ApplyDrakiTimer(3, 2, 300, 100, 1_000);
+
+        Assert.Equal(new DrakiPlateView(3, 2, 300, 100, false, false), bifrost.DrakiPlate(1_000));
+        Assert.Equal(new DrakiPlateView(3, 2, 240, 160, false, false), bifrost.DrakiPlate(61_000));
+        Assert.Equal(0, bifrost.DrakiSecondsLeft(400_000));
+    }
+
+    [Fact]
+    public void TheElapsedTimeStandsStillWhileTheSubStageIsZero()
+    {
+        var bifrost = new BifrostSession();
+        bifrost.ApplyDrakiTimer(2, 0, 180, 50, 0);
+
+        Assert.Equal(50, bifrost.DrakiElapsedSeconds(30_000));
+        Assert.Equal(150, bifrost.DrakiSecondsLeft(30_000));
+    }
+
+    [Fact]
+    public void AStageEndFreezesTheLimitWhereItWas()
+    {
+        var bifrost = new BifrostSession();
+        bifrost.ApplyDrakiTimer(3, 2, 300, 100, 0);
+        bifrost.ApplyDrakiStageEnd(new DrakiStageEnd(3, 2, 400, GaveUp: false), 20_000);
+
+        Assert.Equal(new DrakiPlateView(3, 2, 280, 400, true, false), bifrost.DrakiPlate(90_000));
+    }
+
+    [Fact]
+    public void TheLeaveNoticeHidesThePlateTenSecondsLater()
+    {
+        var bifrost = new BifrostSession();
+        int notices = 0;
+        bifrost.DrakiClosingEvent += () => notices++;
+        bifrost.ApplyDrakiTimer(1, 1, 300, 0, 0);
+        Assert.True(bifrost.DrakiPlateShown(1_000_000));
+
+        bifrost.ApplyDrakiLeave(5_000);
+
+        Assert.Equal(1, notices);
+        Assert.True(bifrost.DrakiPlateClosing);
+        Assert.True(bifrost.DrakiPlateShown(14_999));
+        Assert.False(bifrost.DrakiPlateShown(15_000));
+    }
+
+    [Fact]
+    public void ANewTimerReopensAClosingPlate()
+    {
+        var bifrost = new BifrostSession();
+        bifrost.ApplyDrakiTimer(1, 1, 300, 0, 0);
+        bifrost.ApplyDrakiLeave(0);
+        bifrost.ApplyDrakiTimer(1, 3, 300, 40, 2_000);
+
+        Assert.False(bifrost.DrakiPlateClosing);
+        Assert.True(bifrost.DrakiPlateShown(60_000));
+    }
+
+    [Fact]
+    public void OnlyATimerWithASubStageRaisesTheFloorBanner()
+    {
+        var bifrost = new BifrostSession();
+        var floors = new List<(int, int)>();
+        int timers = 0;
+        bifrost.DrakiFloorEvent += (stage, subStage) => floors.Add((stage, subStage));
+        bifrost.DrakiTimerEvent += () => timers++;
+
+        bifrost.ApplyDrakiTimer(2, 0, 180, 0, 0);
+        bifrost.ApplyDrakiTimer(2, 3, 300, 0, 0);
+
+        Assert.Equal(2, timers);
+        Assert.Equal(new[] { (2, 3) }, floors);
+    }
+
+    [Fact]
+    public void TheLargePlateLabelsItsLinesAndTheSmallOneShowsOnlyTheValues()
+    {
+        var running = new DrakiPlateView(3, 2, 299, 65, false, false);
+
+        Assert.Equal(new DrakiPlateLines("Draki's Tower: 3-2", "Time Limit 04:59", "Elapsed Time 01:05"), DrakiTower.PlateLines(running, large: true));
+        Assert.Equal(new DrakiPlateLines("3-2", "04:59", "01:05"), DrakiTower.PlateLines(running, large: false));
+    }
+
+    [Theory]
+    [InlineData(false, "Clear")]
+    [InlineData(true, "Give Up")]
+    public void AFinishedLargePlateShowsTheOutcomeInPlaceOfTheLimit(bool gaveUp, string outcome)
+    {
+        var finished = new DrakiPlateView(5, 3, 120, 1800, true, gaveUp);
+
+        Assert.Equal(outcome, DrakiTower.PlateLines(finished, large: true).Limit);
+        Assert.Equal("02:00", DrakiTower.PlateLines(finished, large: false).Limit);
+    }
+
+    [Theory]
+    [InlineData(1, 1, "1.The Preparation - 1", "Tower Entrance")]
+    [InlineData(2, 6, "2.The Beginning - 6", "A Girl's Parents 2")]
+    [InlineData(5, 3, "5.The Ultimate Stage - 3", "Draki's Madness")]
+    [InlineData(3, 2, "3.The Result - 2", "")]
+    public void TheFloorBannerNamesTheStageAndTheFloor(int stage, int subStage, string floor, string name) =>
+        Assert.Equal(new DrakiFloorTexts(floor, name), DrakiTower.FloorTexts(stage, subStage));
 
     [Fact]
     public void TheEnterRequestCarriesTheCertificateAndTheChapter()

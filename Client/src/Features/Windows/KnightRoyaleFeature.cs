@@ -8,13 +8,15 @@ internal sealed partial class KnightRoyaleFeature : IFeature, ITickFeature
     private readonly KnightRoyaleSession knightRoyale;
     private readonly IKnightRoyaleRequests requests;
     private readonly MapFeature map;
+    private readonly CaptionFeature caption;
 
-    public KnightRoyaleFeature(IWorldContext context, KnightRoyaleSession knightRoyale, IKnightRoyaleRequests requests, MapFeature map)
+    public KnightRoyaleFeature(IWorldContext context, KnightRoyaleSession knightRoyale, IKnightRoyaleRequests requests, MapFeature map, CaptionFeature caption)
     {
         this.context = context;
         this.knightRoyale = knightRoyale;
         this.requests = requests;
         this.map = map;
+        this.caption = caption;
     }
 
     public void Tick(double delta, double nowSec)
@@ -306,10 +308,10 @@ internal sealed partial class KnightRoyaleFeature : IFeature, ITickFeature
         int area = KnightRoyale.AreaOf(region);
         if (area == 0) return false;
         int text = KnightRoyale.AreaCaption(area, knightRoyale.RoyaleReleasedArea);
-        string caption = text == KnightRoyale.AreaText
+        string areaText = text == KnightRoyale.AreaText
             ? TextTemplate.Fill(ItemData.Text(text, "Area %d"), area)
             : ItemData.Text(text, "This area is filled with poison gas and will cause damage.");
-        ShowAreaBanner(caption, KnightRoyale.Red, AreaNameHold, AreaNameFadeIn, AreaBannerTop);
+        caption.Show(areaText, KnightRoyale.Red, AreaNameHold, AreaNameFadeIn, AreaBannerTop);
         return true;
     }
 
@@ -320,16 +322,11 @@ internal sealed partial class KnightRoyaleFeature : IFeature, ITickFeature
     }
 
 
-    private const int AreaTitleFontSize = 26;
-    private const int AreaSubtitleFontSize = 20;
     private const float AreaBannerTop = 100f;
-    private const float AreaSubtitleDrop = 50f;
-    private const char AreaSubtitleSeparator = '/';
     private const double AreaNameHold = 1.0;
     private const double AreaNoticeHold = 3.0;
     private const double AreaNameFadeIn = 0.5;
     private const double AreaNoticeFadeIn = 1.5;
-    private const double AreaFadeOut = 1.0;
     private const double AreaHintHold = 5.0;
     private const float AreaHintHeight = 0.4f;
     private static readonly Color AreaBannerColour = new(1f, 1f, 0f);
@@ -338,10 +335,6 @@ internal sealed partial class KnightRoyaleFeature : IFeature, ITickFeature
     private readonly List<int> areasHere = new();
     private readonly HashSet<int> areasBefore = new();
     private int areasZone = -1;
-    private Control? areaBanner;
-    private Label areaTitle = null!;
-    private Label areaSubtitle = null!;
-    private Tween? areaTween;
 
     internal void AreaBannerTick()
     {
@@ -370,67 +363,14 @@ internal sealed partial class KnightRoyaleFeature : IFeature, ITickFeature
                 break;
             case AreaNoticeKind.Banner:
             case AreaNoticeKind.WarningBanner:
-                ShowAreaBanner(text, notice.Kind == AreaNoticeKind.WarningBanner ? AreaWarningColour : AreaBannerColour,
+                caption.Show(text, notice.Kind == AreaNoticeKind.WarningBanner ? AreaWarningColour : AreaBannerColour,
                     notice.LongHold ? AreaNoticeHold : AreaNameHold, notice.LongHold ? AreaNoticeFadeIn : AreaNameFadeIn,
                     AreaBannerTop);
                 break;
             case AreaNoticeKind.Hint:
-                ShowAreaBanner(text, AreaBannerColour, AreaHintHold, AreaNoticeFadeIn,
+                caption.Show(text, AreaBannerColour, AreaHintHold, AreaNoticeFadeIn,
                     context.Root.GetViewport().GetVisibleRect().Size.Y * AreaHintHeight);
                 break;
         }
-    }
-
-
-    private void ShowAreaBanner(string text, Color colour, double hold, double fadeIn, float top)
-    {
-        EnsureAreaBanner();
-        areaTitle.OffsetTop = top;
-        areaSubtitle.OffsetTop = top + AreaSubtitleDrop;
-        int split = text.IndexOf(AreaSubtitleSeparator);
-        areaTitle.Text = split < 0 ? text : text[..split];
-        areaSubtitle.Text = split < 0 ? "" : text[(split + 1)..];
-        areaSubtitle.Visible = areaSubtitle.Text.Length > 0;
-        areaTitle.AddThemeColorOverride("font_color", colour);
-        areaSubtitle.AddThemeColorOverride("font_color", colour);
-
-        var banner = areaBanner!;
-        areaTween?.Kill();
-        banner.Modulate = new Color(1f, 1f, 1f, 0f);
-        banner.Visible = true;
-        areaTween = context.Root.CreateTween();
-        areaTween.TweenProperty(banner, "modulate:a", 1f, fadeIn);
-        areaTween.TweenInterval(hold);
-        areaTween.TweenProperty(banner, "modulate:a", 0f, AreaFadeOut);
-        areaTween.TweenCallback(Callable.From(() => banner.Visible = false));
-    }
-
-    private void EnsureAreaBanner()
-    {
-        if (areaBanner != null && GodotObject.IsInstanceValid(areaBanner)) return;
-        var layer = new CanvasLayer { Layer = UiLayers.Notices };
-        context.Root.AddChild(layer);
-        areaBanner = new Control { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
-        areaBanner.SetAnchorsPreset(Control.LayoutPreset.TopWide);
-        layer.AddChild(areaBanner);
-        areaTitle = AreaBannerLine(AreaTitleFontSize, AreaBannerTop);
-        areaSubtitle = AreaBannerLine(AreaSubtitleFontSize, AreaBannerTop + AreaSubtitleDrop);
-        areaBanner.AddChild(areaTitle);
-        areaBanner.AddChild(areaSubtitle);
-    }
-
-    private static Label AreaBannerLine(int fontSize, float top)
-    {
-        var label = new Label
-        {
-            HorizontalAlignment = HorizontalAlignment.Center,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        label.SetAnchorsPreset(Control.LayoutPreset.TopWide);
-        label.OffsetTop = top;
-        label.AddThemeFontSizeOverride("font_size", fontSize);
-        label.AddThemeColorOverride("font_outline_color", Colors.Black);
-        label.AddThemeConstantOverride("outline_size", 6);
-        return label;
     }
 }

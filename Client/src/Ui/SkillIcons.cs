@@ -17,6 +17,8 @@ public static class SkillIcons
         return enigma;
     }
 
+    public static Texture2D? Buff(SkillData.Skill skill) => Get(skill.BuffIcon != 0 ? skill.BuffIcon : skill.Id);
+
     public static Texture2D? Get(int skillId)
     {
         if (iconCache.TryGetValue(skillId, out var cached)) return cached;

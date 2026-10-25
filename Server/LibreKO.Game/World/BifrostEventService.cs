@@ -34,7 +34,7 @@ public class BifrostEventService : BackgroundService, IBifrostEventService
     private readonly SessionManager sessionManager;
     private readonly IOptions<GameServerSettings> settings;
     private readonly ScheduleClock scheduleClock;
-    private const int StartMinuteOfHour = 0;
+    private readonly IEventStartRules? startRules;
     private readonly IZoneTransitionService zoneTransitionService;
     private readonly ILogger<BifrostEventService> logger;
 
@@ -55,8 +55,10 @@ public class BifrostEventService : BackgroundService, IBifrostEventService
         IOptions<GameServerSettings> settings,
         ScheduleClock scheduleClock,
         IZoneTransitionService zoneTransitionService,
-        ILogger<BifrostEventService> logger)
+        ILogger<BifrostEventService> logger,
+        IEventStartRules? startRules = null)
     {
+        this.startRules = startRules;
         this.sessionManager = sessionManager;
         this.settings = settings;
         this.scheduleClock = scheduleClock;
@@ -287,8 +289,8 @@ public class BifrostEventService : BackgroundService, IBifrostEventService
     internal void TickSchedule(DateTime now)
     {
         var minute = now.Date.AddHours(now.Hour).AddMinutes(now.Minute);
-        if (IsActive || now.Minute != StartMinuteOfHour || minute == lastStartMinute
-            || !settings.Value.Events.BifrostStartHours.Contains(now.Hour))
+        if (IsActive || minute == lastStartMinute
+            || !EventStartRules.StartsAt(startRules, EventScheduleKind.Bifrost, settings.Value.Events.BifrostStartHours, now))
             return;
         lastStartMinute = minute;
         Start();

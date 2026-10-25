@@ -27,6 +27,12 @@ public partial class Packs : Node
     private static readonly List<string> missing = new();
     private static bool downloadedMounted;
 
+    public override void _Notification(int what)
+    {
+        if (what == NotificationApplicationPaused) Diag.LoopPaused(true);
+        else if (what == NotificationApplicationResumed) Diag.LoopPaused(false);
+    }
+
     public override void _Ready()
     {
         Diag.Install();

@@ -20,6 +20,9 @@ public sealed class QuestBook
 
     public IReadOnlyDictionary<int, QuestStrings> Strings => questStrings;
 
+    public bool Listed(int questId) =>
+        Views.ContainsKey(questId) || (questStrings.TryGetValue(questId, out var text) && text.Title.Length > 0);
+
     private readonly Dictionary<int, QuestView> questViews = new();
 
     public IReadOnlyDictionary<int, QuestView> Views => questViews;
@@ -59,9 +62,13 @@ public sealed class QuestBook
         questEntries.AddRange(entries);
     }
 
+    public event Action<int>? Accepted;
+
     internal void ApplyState(int questId, int state)
     {
+        int before = StateOf(questId);
         SetEntry(questId, state);
+        if (state == QuestStates.Active && before is not (QuestStates.Active or QuestStates.ReadyToTurnIn)) Accepted?.Invoke(questId);
         if (state is QuestStates.Completed or QuestStates.Abandoned) killCounts.Remove(questId);
     }
 

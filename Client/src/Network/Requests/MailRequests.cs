@@ -4,7 +4,7 @@ public interface IMailRequests
 {
     void List();
     void Read(int mailId);
-    void Delete(int mailId);
+    void Delete(int mailId, bool discardAttachments = false);
     void Claim(int mailId);
     void ClaimAttachment(int mailId, int attachmentIndex);
     void Send(string recipient, string subject, string body, int gold, IReadOnlyList<MailItemPick> items);
@@ -20,7 +20,14 @@ public sealed class MailRequests : IMailRequests
 
     public void Read(int mailId) => SendMailId(MailSubOpcode.Read, mailId);
 
-    public void Delete(int mailId) => SendMailId(MailSubOpcode.Delete, mailId);
+    public void Delete(int mailId, bool discardAttachments = false)
+    {
+        var p = new Packet(GameOpcodes.GS_MAIL);
+        p.WriteByte((byte)MailSubOpcode.Delete);
+        p.WriteInt(mailId);
+        if (discardAttachments) p.WriteByte(MailWire.DiscardAttachments);
+        sink.Send(p);
+    }
 
     public void Claim(int mailId) => SendMailId(MailSubOpcode.Claim, mailId);
 

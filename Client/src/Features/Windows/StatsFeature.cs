@@ -34,6 +34,9 @@ internal sealed partial class StatsFeature : IFeature
     private static readonly string[] ResistLabels = { "Fire", "Ice", "Lightning", "Magic", "Curse", "Poison" };
 
     internal VBoxContainer Content { get; private set; } = null!;
+    private Control rankMarksSection = null!;
+    private GridContainer rankMarks = null!;
+    private const int RankMarkColumns = 9;
     internal Label StHeaderName { get; private set; } = null!;
     internal Label StHeaderSub { get; private set; } = null!;
     private Label stExpLbl = null!;
@@ -59,11 +62,13 @@ internal sealed partial class StatsFeature : IFeature
         develop.JobChangeResultEvent += OnJobChangeResult;
         develop.ClassPromotedEvent += OnClassPromoted;
         skillPreset.StatPlanApplied += RefreshUI;
+        self.RankMarksEvent += RefreshRankMarks;
     }
 
     public void Dispose()
     {
         skillPreset.StatPlanApplied -= RefreshUI;
+        self.RankMarksEvent -= RefreshRankMarks;
         progress.PointChangeEvent -= OnPointChange;
         items.ItemStatsEvent -= OnSheet;
         develop.StatResetEvent -= OnStatReset;
@@ -167,6 +172,7 @@ internal sealed partial class StatsFeature : IFeature
 
         BuildHeader(root);
         BuildProgress(root);
+        BuildRankMarks(root);
 
         var middle = new HBoxContainer();
         middle.AddThemeConstantOverride("separation", 8);
@@ -219,6 +225,25 @@ internal sealed partial class StatsFeature : IFeature
         };
         presetBtn.Pressed += skillPreset.TogglePreset;
         header.AddChild(presetBtn);
+    }
+
+    private void BuildRankMarks(VBoxContainer root)
+    {
+        var section = Section(root, "Rank Marks", out _);
+        rankMarksSection = section.GetParent().GetParent<Control>();
+        rankMarks = new GridContainer { Columns = RankMarkColumns };
+        rankMarks.AddThemeConstantOverride("h_separation", 0);
+        rankMarks.AddThemeConstantOverride("v_separation", 0);
+        section.AddChild(rankMarks);
+        RefreshRankMarks();
+    }
+
+    private void RefreshRankMarks()
+    {
+        foreach (var child in rankMarks.GetChildren()) child.QueueFree();
+        var ribbons = RankRibbonArt.Summary(self.RankMarks);
+        foreach (var ribbon in ribbons) rankMarks.AddChild(RankRibbonArt.Cell(ribbon));
+        rankMarksSection.Visible = ribbons.Count > 0;
     }
 
     private void BuildProgress(VBoxContainer root)

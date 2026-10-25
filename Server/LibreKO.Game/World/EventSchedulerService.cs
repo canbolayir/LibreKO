@@ -31,9 +31,11 @@ public class EventSchedulerService(
     IKrowazService krowazService,
     INereidMonumentService nereidMonuments,
     IBowlEventService bowlEventService,
+    IManesSurvivalService manesSurvivalService,
     IGameDataService gameDataService,
     ScheduleClock scheduleClock,
-    ILogger<EventSchedulerService> logger) : BackgroundService
+    ILogger<EventSchedulerService> logger,
+    IEventStartRules? startRules = null) : BackgroundService
 {
     private DateTime lastWarOpen = DateTime.MinValue;
     private bool banishPending;
@@ -100,6 +102,7 @@ public class EventSchedulerService(
                 await forgottenTempleService.TickAsync();
                 await krowazService.TickAsync();
                 await bowlEventService.TickAsync();
+                await manesSurvivalService.TickAsync();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -116,7 +119,8 @@ public class EventSchedulerService(
         {
             // Check if battle duration has expired
             var elapsed = battle.GetElapsedTime();
-            var maxDuration = TimeSpan.FromMinutes(settings.Value.Events.BattleDurationMinutes);
+            var kind = battle.BattleZone == BattleZoneManager.ZONE_SNOW_BATTLE ? EventScheduleKind.SnowWar : EventScheduleKind.NationWar;
+            var maxDuration = TimeSpan.FromMinutes(EventStartRules.MinutesOf(startRules, kind, settings.Value.Events.BattleDurationMinutes));
 
             if (elapsed >= maxDuration)
             {
@@ -139,7 +143,7 @@ public class EventSchedulerService(
                 banishTime = DateTime.UtcNow.AddSeconds(60);
             }
         }
-        else if (!banishPending)
+        else if (!banishPending && (startRules == null || startRules.For(EventScheduleKind.NationWar, []).Count == 0))
         {
             // Check if it's time to open a new battle
             var interval = TimeSpan.FromMinutes(settings.Value.Events.BattleIntervalMinutes);
@@ -268,6 +272,7 @@ public class EventSchedulerService(
         {
             TempleEvent.UnderTheCastle => !underTheCastleService.IsActive,
             TempleEvent.ForgottenTemple => !forgottenTempleService.IsActive,
+            TempleEvent.ManesSurvival => !manesSurvivalService.HasActiveArenas,
             _ => false,
         };
 
@@ -324,7 +329,7 @@ public class EventSchedulerService(
         var noticePkt = NoticePacketWriter.Broadcast($"### [EVENT] {TempleEventRules.NameFor(contest)}{levelNotice} registration is now OPEN ({timeStr})! ###");
         await sessionManager.BroadcastToAll(noticePkt);
 
-        var signUpPkt = BifrostPacketWriter.Remaining(TempleSubOpcode.BifrostRemaining, joinWindowSeconds, (byte)contest);
+        var signUpPkt = SignUpPacket(contest, joinWindowSeconds, run.Participants.Count);
         foreach (var s in sessionManager.GetAll())
         {
             if (run.Fits(s.Level))
@@ -335,8 +340,12 @@ public class EventSchedulerService(
     private bool InAnotherRun(TempleEventRun run, int characterId) =>
         runs.Values.Any(r => !ReferenceEquals(r, run) && r.Participants.Contains(characterId));
 
-    private static Packet SignUpClosed(TempleEvent contest) =>
-        BifrostPacketWriter.Remaining(TempleSubOpcode.BifrostRemaining, 0, (byte)contest);
+    private static Packet SignUpPacket(TempleEvent contest, int seconds, int participants) =>
+        contest == TempleEvent.ManesSurvival
+            ? ManesSurvivalPacketWriter.SignUpOpen(seconds, participants)
+            : EventPacketWriter.SignUpTime(contest, seconds);
+
+    private static Packet SignUpClosed(TempleEvent contest) => SignUpPacket(contest, 0, 0);
 
     private async Task WarpParticipantsToEventAsync(TempleEventRun run)
     {
@@ -364,6 +373,9 @@ public class EventSchedulerService(
                 return;
             case TempleEvent.Chaos:
                 await chaosDungeonService.StartMatchesAsync(participants, TempleEventRules.ChaosDurationSeconds);
+                return;
+            case TempleEvent.ManesSurvival:
+                await manesSurvivalService.StartAsync(participants, ManesSurvivalRules.DurationSeconds);
                 return;
             case TempleEvent.UnderTheCastle:
                 underTheCastleService.Start();
@@ -417,6 +429,12 @@ public class EventSchedulerService(
             case TempleEvent.UnderTheCastle:
                 await underTheCastleService.CloseAsync();
                 break;
+            case TempleEvent.ManesSurvival:
+                if (rewarded)
+                    await manesSurvivalService.FinishAllAsync();
+                else
+                    await manesSurvivalService.CancelAllAsync();
+                break;
             case TempleEvent.ForgottenTemple:
                 await forgottenTempleService.CloseAsync();
                 break;
@@ -459,7 +477,8 @@ public class EventSchedulerService(
 
     private TempleEventRun? PickSignUp(UserSession session)
     {
-        var open = runs.Values.Where(r => r.JoinOpen).OrderByDescending(r => r.CalledAt).ToList();
+        var open = runs.Values.Where(r => r.JoinOpen && TempleEventRules.JoinsFromTheEventBoard(r.Contest))
+            .OrderByDescending(r => r.CalledAt).ToList();
         return open.FirstOrDefault(r => r.Participants.Contains(session.CharacterId))
             ?? open.FirstOrDefault(r => r.Fits(session.Level))
             ?? open.FirstOrDefault();
@@ -487,6 +506,12 @@ public class EventSchedulerService(
             run.Participants.Add(session.CharacterId);
             return TempleJoinResult.Joined;
         }
+    }
+
+    public IReadOnlyList<int> SignUpsOf(TempleEvent contest)
+    {
+        lock (runsLock)
+            return runs.TryGetValue(contest, out var run) && run.JoinOpen ? run.Participants.ToList() : [];
     }
 
     public (ushort Karus, ushort ElMorad) TempleSignUps(TempleEvent contest)

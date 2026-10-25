@@ -21,6 +21,8 @@ public sealed class MailPacketWriter
     public const byte AttachmentsPending = 1;
     public const byte AttachmentsClaimed = 2;
 
+    public const byte DiscardAttachments = 1;
+
     public static Packet Inbox(IReadOnlyList<Mail> mails)
     {
         var packet = Sub(SubList);

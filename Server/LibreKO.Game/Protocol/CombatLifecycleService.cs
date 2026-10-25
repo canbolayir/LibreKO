@@ -38,6 +38,7 @@ public class CombatLifecycleService(
     IDrakiTowerService drakiTowerService,
     IRespawnBlinkService respawnBlinkService,
     IChaosDungeonService chaosDungeonService,
+    IManesSurvivalService manesSurvivalService,
     IKillStreakService killStreakService,
     IVanguardService vanguardService,
     IWarCaptainService warCaptainService,
@@ -53,6 +54,9 @@ public class CombatLifecycleService(
     {
         if (npc.IsScarecrow)
             return;
+
+        if (npc.IsInvincible)
+            manesSurvivalService.NoteInvincibleHit(attacker);
 
         var currentTarget = npc.TargetUserId > 0
             ? sessionManager.GetByCharacterId(npc.TargetUserId)
@@ -249,6 +253,13 @@ public class CombatLifecycleService(
         if (victim.ZoneId == ChaosRules.Zone)
         {
             await chaosDungeonService.OnPlayerKilledAsync(victim, killer);
+            victim.KillerNpcType = 0;
+            return;
+        }
+
+        if (ManesSurvivalRules.IsZone(victim.ZoneId))
+        {
+            await manesSurvivalService.OnPlayerKilledAsync(victim, killer);
             victim.KillerNpcType = 0;
             return;
         }

@@ -50,6 +50,8 @@ public sealed class ReconnectSupervisor
 
     public string Failure { get; private set; } = "";
 
+    public bool Outdated { get; private set; }
+
     public bool Blocking => State is ReconnectPhase.Visible or ReconnectPhase.Failed;
 
     public bool InProgress => State is not (ReconnectPhase.Idle or ReconnectPhase.Failed);
@@ -77,6 +79,7 @@ public sealed class ReconnectSupervisor
         GD.Print($"[net] connection lost: {host.LastError ?? "no reason given"}");
         State = ReconnectPhase.Silent;
         Failure = "";
+        Outdated = false;
         outageElapsed = 0;
         StartAttempt();
         return true;
@@ -87,6 +90,7 @@ public sealed class ReconnectSupervisor
         if (State == ReconnectPhase.Idle) return;
         State = ReconnectPhase.Idle;
         Failure = "";
+        Outdated = false;
         attemptInFlight = false;
         ChangedEvent?.Invoke();
     }
@@ -123,11 +127,12 @@ public sealed class ReconnectSupervisor
         return capped * (1.0 + (GD.Randf() * 2.0 - 1.0) * RetryJitter);
     }
 
-    internal void GiveUp(string reason)
+    internal void GiveUp(string reason, bool outdated = false)
     {
         GD.Print($"[net] reconnect gave up: {reason}");
         State = ReconnectPhase.Failed;
         Failure = reason;
+        Outdated = outdated;
         attemptInFlight = false;
         host.CloseConnection();
         ChangedEvent?.Invoke();

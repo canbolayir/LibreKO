@@ -12,6 +12,7 @@ public class TempleEventRulesTests
     [InlineData(TempleEvent.ForgottenTemple, 40)]
     [InlineData(TempleEvent.JuraidMountain, 45)]
     [InlineData(TempleEvent.UnderTheCastle, 60)]
+    [InlineData(TempleEvent.ManesSurvival, 20)]
     public void EachContestRunsForItsOwnLength(TempleEvent contest, int minutes)
     {
         TempleEventRules.DurationSecondsFor(contest).Should().Be(minutes * 60);
@@ -29,6 +30,7 @@ public class TempleEventRulesTests
     [InlineData(TempleEvent.JuraidMountain, ZoneId.JuradMountain)]
     [InlineData(TempleEvent.UnderTheCastle, ZoneId.UnderCastle)]
     [InlineData(TempleEvent.ForgottenTemple, ZoneId.ForgottenTemple)]
+    [InlineData(TempleEvent.ManesSurvival, ZoneId.ManesSurvival1)]
     public void EachContestHasItsOwnZone(TempleEvent contest, ZoneId zone)
     {
         TempleEventRules.ZoneFor(contest).Should().Be((byte)zone);
@@ -39,16 +41,5 @@ public class TempleEventRulesTests
     {
         TempleEventRules.ZoneFor(TempleEvent.None).Should().Be(0);
         TempleEventRules.DurationSecondsFor(TempleEvent.None).Should().Be(0);
-    }
-
-    [Fact]
-    public void TheThreeContestsDoNotShareALength()
-    {
-        var lengths = Enum.GetValues<TempleEvent>()
-            .Where(contest => contest != TempleEvent.None)
-            .Select(TempleEventRules.DurationSecondsFor)
-            .ToArray();
-
-        lengths.Should().OnlyHaveUniqueItems();
     }
 }

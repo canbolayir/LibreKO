@@ -38,12 +38,7 @@ internal static class QuestInfo
         return book.Objectives.ContainsKey(questId) ? facts with { Kind = QuestData.Kind.Hunt } : facts;
     }
 
-    internal static string ZoneName(int zone)
-    {
-        if (zone == 0) return "Anywhere";
-        foreach (var z in ZoneCatalog.All) if (z.Id == zone) return z.Name;
-        return $"Zone {zone}";
-    }
+    internal static string ZoneName(int zone) => zone == 0 ? "Anywhere" : ZoneCatalog.Name(zone);
 
     internal static string NpcDisplayName(int npcId) =>
         NpcNames.TalkName(npcId);

@@ -54,7 +54,14 @@ public partial class Notice : CanvasLayer
             return n;
         }
         n.Build(message, title, dismissable: true, confirmText, cancelText, allowPlugin: false);
-        n.field = new LineEdit { Text = initial, PlaceholderText = placeholder, MaxLength = maxLength, Secret = secret };
+        n.field = new LineEdit
+        {
+            Text = initial,
+            PlaceholderText = placeholder,
+            MaxLength = maxLength,
+            Secret = secret,
+            VirtualKeyboardType = secret ? LineEdit.VirtualKeyboardTypeEnum.Password : LineEdit.VirtualKeyboardTypeEnum.Default,
+        };
         n.column!.AddChild(n.field);
         n.field.CallDeferred(Control.MethodName.GrabFocus);
         return n;

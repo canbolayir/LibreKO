@@ -123,6 +123,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IQuestPacketCoordinator, QuestPacketCoordinator>();
         services.AddSingleton<IWarehousePacketCoordinator, WarehousePacketCoordinator>();
         services.AddSingleton<IClanWarehousePacketCoordinator, ClanWarehousePacketCoordinator>();
+        services.AddSingleton<IManesSurvivalPacketCoordinator, ManesSurvivalPacketCoordinator>();
         services.AddSingleton<IVipWarehousePacketCoordinator, VipWarehousePacketCoordinator>();
         services.AddSingleton<IWorldPacketCoordinator, WorldPacketCoordinator>();
         services.AddSingleton<IPartyPacketCoordinator, PartyPacketCoordinator>();
@@ -160,6 +161,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IJuraidMountainService, JuraidMountainService>();
         services.AddSingleton<IBorderDefenseWarService, BorderDefenseWarService>();
         services.AddSingleton<IChaosDungeonService, ChaosDungeonService>();
+        services.AddSingleton<IManesSurvivalTable, ManesSurvivalTable>();
+        services.AddSingleton<IManesSurvivalService, ManesSurvivalService>();
         services.AddSingleton<IUnderTheCastleService, UnderTheCastleService>();
         services.AddSingleton<IKrowazService, KrowazService>();
         services.AddSingleton<IKrowazTrapService, KrowazTrapService>();
@@ -213,6 +216,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMagicItemUsageService, MagicItemUsageService>();
         services.AddSingleton<IBuffExtensionService, BuffExtensionService>();
         services.AddSingleton<IMagicMovementEffectService, MagicMovementEffectService>();
+        services.AddSingleton<IFlashBonusService, FlashBonusService>();
         services.AddSingleton<IMagicStatusEffectService, MagicStatusEffectService>();
         services.AddSingleton<IResurrectionOfferService, ResurrectionOfferService>();
         services.AddSingleton<IControlStateService, ControlStateService>();
@@ -286,6 +290,22 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<INpcLifecycleService, NpcLifecycleService>();
         services.AddSingleton<INpcSpawnRowService, NpcSpawnRowService>();
         services.AddSingleton<INpcSpawnRowStore, NpcSpawnRowStore>();
+        services.AddSingleton<IGameDataEditStore, GameDataEditStore>();
+        services.AddSingleton<IAdminMonsterEditor, AdminMonsterEditor>();
+        services.AddSingleton<IEventStartRules, EventStartRules>();
+        services.AddSingleton<IEventScheduleStore, EventScheduleStore>();
+        services.AddSingleton<IAdminEventScheduleEditor, AdminEventScheduleEditor>();
+        services.AddSingleton<IEventContentStore, EventContentStore>();
+        services.AddSingleton<IAdminEventContentEditor, AdminEventContentEditor>();
+        services.AddSingleton<IAdminTipEditor, AdminTipEditor>();
+        services.AddSingleton<ICharacterDirectory, CharacterDirectory>();
+        services.AddSingleton<IAdminPlayerEditor, AdminPlayerEditor>();
+        services.AddSingleton<IItemRentalService, ItemRentalService>();
+        services.AddSingleton<IItemRentalPacketCoordinator, ItemRentalPacketCoordinator>();
+        services.AddSingleton<IGameplayTipStore, GameplayTipStore>();
+        services.AddSingleton<GameplayTipService>();
+        services.AddSingleton<IGameplayTipService>(sp => sp.GetRequiredService<GameplayTipService>());
+        services.AddSingleton<CommandEventScheduler>();
         services.AddSingleton<INpcSummonService, NpcSummonService>();
         services.AddSingleton<QuestScriptEngine>();
         services.AddSingleton<IQuestDefinitionSource>(p => p.GetRequiredService<QuestScriptEngine>());
@@ -315,6 +335,8 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<HpMpRegenService>();
         services.AddHostedService<AutoSaveService>();
         services.AddHostedService(sp => sp.GetRequiredService<EventSchedulerService>());
+        services.AddHostedService(sp => sp.GetRequiredService<CommandEventScheduler>());
+        services.AddHostedService(sp => sp.GetRequiredService<GameplayTipService>());
         services.AddHostedService<KingElectionTimerService>();
         services.AddHostedService<MonthlyLoyaltyResetService>();
         services.AddHostedService<MarketPricePruneService>();
@@ -335,6 +357,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SoccerService>();
         services.AddSingleton<ISoccerService>(sp => sp.GetRequiredService<SoccerService>());
         services.AddHostedService(sp => sp.GetRequiredService<SoccerService>());
+        services.AddSingleton<IRankMarkService, RankMarkService>();
         services.AddSingleton<DailyRankService>();
         services.AddSingleton<IDailyRankService>(sp => sp.GetRequiredService<DailyRankService>());
         services.AddHostedService(sp => sp.GetRequiredService<DailyRankService>());

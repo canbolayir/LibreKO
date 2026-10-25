@@ -2,23 +2,27 @@
 
 namespace LibreKO.Features.Windows;
 
-internal sealed class ItemCombineFeature : IFeature, IClosableWindow
+internal sealed class ItemCombineFeature : IFeature, ITickFeature, IClosableWindow
 {
     private readonly IWorldContext context;
     private readonly ItemCombineSession itemCombine;
     private readonly SelfSession self;
     private readonly IItemCombineRequests requests;
+    private readonly IKnightRoyaleRequests royaleRequests;
     private readonly VendorFeature vendor;
     private readonly IInteractionDialogs interactionDialogs;
+    private readonly TopIconsFeature topIcons;
 
-    public ItemCombineFeature(IWorldContext context, ItemCombineSession itemCombine, SelfSession self, IItemCombineRequests requests, VendorFeature vendor, IInteractionDialogs interactionDialogs)
+    public ItemCombineFeature(IWorldContext context, ItemCombineSession itemCombine, SelfSession self, IItemCombineRequests requests, IKnightRoyaleRequests royaleRequests, VendorFeature vendor, IInteractionDialogs interactionDialogs, TopIconsFeature topIcons)
     {
         this.context = context;
         this.itemCombine = itemCombine;
         this.self = self;
         this.requests = requests;
+        this.royaleRequests = royaleRequests;
         this.vendor = vendor;
         this.interactionDialogs = interactionDialogs;
+        this.topIcons = topIcons;
     }
 
     private const string TablePath = "res://assets/ui/item_combine.json";
@@ -50,6 +54,23 @@ internal sealed class ItemCombineFeature : IFeature, IClosableWindow
     private bool waiting;
     private int npcTemplate;
     private double cooldownUntil = double.NegativeInfinity;
+    private int craftZone = -1;
+
+    private const int NoTemplate = 0;
+
+    private bool InRoyaleZone => KnightRoyale.IsZone(context.Zone);
+
+    public void Tick(double delta, double nowSec)
+    {
+        if (context.Zone == craftZone) return;
+        craftZone = context.Zone;
+        if (shown && npcTemplate == NoTemplate) Close();
+        RefreshCraftButton();
+    }
+
+    private void RefreshCraftButton() => topIcons.RefreshCraft(InRoyaleZone && !shown);
+
+    internal void OpenRoyaleCraft() => Open(NoTemplate);
 
     public void Build()
     {
@@ -166,7 +187,7 @@ internal sealed class ItemCombineFeature : IFeature, IClosableWindow
     {
         EnsureCombineBook();
         this.npcTemplate = npcTemplate;
-        context.NpcDialog.TrackTalker(CombineCraftsman());
+        if (!InRoyaleZone) context.NpcDialog.TrackTalker(CombineCraftsman());
         waiting = false;
         vendor.Close();
         ClearCombineSockets();
@@ -181,12 +202,14 @@ internal sealed class ItemCombineFeature : IFeature, IClosableWindow
     {
         Panel.Visible = true;
         shown = true;
+        RefreshCraftButton();
     }
 
     public void Close()
     {
         if (!shown) return;
         shown = false;
+        RefreshCraftButton();
         Panel.Visible = false;
         context.Tooltips.Hide();
         context.BagCompanions.ReleaseHold();
@@ -324,7 +347,7 @@ internal sealed class ItemCombineFeature : IFeature, IClosableWindow
             footer.Status(CombineText(ItemCombine.PutMaterialText, "Put on material"), bad: true);
             return;
         }
-        if (self.Inventory.FreeGridSlots().Count == 0)
+        if (!ItemCombine.HasBagRoom(self.Inventory.FreeGridSlots().Select(abs => abs - Inventory.GridStart), context.Zone))
         {
             footer.Status(CombineText(ItemCombine.NoBagSlotText, "You do not have an empty slot in your inventory."), bad: true);
             return;
@@ -335,7 +358,11 @@ internal sealed class ItemCombineFeature : IFeature, IClosableWindow
         foreach (var entry in entries.OfType<CombineEntry>())
             context.BagCompanions.Hold.Hold(Inventory.GridStart + entry.BagSlot, self.Inventory[Inventory.GridStart + entry.BagSlot]);
         strip.Sub.Text = CombineText(PleaseWaitText, "Please wait");
-        requests.Send(CombineCraftsman(), shadow?.ItemId ?? 0, shadow?.BagSlot ?? 0, ItemCombine.WireOrder(materials));
+        int shadowItem = shadow?.ItemId ?? 0;
+        int shadowSlot = shadow?.BagSlot ?? 0;
+        var ordered = ItemCombine.WireOrder(materials);
+        if (InRoyaleZone) royaleRequests.RoyaleCraft(shadowItem, shadowSlot, ordered);
+        else requests.Send(CombineCraftsman(), shadowItem, shadowSlot, ordered);
     }
 
     private void OnReply(CombineReply reply)
@@ -370,20 +397,22 @@ internal sealed class ItemCombineFeature : IFeature, IClosableWindow
                 footer.Status(received, bad: false);
                 Notice.Show(context.Root, received, "Item Combination");
             }
-            if (row != null) context.NpcDialog.Balloon([row.SuccessText]);
+            if (row != null && CraftsmanOf(row.Npc) != ItemCombine.NoCraftsman) context.NpcDialog.Balloon([row.SuccessText]);
         }
         else
         {
             footer.Status("The combination failed. The materials are gone.", bad: true);
-            if (row != null) context.NpcDialog.Balloon([row.FailureText]);
+            if (row != null && CraftsmanOf(row.Npc) != ItemCombine.NoCraftsman) context.NpcDialog.Balloon([row.FailureText]);
         }
     }
 
-    private int CombineCraftsman() => context.Self.Body == null
+    private int CombineCraftsman() => CraftsmanOf(npcTemplate);
+
+    private int CraftsmanOf(int template) => context.Self.Body == null
     ? ItemCombine.NoCraftsman
     : ItemCombine.Craftsman(
         context.Entities.All().Where(e => !e.Dead).Select(e => (e.Id, e.NpcId, Coord.FlatDistance(context.Self.Body.Position, e.Position))),
-        npcTemplate);
+        template);
 
     private void OnCombineEffect(CombineEffect effect)
     {
@@ -480,7 +509,7 @@ internal sealed class ItemCombineFeature : IFeature, IClosableWindow
     private void RenderCombineBook()
     {
         foreach (var child in combineBookCategories.GetChildren()) child.QueueFree();
-        foreach (var category in combineBook.Shown)
+        foreach (var category in combineBook.Shown(ItemCombine.BookVisibility(context.Zone)))
         {
             int key = category.Key;
             combineBookCategories.AddChild(CombineBookRow(category.Name, null, key == combineBookCategory, UiTheme.TextHi,

@@ -35,8 +35,11 @@ public enum ZoneId
     CaitharosArena = 54,
     ForgottenTemple = 55,
     LostTemple = 56,
+    ManesSurvival1 = 57,
+    ManesSurvival2 = 58,
+    ManesSurvival3 = 59,
+    ManesSurvival4 = 60,
 
-    BattleBase = 60,
     NapiesGorge = 61,
     AlseidsPrairie = 62,
     NiedsTriangle = 63,

@@ -6,6 +6,7 @@ public enum TempleSubOpcode : byte
     TempleScreen = 3,
     MonsterSquad = 5,
     MonsterStone = 6,
+    TempleEvent = 7,
     TempleEventJoin = 8,
     TempleEventDisband = 9,
     TempleEventFinish = 10,

@@ -10,16 +10,18 @@ internal sealed class EventsFeature : IFeature, ITickFeature, IEscapable
     private readonly SelfSession self;
     private readonly IEventScheduleRequests eventScheduleRequests;
     private readonly BifrostFeature bifrost;
+    private readonly ManesSurvivalFeature manesSurvival;
     private readonly LotteryFeature lottery;
     private readonly TopIconsFeature topIcons;
 
-    public EventsFeature(IWorldContext context, EventScheduleSession eventSchedule, SelfSession self, IEventScheduleRequests eventScheduleRequests, BifrostFeature bifrost, LotteryFeature lottery, TopIconsFeature topIcons)
+    public EventsFeature(IWorldContext context, EventScheduleSession eventSchedule, SelfSession self, IEventScheduleRequests eventScheduleRequests, BifrostFeature bifrost, ManesSurvivalFeature manesSurvival, LotteryFeature lottery, TopIconsFeature topIcons)
     {
         this.context = context;
         this.eventSchedule = eventSchedule;
         this.self = self;
         this.eventScheduleRequests = eventScheduleRequests;
         this.bifrost = bifrost;
+        this.manesSurvival = manesSurvival;
         this.lottery = lottery;
         this.topIcons = topIcons;
     }
@@ -45,7 +47,6 @@ internal sealed class EventsFeature : IFeature, ITickFeature, IEscapable
     private const int MinutesPerHourClock = 60;
     private const int HoursPerDayClock = 24;
 
-    private static readonly string[] Weekdays = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
 
     private Button iconButton = null!;
     private TextureRect image = null!;
@@ -74,6 +75,7 @@ internal sealed class EventsFeature : IFeature, ITickFeature, IEscapable
         BuildWindow();
         eventSchedule.EventScheduleEvent += OnEventSchedule;
         refreshIn = 0;
+        PluginHost.Game.AttachEvents(new PluginEventsBridge(this));
     }
 
     bool IEscapable.CloseOnEscape()
@@ -156,6 +158,31 @@ internal sealed class EventsFeature : IFeature, ITickFeature, IEscapable
         return row;
     }
 
+    private void OpenFromPlugin()
+    {
+        if (!Window.Visible) Toggle();
+    }
+
+    private IReadOnlyList<GameEventLine> TodayForPlugins()
+    {
+        if (Schedule is not { } schedule) return Array.Empty<GameEventLine>();
+        var now = DateTime.UtcNow;
+        var lines = new List<GameEventLine>();
+        foreach (var e in schedule.Today(now, TimeZoneInfo.Local.GetUtcOffset(now)))
+            lines.Add(new GameEventLine(e.Name, e.Open != null,
+                e.Open is { } phase ? phase == EventPhase.SignUp ? "Sign-up" : "Open" : $"{e.LocalStart:HH:mm}"));
+        return lines;
+    }
+
+    private sealed class PluginEventsBridge(EventsFeature events) : IGameEvents
+    {
+        event Action? IGameEvents.Changed { add { } remove { } }
+
+        public IReadOnlyList<GameEventLine> Today => events.TodayForPlugins();
+
+        public void OpenWindow() => events.OpenFromPlugin();
+    }
+
     private void Toggle()
     {
         bool open = !Window.Visible;
@@ -169,6 +196,7 @@ internal sealed class EventsFeature : IFeature, ITickFeature, IEscapable
     private void OnEventSchedule(EventSchedule schedule)
     {
         this.Schedule = schedule;
+        PluginHost.Game.RaiseEvents();
         if (windowRebuild.Changed(GodotObject.IsInstanceValid(Window) && Window.Visible)) RefreshWindow();
         UpdateAlert();
     }
@@ -299,7 +327,7 @@ internal sealed class EventsFeature : IFeature, ITickFeature, IEscapable
             footer.AddThemeConstantOverride("separation", 4);
             var days = EventSchedule.Weekdays(weekly, LocalOffsetMinutes(utcNow));
             for (int day = 0; day < WeekdayCount; day++)
-                footer.AddChild(WeekdayPill(Weekdays[day], days.Contains(day)));
+                footer.AddChild(WeekdayPill(EventCalendar.ShortName((DayOfWeek)day), days.Contains(day)));
             column.AddChild(footer);
         }
         return panel;
@@ -319,7 +347,7 @@ internal sealed class EventsFeature : IFeature, ITickFeature, IEscapable
     {
         var local = TimeZoneInfo.ConvertTimeFromUtc(EventSchedule.NextStartUtc(slot, clockNow), TimeZoneInfo.Local);
         string time = local.ToString("HH:mm", CultureInfo.InvariantCulture);
-        string text = slot.Day == EventSchedule.EveryDay ? time : $"{Weekdays[(int)local.DayOfWeek]} {time}";
+        string text = slot.Day == EventSchedule.EveryDay ? time : $"{EventCalendar.ShortName(local.DayOfWeek)} {time}";
 
         var chip = new PanelContainer
         {
@@ -402,6 +430,8 @@ internal sealed class EventsFeature : IFeature, ITickFeature, IEscapable
         EventKind.Bifrost => "system/sparkle",
         EventKind.CastleSiege => "system/combat-defence",
         EventKind.Bowl => "system/coins",
+        EventKind.NationWar or EventKind.SnowWar => "system/combat-defence",
+        EventKind.Wanted => "system/medal",
         _ => "system/clock",
     };
 
@@ -453,6 +483,7 @@ internal sealed class EventsFeature : IFeature, ITickFeature, IEscapable
     {
         Action? act = entry switch
         {
+            { Kind: EventKind.Temple, Phase: EventPhase.SignUp, Code: (int)TempleEventType.ManesSurvival } => manesSurvival.ReopenBoard,
             { Kind: EventKind.Temple, Phase: EventPhase.SignUp } => () => bifrost.ShowSignUp((TempleEventType)entry.Code),
             { Kind: EventKind.Lottery } => lottery.Toggle,
             _ => null,

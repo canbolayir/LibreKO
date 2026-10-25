@@ -13,13 +13,20 @@ public partial class ItemSearchPanel : VBoxContainer
     private readonly Action<ItemSearchHit, int> onAction;
     private readonly Action<int>? showTooltip;
     private readonly Action? hideTooltip;
+    private readonly Action<IReadOnlyList<ItemSearchHit>>? onFamily;
+    private readonly List<ItemSearchHit> shownHits = new();
+    private Button? familyButton;
 
     private readonly List<string> names = new();
     private readonly List<List<ItemSearchHit>> hits = new();
     private readonly List<string> groups = new();
     private readonly List<int> levels = new();
     private readonly Dictionary<string, Button> tabButtons = new();
+    private readonly Dictionary<int, int> quantities = new();
     private string tab = ItemSearch.TabBasic;
+    private int wantedPlus = AnyPlus;
+    private const int AnyPlus = -1;
+    private const string NoBonusLabel = "No bonus";
 
     private LineEdit query = null!;
     private OptionButton pick = null!, groupPicker = null!, levelPicker = null!;
@@ -33,8 +40,10 @@ public partial class ItemSearchPanel : VBoxContainer
         Action<int>? showTooltip = null,
         Action? hideTooltip = null,
         Vector2 resultsSize = default,
-        bool showQuantity = true)
+        bool showQuantity = true,
+        Action<IReadOnlyList<ItemSearchHit>>? onFamily = null)
     {
+        this.onFamily = onFamily;
         this.tradeableOnly = tradeableOnly;
         this.showQuantity = showQuantity;
         this.actionText = actionText;
@@ -89,8 +98,19 @@ public partial class ItemSearchPanel : VBoxContainer
         pickRow.AddChild(groupPicker);
         levelPicker = UiTheme.Dropdown();
         levelPicker.CustomMinimumSize = new Vector2(96, 0);
-        levelPicker.ItemSelected += _ => Refresh();
+        levelPicker.ItemSelected += index =>
+        {
+            wantedPlus = index > 0 && index - 1 < levels.Count ? levels[(int)index - 1] : AnyPlus;
+            Refresh();
+        };
         pickRow.AddChild(levelPicker);
+        if (onFamily != null)
+        {
+            familyButton = new Button { Text = "Add all", FocusMode = FocusModeEnum.None, Disabled = true, TooltipText = "Add every variant listed below" };
+            familyButton.AddThemeFontSizeOverride("font_size", 12);
+            familyButton.Pressed += () => onFamily(shownHits.ToList());
+            pickRow.AddChild(familyButton);
+        }
 
         summary = UiTheme.Text("Type an item name and press Search.", 12, UiTheme.TextLo);
         AddChild(summary);
@@ -106,7 +126,8 @@ public partial class ItemSearchPanel : VBoxContainer
         scroll.AddChild(results);
     }
 
-    public void FocusQuery() => query.GrabFocus();
+    public void FocusQuery() =>
+        Callable.From(() => { if (IsInstanceValid(query) && query.IsVisibleInTree()) query.GrabFocus(); }).CallDeferred();
 
     public void Run()
     {
@@ -131,12 +152,12 @@ public partial class ItemSearchPanel : VBoxContainer
         hideTooltip?.Invoke();
 
         int levelIndex = levelPicker.Selected - 1;
-        int wantedPlus = levelIndex >= 0 && levelIndex < levels.Count ? levels[levelIndex] : -1;
+        int shownPlus = levelIndex >= 0 && levelIndex < levels.Count ? levels[levelIndex] : AnyPlus;
 
         var shown = new List<ItemSearchHit>();
         foreach (var hit in GroupHits())
         {
-            if (wantedPlus >= 0 && hit.Plus != wantedPlus) continue;
+            if (shownPlus != AnyPlus && hit.Plus != shownPlus) continue;
             shown.Add(hit);
         }
 
@@ -147,6 +168,13 @@ public partial class ItemSearchPanel : VBoxContainer
         int listed = Math.Min(shown.Count, ItemSearch.ResultCap);
         for (int i = 0; i < listed; i++)
             results.AddChild(BuildRow(shown[i]));
+        shownHits.Clear();
+        shownHits.AddRange(shown);
+        if (familyButton != null)
+        {
+            familyButton.Text = shown.Count > 1 ? $"Add all {shown.Count}" : "Add all";
+            familyButton.Disabled = shown.Count < 2;
+        }
 
         summary.Text = names.Count == 0
             ? "No item matches that name."
@@ -177,6 +205,7 @@ public partial class ItemSearchPanel : VBoxContainer
         for (int i = 0; i < levels.Count; i++)
         {
             if (levels[i] != plus) continue;
+            wantedPlus = plus;
             levelPicker.Selected = i + 1;
             Refresh();
             return;
@@ -204,12 +233,17 @@ public partial class ItemSearchPanel : VBoxContainer
 
         var foundGroups = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var hit in TabHits()) foundGroups.Add(hit.VariantLabel);
-        foundGroups.Remove("");
+        bool plain = foundGroups.Remove("");
 
         foreach (string group in foundGroups)
         {
             groups.Add(group);
             groupPicker.AddItem(group);
+        }
+        if (plain && groups.Count > 0)
+        {
+            groups.Add(NoBonusLabel);
+            groupPicker.AddItem(NoBonusLabel);
         }
         groupPicker.Selected = 0;
         groupPicker.Visible = groups.Count > 0;
@@ -230,7 +264,8 @@ public partial class ItemSearchPanel : VBoxContainer
             levels.Add(level);
             levelPicker.AddItem($"+{level}");
         }
-        levelPicker.Selected = 0;
+        int kept = levels.IndexOf(wantedPlus);
+        levelPicker.Selected = kept >= 0 ? kept + 1 : 0;
         Refresh();
     }
 
@@ -246,6 +281,7 @@ public partial class ItemSearchPanel : VBoxContainer
         string wanted = index >= 0 && index < groups.Count ? groups[index] : "";
         foreach (var hit in TabHits())
             if (wanted.Length == 0
+                || (wanted == NoBonusLabel && hit.VariantLabel.Length == 0)
                 || string.Equals(hit.VariantLabel, wanted, StringComparison.OrdinalIgnoreCase))
                 yield return hit;
     }
@@ -283,6 +319,9 @@ public partial class ItemSearchPanel : VBoxContainer
         name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         name.ClipText = true;
         line.AddChild(name);
+        var id = UiTheme.Text($"#{itemId}", 10, UiTheme.TextDim);
+        id.MouseFilter = MouseFilterEnum.Ignore;
+        line.AddChild(id);
 
         string variant = hit.VariantLabel;
         if (variant.Length > 0)
@@ -298,7 +337,8 @@ public partial class ItemSearchPanel : VBoxContainer
         if (showQuantity && hit.Def.Countable > 0)
         {
             quantity = UiTheme.NumberBox(1, 9_999, 1, 84);
-            quantity.Value = 1;
+            quantity.Value = quantities.GetValueOrDefault(itemId, 1);
+            quantity.ValueChanged += value => quantities[itemId] = (int)value;
             line.AddChild(quantity);
         }
 

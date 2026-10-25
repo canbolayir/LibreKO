@@ -1,4 +1,5 @@
 ﻿using LibreKO.Common.Domain.Services;
+using LibreKO.Game.Protocol;
 
 namespace LibreKO.Game.World;
 
@@ -17,13 +18,9 @@ public sealed record DropSummary(int CoinMin, int CoinMax, int Experience, IRead
 public static class DropSummaries
 {
     public const int MaxLines = 64;
-    private const int PercentScale = 10000;
     private const int CommonFrom = 5000;
     private const int UncommonFrom = 1000;
     private const int RareFrom = 100;
-    private const int CoinMinPercent = 70;
-    private const int ItemIdFloor = 100_000_000;
-    private const int GroupIdFloor = 100;
 
     public static DropBand BandOf(int chance) => chance switch
     {
@@ -45,13 +42,13 @@ public static class DropSummaries
                 if (dropValue <= 0 || percent <= 0)
                     continue;
 
-                if (dropValue >= ItemIdFloor)
+                if (dropValue >= DropRoll.FirstItemId)
                 {
                     Add(lines, seen, gameData, dropValue, percent);
                     continue;
                 }
 
-                if (dropValue >= GroupIdFloor && gameData.MakeItemGroupTable.TryGetValue(dropValue, out var pool)
+                if (dropValue >= DropRoll.FirstGroupId && gameData.MakeItemGroupTable.TryGetValue(dropValue, out var pool)
                     && pool.Length > 0)
                     foreach (var itemId in pool)
                         Add(lines, seen, gameData, itemId, Math.Max(1, percent / pool.Length));
@@ -60,13 +57,13 @@ public static class DropSummaries
 
         lines.Sort((a, b) => a.Band != b.Band ? a.Band.CompareTo(b.Band) : a.ItemId.CompareTo(b.ItemId));
         int coinMax = Math.Max(0, npc.GoldDrop);
-        return new DropSummary(coinMax * CoinMinPercent / 100, coinMax, Math.Max(0, npc.Experience),
+        return new DropSummary(coinMax * DropRoll.CoinRollMinPercent / 100, coinMax, Math.Max(0, npc.Experience),
             lines.Take(MaxLines).ToList(), lines.Count);
     }
 
     private static void Add(List<DropLine> lines, HashSet<int> seen, IGameDataService gameData, int itemId, int chance)
     {
-        if (chance > PercentScale) chance = PercentScale;
+        if (chance > DropRoll.PercentScale) chance = DropRoll.PercentScale;
         if (gameData.GetItem(itemId) == null || !seen.Add(itemId))
             return;
         lines.Add(new DropLine(itemId, BandOf(chance)));

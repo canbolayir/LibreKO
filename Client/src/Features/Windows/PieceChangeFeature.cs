@@ -28,10 +28,12 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
     public void LateTick(double delta, double nowSec)
     {
         PieceChangeTick(delta);
+        BulkTick(delta);
     }
 
     private const int ResultSlotCount = 3;
     private const double SpinInterval = 0.05;
+    private const int MiddleSocket = ResultSlotCount / 2;
     private const int TextPlace = 6710;
     private const int TextPressStop = 6712;
     private const int TextLucky = 6713;
@@ -114,6 +116,7 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
         subMessage.CustomMinimumSize = new Vector2(0, 22);
         subMessage.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         altar.AddChild(subMessage);
+        altar.AddChild(BuildRounds());
 
         var buttons = new HBoxContainer();
         buttons.AddThemeConstantOverride("separation", 8);
@@ -121,10 +124,11 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
 
         startBtn = Button("Start", StartSpin);
         buttons.AddChild(startBtn);
-        stopBtn = Button("Stop", StopSpin);
+        stopBtn = Button("Stop", StopPressed);
         buttons.AddChild(stopBtn);
         talkBtn = Button("Talk", TalkToGenerator);
         buttons.AddChild(talkBtn);
+        altar.AddChild(BuildSummary());
 
         ClearBench();
     }
@@ -189,6 +193,7 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
         shown = false;
         spinning = false;
         busy = false;
+        bulk = false;
         panel.Visible = false;
         context.Tooltips.Hide();
         if (companion != null) context.BagCompanions.Detach(companion);
@@ -196,7 +201,7 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
 
     private void TalkToGenerator()
     {
-        if (busy || spinning) return;
+        if (busy || spinning || bulk) return;
         var (title, body) = ItemData.UiHelp(HelpChaoticGenerator);
         if (body.Length == 0) return;
         Close();
@@ -213,12 +218,14 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
         foreach (var socket in resultSockets) socket?.Clear();
         SetMessage(ItemData.Text(TextPlace, "Place one of the pieces."), false);
         subMessage.Text = "";
+        if (summary != null) summary.Visible = false;
+        RefreshRounds();
         RefreshActions();
     }
 
     private void Place(int absSlot)
     {
-        if (busy || spinning) return;
+        if (busy || spinning || bulk) return;
         if (absSlot < Inventory.GridStart || absSlot >= self.Inventory.Length || self.Inventory[absSlot].IsEmpty) return;
 
         int rel = absSlot - Inventory.GridStart;
@@ -244,6 +251,9 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
         var blocked = BlockReason();
         SetMessage(blocked ?? ItemData.Text(GameText.PressStart, "Press Start."), blocked != null);
         subMessage.Text = $"{rewards.Count} possible rewards.";
+        summary.Visible = false;
+        rounds.Value = 1;
+        RefreshRounds();
         RefreshBackpack();
         RefreshActions();
     }
@@ -254,6 +264,11 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
         if (BlockReason() is { } blocked)
         {
             SetMessage(blocked, true);
+            return;
+        }
+        if (WantsBulk())
+        {
+            BeginBulk();
             return;
         }
         spinning = true;
@@ -267,6 +282,11 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
         if (!spinning || busy) return;
         if (BlockReason() is { } blocked)
         {
+            if (bulk)
+            {
+                FinishBulk(blocked);
+                return;
+            }
             spinning = false;
             SetMessage(blocked, true);
             RefreshActions();
@@ -274,6 +294,7 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
         }
         spinning = false;
         busy = true;
+        foreach (var reel in resultSockets) reel.Clear();
         RefreshActions();
         requests.PieceExchange(npcId, itemId, position);
     }
@@ -288,19 +309,28 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
 
         int slot = GD.RandRange(0, ResultSlotCount - 1);
         int reward = rewards[GD.RandRange(0, rewards.Count - 1)];
-        resultSockets[slot].Set(reward, 1, 0);
+        for (int i = 0; i < resultSockets.Length; i++)
+            if (i == slot) resultSockets[i].Set(reward, 1, 0);
+            else resultSockets[i].Clear();
     }
 
     private void OnExchangeResult(PieceExchangeResult result)
     {
         if (!shown) return;
+        if (bulk)
+        {
+            BulkResult(result);
+            RefreshBackpack();
+            if (context.MainWindows.CharTabOpen()) context.Inventory.Refresh();
+            return;
+        }
         busy = false;
         spinning = false;
 
         if (result.ResultCode == BifrostResult.Succeeded && result.RewardItemId != 0)
         {
-            foreach (var socket in resultSockets)
-                socket.Set(result.RewardItemId, 1, 0);
+            foreach (var reel in resultSockets) reel.Clear();
+            resultSockets[MiddleSocket].Set(result.RewardItemId, 1, 0);
 
             SetMessage(EffectText((BifrostRarity)result.Effect), false);
             subMessage.Text = ItemData.DisplayName(result.RewardItemId);
@@ -309,6 +339,7 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
             position = -1;
             rewards = System.Array.Empty<int>();
             socket.Clear();
+            RefreshRounds();
         }
         else
         {
@@ -369,9 +400,10 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
     private void RefreshActions()
     {
         if (startBtn == null) return;
-        startBtn.Disabled = !CanStartSpin();
-        stopBtn.Disabled = !spinning || busy;
-        talkBtn.Disabled = busy || spinning;
+        startBtn.Disabled = bulk || !CanStartSpin();
+        stopBtn.Disabled = bulk ? bulkStopAsked : !spinning || busy;
+        talkBtn.Disabled = busy || spinning || bulk;
+        if (rounds != null) rounds.Editable = !bulk && !busy && !spinning && rounds.MaxValue > 1;
     }
 
     private int SocketSlot() => position >= 0 ? Inventory.GridStart + position : -1;
@@ -381,7 +413,12 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
         if (!shown) return;
         if (absSlot < Inventory.GridStart || absSlot >= Inventory.GridStart + Inventory.GridCount) return;
 
-        if (position == absSlot - Inventory.GridStart && (item.IsEmpty || item.ItemId != itemId))
+        if (position == absSlot - Inventory.GridStart && (item.IsEmpty || item.ItemId != itemId) && bulk)
+        {
+            position = -1;
+            socket?.Clear();
+        }
+        else if (position == absSlot - Inventory.GridStart && (item.IsEmpty || item.ItemId != itemId))
         {
             itemId = 0;
             position = -1;
@@ -391,6 +428,7 @@ internal sealed partial class PieceChangeFeature : IFeature, ILateTickFeature, I
             RefreshActions();
         }
 
+        RefreshRounds();
         RefreshBackpack();
     }
 

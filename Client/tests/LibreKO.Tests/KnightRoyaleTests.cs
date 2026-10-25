@@ -1,5 +1,8 @@
 ﻿using LibreKO.Domain;
 using LibreKO.Network;
+using LibreKO.Network.Readers;
+using LibreKO.Network.Requests;
+using LibreKO.Session;
 using Xunit;
 
 namespace LibreKO.Tests;
@@ -97,5 +100,73 @@ public class KnightRoyaleTests
         Assert.False(KnightRoyale.GasEnds(5));
         Assert.True(KnightRoyale.GasEnds(6));
         Assert.Equal("04:05", KnightRoyale.Clock(245));
+    }
+
+    private const int Greatsword = 930671000;
+    private const int MythrilIngot = 978010000;
+    private const int MithrilSword = 978008000;
+    private const short MithrilSwordRow = 485;
+
+    private sealed class RecordingSink : IPacketSink
+    {
+        public List<Packet> Sent { get; } = [];
+
+        public bool Connected => true;
+
+        public void Send(Packet packet) => Sent.Add(packet);
+    }
+
+    [Fact]
+    public void ACraftSendsTheCombineBodyWithoutAnNpc()
+    {
+        var sink = new RecordingSink();
+        var ordered = ItemCombine.WireOrder([new CombineEntry(MythrilIngot, 1, 4), new CombineEntry(Greatsword, 1, 2)]);
+
+        new KnightRoyaleRequests(sink).RoyaleCraft(0, 0, ordered);
+
+        var packet = Assert.Single(sink.Sent);
+        Assert.Equal((byte)GameOpcodes.GS_KNIGHT_ROYALE, packet.GetOpcode());
+        packet.ResetOffset();
+        Assert.Equal((byte)KnightRoyaleSubOpcode.Combine, packet.ReadByte());
+        Assert.Equal(0, packet.ReadInt());
+        Assert.Equal((byte)0, packet.ReadByte());
+        Assert.Equal((byte)2, packet.ReadByte());
+        Assert.Equal((byte)2, packet.ReadByte());
+        Assert.Equal((byte)4, packet.ReadByte());
+        Assert.Equal("930671000001978010000001", packet.ReadSByteString());
+        Assert.Equal(0, packet.RemainingBytes);
+    }
+
+    [Fact]
+    public void ACraftReplyReachesTheCombineWindow()
+    {
+        var session = new GameSession();
+        var dispatcher = new PacketDispatcher();
+        PacketReaders.Register(dispatcher, session, new GameRequests(new RecordingSink(), session, new LoginState()), () => 0);
+        CombineReply? reply = null;
+        session.ItemCombine.ItemCombineReplyEvent += r => reply = r;
+
+        var p = new Packet(GameOpcodes.GS_KNIGHT_ROYALE);
+        p.WriteByte((byte)KnightRoyaleSubOpcode.Combine);
+        p.WriteByte(ItemCombine.Succeeded);
+        p.WriteShort(MithrilSwordRow);
+        p.WriteInt(MithrilSword);
+        p.WriteByte(3);
+        p.ResetOffset();
+        dispatcher.Dispatch(p);
+
+        Assert.Equal(new CombineReply(ItemCombine.Succeeded, MithrilSwordRow, 3), reply);
+    }
+
+    [Fact]
+    public void AFailedCraftCarriesOnlyItsRow()
+    {
+        var p = new Packet(GameOpcodes.GS_KNIGHT_ROYALE);
+        p.WriteByte(ItemCombine.Failed);
+        p.WriteShort(MithrilSwordRow);
+        p.ResetOffset();
+
+        Assert.Equal(new CombineReply(ItemCombine.Failed, MithrilSwordRow, 0), ItemCombineWire.ReadReply(p));
+        Assert.Equal(0, p.RemainingBytes);
     }
 }

@@ -11,13 +11,14 @@ internal sealed partial class InventoryFeature : IFeature, IHudTickFeature, IInv
     private readonly SelfSession self;
     private readonly VendorSession vendor;
     private readonly IItemsRequests itemsRequests;
+    private readonly IManesSurvivalRequests manesRequests;
     private readonly CosmeticsFeature cosmetics;
     private readonly ItemTooltipFeature itemTooltip;
     private readonly SealFeature seal;
     private readonly PetFeature petWindow;
     private readonly IItemActions itemActions;
 
-    public InventoryFeature(IWorldContext context, ItemsSession items, PetSession pet, ProgressSession progress, SelfSession self, VendorSession vendor, IItemsRequests itemsRequests, CosmeticsFeature cosmetics, ItemTooltipFeature itemTooltip, SealFeature seal, PetFeature petWindow, IItemActions itemActions)
+    public InventoryFeature(IWorldContext context, ItemsSession items, PetSession pet, ProgressSession progress, SelfSession self, VendorSession vendor, IItemsRequests itemsRequests, IManesSurvivalRequests manesRequests, CosmeticsFeature cosmetics, ItemTooltipFeature itemTooltip, SealFeature seal, PetFeature petWindow, IItemActions itemActions)
     {
         this.context = context;
         this.items = items;
@@ -26,6 +27,7 @@ internal sealed partial class InventoryFeature : IFeature, IHudTickFeature, IInv
         this.self = self;
         this.vendor = vendor;
         this.itemsRequests = itemsRequests;
+        this.manesRequests = manesRequests;
         this.cosmetics = cosmetics;
         this.itemTooltip = itemTooltip;
         this.seal = seal;
@@ -266,6 +268,7 @@ internal sealed partial class InventoryFeature : IFeature, IHudTickFeature, IInv
         arrangeBtn.CustomMinimumSize = new Vector2(BagCellSize, BagCellSize);
         arrangeBtn.AddThemeConstantOverride("icon_max_width", ArrangeIconSize);
         arrangeBtn.Pressed += AskArrange;
+        arrangeBtn.Visible = !ManesSurvival.IsZone(context.Zone);
         row.AddChild(arrangeBtn);
 
         row.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
@@ -814,7 +817,10 @@ internal sealed partial class InventoryFeature : IFeature, IHudTickFeature, IInv
             ItemMove.Region.MagicBag => ItemRemoveSource.MagicBag,
             _ => ItemRemoveSource.Inventory,
         };
-        itemsRequests.Remove((byte)source, (byte)ItemMove.PositionIn(region, slot), entry.ItemId);
+        if (source == ItemRemoveSource.Inventory && ManesSurvival.IsZone(context.Zone))
+            manesRequests.Discard(ItemMove.PositionIn(region, slot), entry.ItemId);
+        else
+            itemsRequests.Remove((byte)source, (byte)ItemMove.PositionIn(region, slot), entry.ItemId);
     }
 
     private const int NoVipPasswordText = 32150;
@@ -1090,6 +1096,7 @@ internal sealed partial class InventoryFeature : IFeature, IHudTickFeature, IInv
 
         var fromRegion = ItemMove.RegionOf(from);
         var toRegion = ItemMove.RegionOf(to);
+        if (ManesSurvival.IsZone(context.Zone) && (fromRegion != ItemMove.Region.Grid || toRegion != ItemMove.Region.Grid)) return;
         var dir = ItemMove.DirectionFor(fromRegion, toRegion);
         if (dir == ItemMoveDirection.None) return;
         bool splits = amount != ItemMove.WholeStack && amount != self.Inventory[from].Count;

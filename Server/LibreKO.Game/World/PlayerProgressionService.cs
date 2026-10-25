@@ -48,7 +48,7 @@ public class PlayerProgressionService(
 
     public async Task ChangeExperienceAsync(UserSession session, long expAmount)
     {
-        if (session.Level < 6 && expAmount < 0)
+        if (session.ManesSurvival != null || (session.Level < 6 && expAmount < 0))
             return;
 
         if (expAmount < 0 && session.Experience + expAmount < 0)

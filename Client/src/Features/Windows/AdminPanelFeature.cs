@@ -12,8 +12,9 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
     private readonly StatsFeature stats;
     private readonly PlayerSystem player;
     private readonly SkillWindowFeature skillWindow;
+    private readonly IChatRequests chatRequests;
 
-    public AdminPanelFeature(IWorldContext context, AdminSession admin, SelfSession self, ShoppingMallSession shoppingMall, IAdminRequests adminRequests, StatsFeature stats, PlayerSystem player, SkillWindowFeature skillWindow)
+    public AdminPanelFeature(IWorldContext context, AdminSession admin, SelfSession self, ShoppingMallSession shoppingMall, IAdminRequests adminRequests, StatsFeature stats, PlayerSystem player, SkillWindowFeature skillWindow, IChatRequests chatRequests)
     {
         this.context = context;
         this.admin = admin;
@@ -23,24 +24,38 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
         this.stats = stats;
         this.player = player;
         this.skillWindow = skillWindow;
+        this.chatRequests = chatRequests;
         CharacterTab = new AdminCharacterTab(requests, self, context.Movement, () => context.Self.IsGm, () => State, SetStatus);
-        ClassTab = new AdminClassTab(requests, () => State, SetStatus);
-        SkillsTab = new AdminSkillsTab(requests, self, () => State, SetStatus);
-        ZonesTab = new AdminZonesTab(requests, () => context.Zone, SetStatus);
-        FindTab = new AdminFindTab(requests, () => context.Zone, SetStatus);
-        RacesTab = new AdminRacesTab(requests);
+        ClassTab = new AdminClassTab(requests, () => State);
+        SkillsTab = new AdminSkillsTab(requests, self, () => State);
+        ZonesTab = new AdminZonesTab(requests, () => context.Zone);
+        FindTab = new AdminFindTab(requests, () => context.Zone);
+        RacesTab = new AdminRacesTab(requests, raceId => requests.RaceRequest(raceId), () => NewEventContent(EventKind.CollectionRace));
+        StartEditor = new AdminStartEditor(requests, Confirm);
+        EventsPage = new AdminEventsPage(requests, chatRequests, StartEditor, Confirm, EditEventContent);
+        LotteriesPage = new AdminLotteriesPage(chatRequests, owner => requests.LotteryRequest(owner.Id), () => NewEventContent(EventKind.Lottery), Confirm);
         CommandsTab = new AdminCommandsTab();
-        SpawnEditor = new AdminSpawnEditor(requests, SetStatus);
+        SpawnEditor = new AdminSpawnEditor(requests);
+        TipsTab = new AdminTipsTab(requests, Confirm);
+        ItemPicker = new AdminItemPicker(context.Tooltips);
+        MonsterPicker = new AdminMonsterPicker();
+        LotteryEditor = new AdminLotteryEditor(requests, ItemPicker, context.Tooltips);
+        RaceEditor = new AdminRaceEditor(requests, ItemPicker, MonsterPicker, context.Tooltips);
+        GroupPicker = new AdminGroupPicker(requests, context.Tooltips);
+        ItemGroupEditor = new AdminItemGroupEditor(requests, context.Tooltips, ItemPicker, Confirm);
+        MonsterPage = new AdminMonsterPage(requests, context.Tooltips, ItemPicker, GroupPicker, ItemGroupEditor.Request, Confirm);
+        PlayersPage = new AdminPlayersPage(requests, chatRequests, SetTarget);
+        PlayerPage = new AdminPlayerPage(chatRequests, context.Root, Confirm, RefreshTarget, () => ShowPage(GmPanelPages.Inventory));
+        InventoryPage = new AdminInventoryPage(requests, context.Tooltips, ItemPicker, Confirm);
+        WorldControlPage = new AdminWorldControlPage(chatRequests, Confirm);
+        ServerToolsPage = new AdminServerToolsPage(chatRequests, Confirm);
     }
 
-    internal const string CommandsLabel = "Commands";
-    private const string CharacterLabel = "Character";
-    private const string ItemsLabel = "Items";
-    private const string ClassLabel = "Class";
-    private const string SkillsLabel = "Skills";
-    private const string ZonesLabel = "Zones";
-    private const string FindLabel = "Find";
-    private const string RacesLabel = "Races";
+    internal const float PanelWidth = 1160;
+    internal const float PanelHeight = 700;
+    private const float ScreenMargin = 48;
+    private const int PageTitleSize = 18;
+    private const string FailureTitle = "Game Master";
 
     internal AdminCharacterTab CharacterTab { get; }
     internal AdminClassTab ClassTab { get; }
@@ -48,8 +63,24 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
     internal AdminZonesTab ZonesTab { get; }
     internal AdminFindTab FindTab { get; }
     internal AdminRacesTab RacesTab { get; }
+    internal AdminEventsPage EventsPage { get; }
+    internal AdminStartEditor StartEditor { get; }
+    internal AdminLotteriesPage LotteriesPage { get; }
     internal AdminCommandsTab CommandsTab { get; }
     internal AdminSpawnEditor SpawnEditor { get; }
+    internal AdminItemGroupEditor ItemGroupEditor { get; }
+    internal AdminGroupPicker GroupPicker { get; }
+    internal AdminMonsterPage MonsterPage { get; }
+    internal AdminLotteryEditor LotteryEditor { get; }
+    internal AdminRaceEditor RaceEditor { get; }
+    internal AdminTipsTab TipsTab { get; }
+    internal AdminItemPicker ItemPicker { get; }
+    internal AdminMonsterPicker MonsterPicker { get; }
+    internal AdminPlayersPage PlayersPage { get; }
+    internal AdminPlayerPage PlayerPage { get; }
+    internal AdminInventoryPage InventoryPage { get; }
+    internal AdminWorldControlPage WorldControlPage { get; }
+    internal AdminServerToolsPage ServerToolsPage { get; }
 
     private CanvasLayer layer = null!;
     internal HudWindow Window { get; private set; } = null!;
@@ -57,13 +88,24 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
     internal bool Shown { get; set; }
     private AdminPanelGrant grant;
     internal AdminState State { get; set; }
-    private readonly Dictionary<string, Control> tabs = new();
+    private readonly Dictionary<string, Control> pages = new();
 
-    private readonly Dictionary<string, Button> tabBtns = new();
+    private AdminNavRail rail = null!;
+    private TextureRect pageIcon = null!;
+    private Label pageTitle = null!;
+    private MarginContainer pageHost = null!;
+    private ScrollContainer pageScroll = null!;
+    private MarginContainer fillHost = null!;
+    private Control pagePark = null!;
+    private Notice? failure;
+    internal string CurrentPage { get; private set; } = "";
+    private AdminTargetBar targetBar = null!;
+    private int targetId;
+    internal AdminPlayerSheet? Target { get; private set; }
+    private PlayerFindFor playerFindFor;
+    private string manageName = "";
 
-    private MarginContainer tabHost = null!;
-    private Control tabPark = null!;
-    private Label statusLbl = null!;
+    private enum PlayerFindFor { Page, Bar, Manage }
 
     public void Build()
     {
@@ -74,8 +116,17 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
         admin.AdminStateEvent += OnState;
         admin.AdminResultEvent += OnResult;
         admin.AdminCollectionRacesEvent += RacesTab.OnCollectionRaces;
-        admin.AdminFindEvent += FindTab.OnFind;
+        admin.AdminFindEvent += OnFind;
+        admin.AdminPlayerSheetEvent += OnPlayerSheet;
         admin.AdminSpawnRowEvent += OnSpawnRow;
+        admin.AdminMonsterSheetEvent += OnMonsterSheet;
+        admin.AdminItemGroupEvent += OnItemGroup;
+        admin.AdminItemGroupsEvent += GroupPicker.OnGroups;
+        admin.AdminDropSimulationEvent += OnDropSimulation;
+        admin.AdminEventSchedulesEvent += OnEventSchedules;
+        admin.AdminLotteryEvent += OnLottery;
+        admin.AdminRaceEvent += OnRace;
+        admin.AdminTipsEvent += TipsTab.OnTips;
         admin.AdminCommandsEvent += OnCommands;
         Enable(context.Self.IsGm ? AdminPanelGrant.GameMaster : admin.PanelGrant);
     }
@@ -120,6 +171,14 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
     }
 
     internal IEscapable SpawnPanel => new ClosablePanel(() => SpawnEditor.Shown, SpawnEditor.Close);
+    internal IEscapable GroupPickerPanel => new ClosablePanel(() => GroupPicker.Shown, GroupPicker.Close);
+    internal IEscapable ItemGroupPanel => new ClosablePanel(() => ItemGroupEditor.Shown, ItemGroupEditor.Close);
+    internal IEscapable LotteryPanel => new ClosablePanel(() => LotteryEditor.Shown, LotteryEditor.Close);
+    internal IEscapable RacePanel => new ClosablePanel(() => RaceEditor.Shown, RaceEditor.Close);
+    internal IEscapable PickerPanel => new ClosablePanel(() => ItemPicker.Shown, ItemPicker.Close);
+    internal IEscapable MonsterPickerPanel => new ClosablePanel(() => MonsterPicker.Shown, MonsterPicker.Close);
+    internal IEscapable StartPanel => new ClosablePanel(() => StartEditor.Shown, StartEditor.Close);
+    internal IEscapable TipPanel => new ClosablePanel(() => TipsTab.EditorShown, TipsTab.CloseEditor);
 
     public void Dispose()
     {
@@ -130,8 +189,17 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
         admin.AdminStateEvent -= OnState;
         admin.AdminResultEvent -= OnResult;
         admin.AdminCollectionRacesEvent -= RacesTab.OnCollectionRaces;
-        admin.AdminFindEvent -= FindTab.OnFind;
+        admin.AdminFindEvent -= OnFind;
+        admin.AdminPlayerSheetEvent -= OnPlayerSheet;
         admin.AdminSpawnRowEvent -= OnSpawnRow;
+        admin.AdminMonsterSheetEvent -= OnMonsterSheet;
+        admin.AdminItemGroupEvent -= OnItemGroup;
+        admin.AdminItemGroupsEvent -= GroupPicker.OnGroups;
+        admin.AdminDropSimulationEvent -= OnDropSimulation;
+        admin.AdminEventSchedulesEvent -= OnEventSchedules;
+        admin.AdminLotteryEvent -= OnLottery;
+        admin.AdminRaceEvent -= OnRace;
+        admin.AdminTipsEvent -= TipsTab.OnTips;
         admin.AdminCommandsEvent -= OnCommands;
     }
 
@@ -141,87 +209,234 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
         context.Root.AddChild(layer);
 
         Window = new HudWindow(
-            "admin_panel", "Game Master", new Vector2(150, 70),
+            "admin_panel", "Game Master", new Vector2(60, 40),
             titleIcon: UiIcons.Get("system/lock")) { Visible = false };
         Window.Closed += Close;
         layer.AddChild(Window);
 
-        var root = Window.Body;
-        root.AddThemeConstantOverride("separation", 9);
+        var frame = new HBoxContainer { CustomMinimumSize = PanelSize() };
+        frame.AddThemeConstantOverride("separation", 12);
+        Window.Body.AddChild(frame);
 
-        var tabBar = new HBoxContainer();
-        tabBar.AddThemeConstantOverride("separation", 5);
-        root.AddChild(tabBar);
-        root.AddChild(UiTheme.Rule());
+        var content = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        content.AddThemeConstantOverride("separation", 8);
 
-        tabHost = new MarginContainer();
-        root.AddChild(tabHost);
-        tabPark = new Control { Visible = false };
-        root.AddChild(tabPark);
+        var header = new HBoxContainer();
+        header.AddThemeConstantOverride("separation", 8);
+        content.AddChild(header);
+        pageIcon = new TextureRect
+        {
+            CustomMinimumSize = new Vector2(PageTitleSize + 4, PageTitleSize + 4),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            SelfModulate = UiTheme.GoldVivid,
+        };
+        header.AddChild(pageIcon);
+        pageTitle = UiTheme.Text("", PageTitleSize, UiTheme.GoldVivid);
+        pageTitle.AddThemeFontOverride("font", UiTheme.Strong);
+        header.AddChild(pageTitle);
+        content.AddChild(UiTheme.Rule());
 
-        AddTab(tabBar, CharacterLabel, CharacterTab.Build());
-        AddTab(tabBar, ItemsLabel, BuildItemsTab());
-        AddTab(tabBar, ClassLabel, ClassTab.Build());
-        AddTab(tabBar, SkillsLabel, SkillsTab.Build());
-        AddTab(tabBar, ZonesLabel, ZonesTab.Build());
+        targetBar = new AdminTargetBar { Visible = false };
+        targetBar.SearchRequested += text =>
+        {
+            playerFindFor = PlayerFindFor.Bar;
+            requests.Find((int)AdminFindKind.Players, text);
+        };
+        targetBar.TargetPicked += SetTarget;
+        targetBar.Cleared += ClearTarget;
+        content.AddChild(targetBar);
+
+        pageScroll = new ScrollContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        content.AddChild(pageScroll);
+        pageHost = new MarginContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        pageHost.AddThemeConstantOverride("margin_right", 10);
+        pageScroll.AddChild(pageHost);
+        fillHost = new MarginContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, SizeFlagsVertical = Control.SizeFlags.ExpandFill, Visible = false };
+        content.AddChild(fillHost);
+        pagePark = new Control { Visible = false };
+        content.AddChild(pagePark);
+
+        AddPage(GmPanelPages.SelfCharacter, CharacterTab.Build());
+        AddPage(GmPanelPages.SelfItems, BuildItemsTab());
+        AddPage(GmPanelPages.SelfClass, ClassTab.Build());
+        AddPage(GmPanelPages.SelfSkills, SkillsTab.Build());
+        AddPage(GmPanelPages.Travel, ZonesTab.Build());
         if (FullPanel)
         {
-            AddTab(tabBar, FindLabel, FindTab.Build());
-            AddTab(tabBar, RacesLabel, RacesTab.Build());
-            AddTab(tabBar, CommandsLabel, CommandsTab.Build());
+            AddPage(GmPanelPages.Find, PlayersPage.Build());
+            AddPage(GmPanelPages.Player, PlayerPage.Build());
+            AddPage(GmPanelPages.Inventory, InventoryPage.Build());
+            AddPage(GmPanelPages.Monsters, FindTab.Build());
+            AddPage(GmPanelPages.Monster, MonsterPage.Build());
+            AddPage(GmPanelPages.Calendar, EventsPage.Build());
+            AddPage(GmPanelPages.Lotteries, LotteriesPage.Build());
+            AddPage(GmPanelPages.Races, RacesTab.Build());
+            AddPage(GmPanelPages.Tips, TipsTab.Build());
+            AddPage(GmPanelPages.WorldControl, WorldControlPage.Build());
+            AddPage(GmPanelPages.Commands, CommandsTab.Build());
+            AddPage(GmPanelPages.Tools, ServerToolsPage.Build());
             requests.CommandsRequest();
         }
 
-        statusLbl = UiTheme.Text("", 12, UiTheme.TextLo);
-        statusLbl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        statusLbl.CustomMinimumSize = new Vector2(AdminPanelUi.TabWidth, 0);
-        root.AddChild(statusLbl);
+        rail = new AdminNavRail(GmPanelPages.For(FullPanel).Where(page => pages.ContainsKey(page.Id)).ToList());
+        rail.PageChosen += ShowPage;
+        frame.AddChild(rail);
+        frame.AddChild(UiTheme.Rule(vertical: true));
+        frame.AddChild(content);
 
         SkillsTab.LoadSkillSpins();
         CharacterTab.Refresh();
         ClassTab.Refresh();
         ClassTab.SyncLookPicks();
         ZonesTab.Refresh();
-        if (FullPanel) SpawnEditor.Build(layer);
-        SelectTab(CharacterLabel);
-        Callable.From(Window.ResetSize).CallDeferred();
-    }
-
-    private void AddTab(HBoxContainer tabBar, string label, Control body)
-    {
-        tabPark.AddChild(body);
-        tabs[label] = body;
-        var button = UiTheme.UnderlineTabButton(label);
-        button.Pressed += () => SelectTab(label);
-        tabBtns[label] = button;
-        tabBar.AddChild(button);
-    }
-
-    internal void SelectTab(string label)
-    {
-        if (!tabs.TryGetValue(label, out Control? next)) return;
-
-        foreach (var (key, body) in tabs)
+        if (FullPanel)
         {
-            var wanted = key == label ? (Node)tabHost : tabPark;
+            ItemPicker.Build(layer);
+            MonsterPicker.Build(layer);
+            GroupPicker.Build(layer);
+            SpawnEditor.Build(layer);
+            ItemGroupEditor.Build(layer);
+            LotteryEditor.Build(layer);
+            RaceEditor.Build(layer);
+            StartEditor.Build(layer);
+            TipsTab.BuildEditor(layer);
+        }
+        ShowPage(GmPanelPages.FirstPage(FullPanel));
+    }
+
+    private Vector2 PanelSize()
+    {
+        if (context.Root.GetViewport() is not { } viewport) return new Vector2(PanelWidth, PanelHeight);
+        var screen = viewport.GetVisibleRect().Size;
+        return new Vector2(Mathf.Min(PanelWidth, screen.X - ScreenMargin), Mathf.Min(PanelHeight, screen.Y - ScreenMargin));
+    }
+
+    private void AddPage(string id, Control body)
+    {
+        body.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        pagePark.AddChild(body);
+        pages[id] = body;
+    }
+
+    internal void ShowPage(string id)
+    {
+        if (!pages.TryGetValue(id, out Control? next) || GmPanelPages.Get(id) is not { } page) return;
+        var host = page.FillsHeight ? fillHost : pageHost;
+        foreach (var (key, body) in pages)
+        {
+            var wanted = key == id ? (Node)host : pagePark;
             if (body.GetParent() == wanted) continue;
             body.GetParent()?.RemoveChild(body);
             wanted.AddChild(body);
         }
+        pageScroll.Visible = !page.FillsHeight;
+        fillHost.Visible = page.FillsHeight;
         next.Visible = true;
-        foreach (var (key, button) in tabBtns) button.ButtonPressed = key == label;
-        Callable.From(Window.ResetSize).CallDeferred();
+        CurrentPage = id;
+        pageTitle.Text = page.Title;
+        pageIcon.Texture = UiIcons.Get(page.Icon);
+        rail.Select(id);
+        context.Tooltips.Hide();
+        targetBar.Visible = page.UsesTarget;
+        if (page.UsesTarget && targetId == 0) AdminPanelUi.FocusLater(targetBar.Query);
+        if (page.UsesTarget && targetId != 0) requests.PlayerSheetRequest(targetId);
 
-        if (label == ZonesLabel) ZonesTab.Refresh();
-        if (label == FindLabel) Callable.From(FindTab.FindQuery.GrabFocus).CallDeferred();
-        if (label == SkillsLabel) SkillsTab.LoadSkillSpins();
-        if (label == ClassLabel) ClassTab.SyncLookPicks();
-        if (label == RacesLabel) requests.CollectionRacesRequest();
-        if (label != ItemsLabel) { context.Tooltips.Hide(); return; }
-        if (itemsLoaded) return;
-        itemsLoaded = true;
-        ItemSearch.Refresh();
+        switch (id)
+        {
+            case GmPanelPages.Travel: ZonesTab.Refresh(); break;
+            case GmPanelPages.Find: AdminPanelUi.FocusLater(PlayersPage.Query); break;
+            case GmPanelPages.Monsters: AdminPanelUi.FocusLater(FindTab.FindQuery); break;
+            case GmPanelPages.SelfSkills: SkillsTab.LoadSkillSpins(); break;
+            case GmPanelPages.SelfClass: ClassTab.SyncLookPicks(); break;
+            case GmPanelPages.Races: requests.CollectionRacesRequest(); break;
+            case GmPanelPages.Calendar:
+            case GmPanelPages.Lotteries:
+                EventsPage.Request();
+                break;
+            case GmPanelPages.Tips: requests.TipsRequest(); break;
+            case GmPanelPages.SelfItems when !itemsLoaded:
+                itemsLoaded = true;
+                ItemSearch.Refresh();
+                break;
+        }
     }
+
+    internal bool CanManagePlayers => Enabled && FullPanel;
+
+    internal void ManagePlayer(string name)
+    {
+        if (!CanManagePlayers) return;
+        if (!Shown) Toggle();
+        manageName = name;
+        playerFindFor = PlayerFindFor.Manage;
+        requests.Find((int)AdminFindKind.Players, name);
+    }
+
+    private void OnFind(int kind, int total, List<AdminFindHit> hits)
+    {
+        if ((AdminFindKind)kind != AdminFindKind.Players)
+        {
+            FindTab.OnFind(kind, total, hits);
+            return;
+        }
+        switch (playerFindFor)
+        {
+            case PlayerFindFor.Bar:
+                targetBar.ShowSuggestions(hits);
+                break;
+            case PlayerFindFor.Manage:
+                playerFindFor = PlayerFindFor.Page;
+                if (hits.FirstOrDefault(hit => string.Equals(hit.Name, manageName, StringComparison.OrdinalIgnoreCase)) is { } exact)
+                    SetTarget(exact);
+                break;
+            default:
+                PlayersPage.OnFind(total, hits);
+                break;
+        }
+    }
+
+    internal void SetTarget(AdminFindHit hit)
+    {
+        targetId = hit.Id;
+        requests.PlayerSheetRequest(hit.Id);
+        if (GmPanelPages.Get(CurrentPage) is not { UsesTarget: true }) ShowPage(GmPanelPages.Player);
+    }
+
+    private void RefreshTarget()
+    {
+        if (targetId != 0) requests.PlayerSheetRequest(targetId);
+    }
+
+    private void ClearTarget()
+    {
+        targetId = 0;
+        Target = null;
+        targetBar.ShowTarget(null);
+        PlayerPage.Show(null);
+        InventoryPage.Show(null);
+    }
+
+    internal void OnPlayerSheet(AdminPlayerSheet sheet)
+    {
+        if (!Enabled || sheet.Id != targetId) return;
+        Target = sheet;
+        targetBar.ShowTarget(sheet);
+        PlayerPage.Show(sheet);
+        InventoryPage.Show(sheet);
+    }
+
+    private void Confirm(string question, string confirmText, Action action) =>
+        Notice.Confirm(context.Root, question, confirmText, "Cancel", action, title: FailureTitle);
 
     internal void Toggle()
     {
@@ -230,9 +445,9 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
         Shown = true;
         Window.Visible = true;
         Window.GetParent()?.MoveChild(Window, Window.GetParent().GetChildCount() - 1);
-        SetStatus("", false);
         CharacterTab.RefreshCash();
         requests.StateRequest();
+        if (CurrentPage.Length > 0) ShowPage(CurrentPage);
     }
 
     internal void Close()
@@ -249,7 +464,7 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
         if (!state.Granted)
         {
             Close();
-            context.Log.Notice("The server refused the GM panel for this account.");
+            ShowFailure("The server refused the GM panel for this account.");
             return;
         }
 
@@ -269,9 +484,72 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
 
     private void OnResult(bool ok, string message)
     {
-        if (!Enabled) return;
-        SetStatus(message, !ok);
-        if (!ok) context.Log.Notice(message);
+        if (!Enabled || ok) return;
+        ShowFailure(message);
+    }
+
+    internal void ShowFailure(string message)
+    {
+        if (message.Length == 0) return;
+        if (failure != null && GodotObject.IsInstanceValid(failure))
+        {
+            failure.SetMessage(message);
+            return;
+        }
+        failure = Notice.Show(context.Root, message, FailureTitle, () => failure = null);
+    }
+
+    internal void OnMonsterSheet(AdminMonsterSheet sheet)
+    {
+        if (!FullPanel || !Enabled) return;
+        MonsterPage.Show(sheet);
+        if (!Shown) Toggle();
+        if (CurrentPage != GmPanelPages.Monster) ShowPage(GmPanelPages.Monster);
+    }
+
+    internal void OnItemGroup(AdminItemGroup group)
+    {
+        if (!FullPanel || !Enabled) return;
+        MonsterPage.OnGroup(group);
+        ItemGroupEditor.Show(group);
+    }
+
+    internal void OnEventSchedules(AdminEventSchedules schedules)
+    {
+        if (!FullPanel || !Enabled) return;
+        if (EventsPage.Built) EventsPage.OnSchedules(schedules);
+        LotteriesPage.OnSchedules(schedules);
+        if (LotteryEditor.Shown && LotteryEditor.LotteryId > 0 && !schedules.Owners.Any(o => o.Kind == EventKind.Lottery && o.Id == LotteryEditor.LotteryId))
+            LotteryEditor.Close();
+        if (RaceEditor.Shown && RaceEditor.RaceId > 0 && !schedules.Owners.Any(o => o.Kind == EventKind.CollectionRace && o.Id == RaceEditor.RaceId))
+            RaceEditor.Close();
+    }
+
+    private void OnLottery(AdminLottery lottery)
+    {
+        if (FullPanel && Enabled) LotteryEditor.Show(lottery);
+    }
+
+    private void OnRace(AdminRace race)
+    {
+        if (FullPanel && Enabled) RaceEditor.Show(race);
+    }
+
+    private void EditEventContent(EventOwner owner)
+    {
+        if (owner.Kind == EventKind.Lottery) requests.LotteryRequest(owner.Id);
+        else if (owner.Kind == EventKind.CollectionRace) requests.RaceRequest(owner.Id);
+    }
+
+    private void NewEventContent(EventKind kind)
+    {
+        if (kind == EventKind.Lottery) LotteryEditor.Show(new AdminLottery());
+        else RaceEditor.Show(new AdminRace { ZoneId = context.Zone });
+    }
+
+    private void OnDropSimulation(AdminDropSimulation result)
+    {
+        if (FullPanel && Enabled) MonsterPage.ShowSimulation(result);
     }
 
     internal void OnSpawnRow(AdminSpawnRow row)
@@ -286,14 +564,12 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
         if (!Enabled || !CommandsTab.Built) return;
         if (!open) return;
         if (!Shown) Toggle();
-        SelectTab(CommandsLabel);
+        ShowPage(GmPanelPages.Commands);
     }
 
     internal void SetStatus(string text, bool warn)
     {
-        if (statusLbl == null) return;
-        statusLbl.Text = text;
-        statusLbl.AddThemeColorOverride("font_color", warn ? UiTheme.Bad : UiTheme.TextLo);
+        if (warn) ShowFailure(text);
     }
 
     internal ItemSearchPanel ItemSearch { get; private set; } = null!;
@@ -310,9 +586,5 @@ internal sealed class AdminPanelFeature : IFeature, IEscapable
         return ItemSearch;
     }
 
-    private void OnGiveItem(int itemId, int count)
-    {
-        requests.GiveItem(itemId, count);
-        SetStatus($"Requesting {ItemData.DisplayName(itemId)} x{count}…", false);
-    }
+    private void OnGiveItem(int itemId, int count) => requests.GiveItem(itemId, count);
 }

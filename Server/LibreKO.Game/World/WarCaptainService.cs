@@ -74,7 +74,8 @@ public sealed class WarCaptainService : BackgroundService, IWarCaptainService
     internal async Task TickAsync()
     {
         var battle = sessions.Battle;
-        var selectAfter = TimeSpan.FromMinutes(settings.Value.Events.BattleDurationMinutes) / SelectionDivisor;
+        var selectAfter = TimeSpan.FromMinutes(EventStartRules.MinutesIn(gameData, EventScheduleKind.NationWar,
+            settings.Value.Events.BattleDurationMinutes)) / SelectionDivisor;
         if (battle.IsBattleActive && !selected && battle.GetElapsedTime() >= selectAfter)
             await SelectAsync();
         else if (!battle.IsBattleActive && selected)

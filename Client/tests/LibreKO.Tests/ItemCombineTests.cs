@@ -44,8 +44,24 @@ public class ItemCombineTests
     [Fact]
     public void OnlyShownCategoriesAndListedRecipesAppear()
     {
-        Assert.Equal(["Darkness (Shojin)"], Book.Shown.Select(c => c.Name));
+        Assert.Equal(["Darkness (Shojin)"], Book.Shown(ItemCombine.ShownCategory).Select(c => c.Name));
         Assert.Equal([1, 2], Book.Listed(1).Select(r => r.Id));
+    }
+
+    [Theory]
+    [InlineData(21, "Darkness (Shojin)")]
+    [InlineData(37, "Knight Royale")]
+    [InlineData(76, "Knight Royale")]
+    public void KnightRoyaleZonesListOnlyTheirOwnCategory(int zone, string category) =>
+        Assert.Equal([category], Book.Shown(ItemCombine.BookVisibility(zone)).Select(c => c.Name));
+
+    [Fact]
+    public void KnightRoyaleZonesNeedRoomInTheFirstNineBagSlots()
+    {
+        Assert.True(ItemCombine.HasBagRoom([27], 21));
+        Assert.False(ItemCombine.HasBagRoom([], 21));
+        Assert.False(ItemCombine.HasBagRoom([9, 27], 37));
+        Assert.True(ItemCombine.HasBagRoom([8], 37));
     }
 
     [Fact]

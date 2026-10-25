@@ -81,6 +81,10 @@ public static class ZoneRules
         [(byte)ZoneId.JuradMountain] = new(ZoneAbilityType.Pvp,
             ZoneFlags.AttackOtherNation | ZoneFlags.FriendlyNpcs),
         [(byte)ZoneId.ChaosDungeon] = new(ZoneAbilityType.Pvp, Melee),
+        [(byte)ZoneId.ManesSurvival1] = new(ZoneAbilityType.Pvp, Melee),
+        [(byte)ZoneId.ManesSurvival2] = new(ZoneAbilityType.Pvp, Melee),
+        [(byte)ZoneId.ManesSurvival3] = new(ZoneAbilityType.Pvp, Melee),
+        [(byte)ZoneId.ManesSurvival4] = new(ZoneAbilityType.Pvp, Melee),
 
         [(byte)ZoneId.ClanWar] = new(ZoneAbilityType.SiegeDisabled, Melee),
         [(byte)ZoneId.PartyClan1] = new(ZoneAbilityType.SiegeDisabled, Melee),
@@ -104,6 +108,7 @@ public static class ZoneRules
         (byte)ZoneId.JuradMountain, (byte)ZoneId.DungeonDefence, (byte)ZoneId.Prison,
         (byte)ZoneId.IsiloonArena, (byte)ZoneId.FelankorArena, (byte)ZoneId.DrakiTower,
         (byte)ZoneId.PartyClan1, (byte)ZoneId.PartyClan2, (byte)ZoneId.PartyClan3, (byte)ZoneId.PartyClan4,
+        (byte)ZoneId.ManesSurvival1, (byte)ZoneId.ManesSurvival2, (byte)ZoneId.ManesSurvival3, (byte)ZoneId.ManesSurvival4,
     ];
 
     public static bool AllowsPets(byte zoneId) => !PetsBarred.Contains(zoneId);
@@ -121,5 +126,6 @@ public static class ZoneRules
 
     public static bool BarsReborn(byte zoneId) => zoneId is (byte)ZoneId.Ardream or (byte)ZoneId.RonarkLandBase;
 
-    public static bool IsTempleEvent(byte zoneId) => zoneId is (byte)ZoneId.BorderDefenseWar or (byte)ZoneId.ChaosDungeon;
+    public static bool IsTempleEvent(byte zoneId) =>
+        zoneId is (byte)ZoneId.BorderDefenseWar or (byte)ZoneId.ChaosDungeon || ManesSurvivalRules.IsZone(zoneId);
 }

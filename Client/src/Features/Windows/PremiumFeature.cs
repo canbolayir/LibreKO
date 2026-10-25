@@ -22,6 +22,7 @@ internal sealed class PremiumFeature : IFeature
     }
 
     internal CanvasLayer Layer { get; private set; } = null!;
+    internal VBoxContainer StatusColumn { get; private set; } = null!;
     internal PanelContainer Chip { get; private set; } = null!;
     private Panel dot = null!;
     private Label label = null!;
@@ -37,15 +38,21 @@ internal sealed class PremiumFeature : IFeature
         requests.PremiumRequest();
     }
 
-    private const float ClanBonusChipGap = 4f;
+    private const int StatusGap = 4;
     internal PanelContainer ClanBonusChip { get; private set; } = null!;
     private Label clanBonusMarks = null!;
+
+    internal void AttachBelow(Control part)
+    {
+        part.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
+        StatusColumn.AddChild(part);
+    }
 
     internal void BuildClanBonusChip()
     {
         ClanBonusChip = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Stop, Visible = false };
         ClanBonusChip.AddThemeStyleboxOverride("panel", UiTheme.Chip());
-        Layer.AddChild(ClanBonusChip);
+        AttachBelow(ClanBonusChip);
         var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         row.AddThemeConstantOverride("separation", 7);
         ClanBonusChip.AddChild(row);
@@ -71,15 +78,6 @@ internal sealed class PremiumFeature : IFeature
         ClanBonusChip.TooltipText = ClanBonusCard.Tooltip(online,
             ItemData.Text(ClanBonusCard.NeedText, ClanBonusCard.NeedFallback),
             ItemData.Text(ClanBonusCard.BonusText, ClanBonusCard.BonusFallback));
-        PinClanBonusChip();
-    }
-
-    private void PinClanBonusChip()
-    {
-        if (!GodotObject.IsInstanceValid(ClanBonusChip) || !GodotObject.IsInstanceValid(Chip)) return;
-        float below = Chip.Size.Y + ClanBonusChipGap;
-        HudAnchor.Pin(ClanBonusChip, HudAnchor.Spot.TopRight,
-            new Vector2(topIcons.MiniMapRightSpan() + UiKit.StatusHudGap, HudAnchor.Edge + below));
     }
 
     public void Dispose()
@@ -99,10 +97,15 @@ internal sealed class PremiumFeature : IFeature
         Layer = new CanvasLayer { Layer = UiLayers.HudButtons };
         context.Root.AddChild(Layer);
 
+        StatusColumn = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        StatusColumn.AddThemeConstantOverride("separation", StatusGap);
+        Layer.AddChild(StatusColumn);
+        StatusColumn.MinimumSizeChanged += () => Callable.From(topIcons.PinAnchor).CallDeferred();
+
         Chip = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Stop };
         Chip.AddThemeStyleboxOverride("panel", UiTheme.Chip());
-        Layer.AddChild(Chip);
-        topIcons.SetAnchor(Chip);
+        AttachBelow(Chip);
+        topIcons.SetAnchor(StatusColumn);
         topIcons.PinAnchor();
 
         var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };

@@ -28,6 +28,9 @@ public static class PvpRules
         if (attacker.CharacterId == target.CharacterId || attacker.ZoneId != target.ZoneId)
             return false;
 
+        if (ManesSurvivalRules.IsZone(attacker.ZoneId))
+            return ManesSurvivalRules.Hostile(attacker, target, DateTime.UtcNow);
+
         if (attacker.IsInArena || target.IsInArena)
         {
             return attacker.ArenaId == target.ArenaId

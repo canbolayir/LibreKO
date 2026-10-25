@@ -69,7 +69,8 @@ public sealed class UserInfoPacketWriter
         int TransformSkillId = 0,
         bool Blinking = false,
         byte SoccerTeam = 0,
-        PlayerAppearanceState Size = PlayerAppearanceState.Normal);
+        PlayerAppearanceState Size = PlayerAppearanceState.Normal,
+        byte SurvivalRow = 0);
 
     public static void WriteRecord(Packet packet, UserState user)
     {
@@ -77,7 +78,7 @@ public sealed class UserInfoPacketWriter
         packet.WriteByte(user.Nation);
         packet.WriteByte(0);
         packet.WriteByte(0);
-        packet.WriteByte(0);
+        packet.WriteByte(user.SurvivalRow);
         packet.WriteShort(user.KnightsId > 0 ? user.KnightsId : (short)0);
         packet.WriteByte(user.KnightsFame);
 

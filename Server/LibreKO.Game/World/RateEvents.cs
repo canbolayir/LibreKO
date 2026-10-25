@@ -44,6 +44,17 @@ public static class RateEvents
         _ => rates.DropEventAmount,
     };
 
+    public static void Set(TimeWeatherBroadcastService rates, RateEvent kind, byte amount)
+    {
+        switch (kind)
+        {
+            case RateEvent.Exp: rates.ExpEventAmount = amount; break;
+            case RateEvent.Coin: rates.CoinEventAmount = amount; break;
+            case RateEvent.Np: rates.NpEventAmount = amount; break;
+            default: rates.DropEventAmount = amount; break;
+        }
+    }
+
     public static string Message(IGameDataService data, RateEvent kind, int amount) =>
         (data.GetServerResource(ResourceId(kind)) ?? $"{Title(kind)} +{AmountToken}%").Replace(AmountToken, amount.ToString());
 

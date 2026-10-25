@@ -1,4 +1,5 @@
-﻿using LibreKO.Common.Domain.Services;
+﻿using LibreKO.Common.Domain.Entities.GameData;
+using LibreKO.Common.Domain.Services;
 using LibreKO.Common.Enums;
 using LibreKO.Common.Infrastructure.Network;
 using LibreKO.Game.Configuration;
@@ -25,6 +26,7 @@ public sealed class EventSchedulePacketCoordinator(
     ICastleSiegeService castleSiege,
     IBowlEventService bowl,
     ScheduleClock scheduleClock,
+    IEventStartRules startRules,
     IOptions<GameServerSettings> settings) : IEventSchedulePacketCoordinator
 {
     private const int MinutesPerHour = 60;
@@ -33,13 +35,16 @@ public sealed class EventSchedulePacketCoordinator(
     private const int MinutesPerWeek = DaysPerWeek * MinutesPerDay;
     private const byte AnyLevel = 0;
     private const byte NoCode = 0;
-    private const byte StartMinuteOfHour = 0;
+    private const int DaysAhead = DaysPerWeek - 1;
     private const byte FirstSiegeWeekday = 1;
 
     public const string KrowazName = "Krowaz's Dominion";
     public const string BifrostName = "Bifrost";
     public const string CastleSiegeName = "Castle Siege War";
     public const string BowlName = "Bowl Event";
+    public const string NationWarName = "National War";
+    public const string SnowWarName = "Snow War";
+    public const string WantedName = "Wanted";
     private const string BifrostDescription = "Bifrost in Ronark Land";
     private const string CastleSiegeDescription = "Clan war for Delos Castle";
 
@@ -94,6 +99,8 @@ public sealed class EventSchedulePacketCoordinator(
     {
         var events = settings.Value.Events;
         int offset = ScheduleTime.OffsetMinutes(events, utcNow);
+        var scheduleToday = DateOnly.FromDateTime(utcNow.AddMinutes(offset));
+        var utcToday = DateOnly.FromDateTime(utcNow);
         var list = new List<ScheduledEvent>();
 
         var templeGroups = (gameDataService.TempleEventSchedules ?? [])
@@ -104,22 +111,30 @@ public sealed class EventSchedulePacketCoordinator(
         foreach (var group in templeGroups)
             list.Add(new ScheduledEvent(EventScheduleKind.Temple, TempleEventRules.NameFor(group.Key.Event),
                 TempleEventRules.DescriptionFor(group.Key.Event), group.Key.Min, group.Key.Max,
-                group.Select(s => Slot(s.Day, s.Hour, s.Minute, offset)).ToList()));
+                Slots(group, offset, scheduleToday)));
 
-        if (events.KrowazStartHours.Length > 0)
+        if (Slots(startRules.For(EventScheduleKind.Krowaz, events.KrowazStartHours), offset, scheduleToday) is { Count: > 0 } krowazSlots)
             list.Add(new ScheduledEvent(EventScheduleKind.Krowaz, KrowazName,
-                $"Opens for {KrowazService.OpenMinutes} minutes", KrowazService.EntryMinLevel, AnyLevel,
-                Hourly(events.KrowazStartHours, offset)));
+                $"Opens for {EventStartRules.MinutesOf(startRules, EventScheduleKind.Krowaz, KrowazService.OpenMinutes)} minutes", KrowazService.EntryMinLevel, AnyLevel, krowazSlots));
 
-        if (events.BifrostStartHours.Length > 0)
-            list.Add(new ScheduledEvent(EventScheduleKind.Bifrost, BifrostName, BifrostDescription, AnyLevel, AnyLevel,
-                Hourly(events.BifrostStartHours, offset)));
+        if (Slots(startRules.For(EventScheduleKind.Bifrost, events.BifrostStartHours), offset, scheduleToday) is { Count: > 0 } bifrostSlots)
+            list.Add(new ScheduledEvent(EventScheduleKind.Bifrost, BifrostName, BifrostDescription, AnyLevel, AnyLevel, bifrostSlots));
 
         var bowlSettings = bowl.Settings;
-        if (bowlSettings.Enabled && bowlSettings.StartHours.Length > 0)
+        if (bowlSettings.Enabled
+            && Slots(startRules.For(EventScheduleKind.Bowl, bowlSettings.StartHours), offset, scheduleToday) is { Count: > 0 } bowlSlots)
             list.Add(new ScheduledEvent(EventScheduleKind.Bowl, BowlName,
-                $"Rewards for staying active in the Bowl of Ronark Land, {bowlSettings.DefaultDurationMinutes} minutes",
-                bowlSettings.MinLevel, AnyLevel, Hourly(bowlSettings.StartHours, offset)));
+                $"Rewards for staying active in the Bowl of Ronark Land, {EventStartRules.MinutesOf(startRules, EventScheduleKind.Bowl, bowlSettings.DefaultDurationMinutes)} minutes",
+                bowlSettings.MinLevel, AnyLevel, bowlSlots));
+
+        foreach (var (kind, name, description) in new[]
+        {
+            (EventScheduleKind.NationWar, NationWarName, $"War in one of the battle zones, {EventStartRules.MinutesOf(startRules, EventScheduleKind.NationWar, events.BattleDurationMinutes)} minutes"),
+            (EventScheduleKind.SnowWar, SnowWarName, $"Snow battle, {EventStartRules.MinutesOf(startRules, EventScheduleKind.SnowWar, events.BattleDurationMinutes)} minutes"),
+            (EventScheduleKind.Wanted, WantedName, $"Wanted in Ronark Land and Ronark Land Base, {EventStartRules.MinutesOf(startRules, EventScheduleKind.Wanted, events.WantedMinutes)} minutes"),
+        })
+            if (Slots(startRules.For(kind, []), offset, scheduleToday) is { Count: > 0 } slots)
+                list.Add(new ScheduledEvent(kind, name, description, AnyLevel, AnyLevel, slots));
 
         if (gameDataService.SiegeWarfare is { } siege && SiegeRules.IsWeekday(siege.WarDay))
             list.Add(new ScheduledEvent(EventScheduleKind.CastleSiege, CastleSiegeName, CastleSiegeDescription,
@@ -132,7 +147,7 @@ public sealed class EventSchedulePacketCoordinator(
                 continue;
             list.Add(new ScheduledEvent(EventScheduleKind.CollectionRace, race.Name,
                 $"Collection Race, {race.DurationMinutes} minutes, first {race.MaxWinners} win", race.MinLevel, race.MaxLevel,
-                group.Select(s => Slot(s.Day, s.Hour, s.Minute, 0)).ToList()));
+                Slots(group, 0, utcToday)));
         }
 
         foreach (var group in gameDataService.LotterySchedulesByEvent)
@@ -141,14 +156,19 @@ public sealed class EventSchedulePacketCoordinator(
                 continue;
             list.Add(new ScheduledEvent(EventScheduleKind.Lottery, draw.Name,
                 $"Lottery draw, {draw.DurationMinutes} minutes", AnyLevel, AnyLevel,
-                group.Select(s => Slot(s.Day, s.Hour, s.Minute, 0)).ToList()));
+                Slots(group, 0, utcToday)));
         }
 
         return list;
     }
 
-    private static List<EventSlot> Hourly(IEnumerable<int> hours, int offsetMinutes) =>
-        hours.Order().Select(h => Slot(null, (byte)h, StartMinuteOfHour, offsetMinutes)).ToList();
+    internal static List<EventSlot> Slots(IEnumerable<IScheduleRule> rules, int offsetMinutes, DateOnly today) =>
+        rules.SelectMany(rule => rule.Repeat switch
+        {
+            ScheduleRepeat.Daily => [Slot(null, rule.Hour, rule.Minute, offsetMinutes)],
+            ScheduleRepeat.Weekly => [Slot(rule.Day, rule.Hour, rule.Minute, offsetMinutes)],
+            _ => rule.Occurrences(today, today.AddDays(DaysAhead)).Select(at => Slot(at.DayOfWeek, rule.Hour, rule.Minute, offsetMinutes)),
+        }).ToList();
 
     internal static EventSlot Slot(DayOfWeek? day, byte hour, byte minute, int offsetMinutes)
     {

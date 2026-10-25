@@ -62,7 +62,8 @@ public static class WorldWire
         var e = new EntitySnapshot { Id = id, IsNpc = false };
         e.Name = p.ReadSByteString();
         e.Nation = p.ReadByte();
-        p.ReadByte(); p.ReadByte(); p.ReadByte();
+        p.ReadByte(); p.ReadByte();
+        e.SurvivalRow = p.ReadByte();
         short knightsId = p.ReadShort();
         e.KnightsId = knightsId;
         e.ClanFame = p.ReadByte();

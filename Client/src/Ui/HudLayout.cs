@@ -10,6 +10,8 @@ public sealed partial class HudLayout : Node
 
     public event Action? Placed;
     public event Action? Clicked;
+
+    public bool UserPlaced => userPlaced;
     public static bool PersistLayouts { get; set; } = true;
 
     private static readonly System.Collections.Generic.HashSet<HudLayout> Live = new();

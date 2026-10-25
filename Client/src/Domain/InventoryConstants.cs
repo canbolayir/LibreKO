@@ -110,6 +110,8 @@ public static class InventoryConstants
 
     public static int BagIndexForMagicBagPosition(int magicBagPosition) => magicBagPosition / MagicBagMax;
 
+    public static bool IsGridSlot(int abs) => abs >= InventoryStart && abs < CospreStart;
+
     public static bool IsCospreSlot(int abs) => abs >= CospreStart && abs < BagSlotStart;
 
     public static bool IsBagItemSlot(int abs) => abs >= BagSlotStart && abs < MagicBagStart;

@@ -2,7 +2,9 @@
 
 public sealed class CombatSession
 {
-    public (int Owner, int Slot) SelectedHotSlot { get; set; } = (-1, -1);
+    public (int Owner, int Slot) SelectedHotSlot { get; private set; } = (-1, -1);
+
+    public void SelectHotSlot(int owner, int slot) => SelectedHotSlot = (owner, slot);
 
     public event System.Action<int>? BuffExpiredEvent;
 

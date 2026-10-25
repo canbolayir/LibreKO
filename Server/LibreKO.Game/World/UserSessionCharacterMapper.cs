@@ -83,6 +83,7 @@ public class UserSessionCharacterMapper : IUserSessionCharacterMapper
 
         session.GenieTime.Load(character.GenieRemainingSeconds);
         session.GenieOptions = character.GenieOptions;
+        session.RankMarks = RankMarks.Load(character.RankMarks);
         session.Repurchases.Clear();
         session.Repurchases.AddRange(RepurchaseRules.Decode(character.RepurchaseItems));
         session.DrakiStage = character.DrakiStage;
@@ -128,14 +129,14 @@ public class UserSessionCharacterMapper : IUserSessionCharacterMapper
 
     public void ApplyToCharacter(UserSession session, Character character)
     {
-        character.Hp = session.Hp;
+        character.Hp = session.SavedHp;
         character.DeathExpLoss = session.Hp > 0 ? 0 : session.DeathExpLoss;
-        character.Mp = session.Mp;
+        character.Mp = session.SavedMp;
         character.X = session.X;
         character.Y = session.Y;
         character.Z = session.Z;
         character.MapId = session.ZoneId;
-        character.Level = session.Level;
+        character.Level = session.SavedLevel;
         character.Strength = session.Strength;
         character.Stamina = session.Stamina;
         character.Dexterity = session.Dexterity;
@@ -143,7 +144,7 @@ public class UserSessionCharacterMapper : IUserSessionCharacterMapper
         character.Magic = session.Magic;
         character.StatPoints = session.StatPoints;
         character.Money = session.SavedMoney;
-        character.Experience = session.Experience;
+        character.Experience = session.SavedExperience;
         character.Items = session.SavedItems;
         character.SkillData = session.SkillData;
         character.SkillPointData = (byte[])session.SkillPoints.Clone();
@@ -166,6 +167,7 @@ public class UserSessionCharacterMapper : IUserSessionCharacterMapper
 
         character.GenieRemainingSeconds = session.GenieTime.RemainingSeconds;
         character.GenieOptions = session.GenieOptions;
+        character.RankMarks = session.RankMarks.Serialize();
         character.RepurchaseItems = RepurchaseRules.Encode(session.Repurchases);
         character.DrakiStage = session.DrakiStage;
         character.DrakiSubStage = session.DrakiSubStage;

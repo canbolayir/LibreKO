@@ -48,6 +48,22 @@ public static class CombatWire
     public const int SkillBarMaxSlots = HotbarLayout.Total;
 }
 
-public readonly record struct AttackReply(int AttackType, int Result, int AttackerId, int TargetId, bool Chained);
+public readonly record struct AttackReply(int AttackType, int Result, int AttackerId, int TargetId, bool Chained,
+    AttackPresentation? Shown = null);
+
+public readonly record struct AttackPresentation(int Anim, float Rate, float Phase)
+{
+    public const int Size = 12;
+
+    public void Write(Packet packet)
+    {
+        packet.WriteInt(Anim);
+        packet.WriteFloat(Rate);
+        packet.WriteFloat(Phase);
+    }
+
+    public static AttackPresentation? Read(Packet packet) =>
+        packet.RemainingBytes >= Size ? new AttackPresentation(packet.ReadInt(), packet.ReadFloat(), packet.ReadFloat()) : null;
+}
 
 public readonly record struct MagicReply(int Sub, int SkillId, int CasterId, int TargetId, short[] Data);

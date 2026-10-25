@@ -19,6 +19,16 @@ public class CombatLogLinesTests
     }
 
     [Theory]
+    [InlineData(21, 1)]
+    [InlineData(45, 10)]
+    [InlineData(58, 10)]
+    [InlineData(85, 10)]
+    [InlineData(89, 10)]
+    [InlineData(61, 1)]
+    public void TheHpBarTextIsScaledInTheSameZones(int zone, int scale) =>
+        Assert.Equal(scale, CombatLogLines.HpTextScale(zone));
+
+    [Theory]
     [InlineData(101, true, CombatLogLines.SpRecoveredText)]
     [InlineData(208, false, CombatLogLines.SpUsedText)]
     [InlineData(113, false, CombatLogLines.SpUsedText)]

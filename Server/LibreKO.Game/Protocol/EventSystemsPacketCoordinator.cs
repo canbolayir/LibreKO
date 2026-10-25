@@ -236,6 +236,8 @@ public class EventSystemsPacketCoordinator(
 
     private static TempleEvent RequestedContest(Packet packet)
     {
+        if (packet.RemainingBytes >= sizeof(ushort))
+            return TempleEventRules.ContestOf(packet.ReadUShort());
         if (packet.RemainingBytes < 1)
             return TempleEvent.None;
         var contest = (TempleEvent)packet.ReadByte();
@@ -253,8 +255,7 @@ public class EventSystemsPacketCoordinator(
         }
         var result = eventSchedulerService.TryJoinTempleEvent(session, contest);
         await session.Client.SendPacket(EventPacketWriter.TempleEvent(
-            TempleEventJoin, (byte)result,
-            TempleEventRules.JoinReplyId(contest, TempleEventRules.ZoneFor(contest))));
+            TempleEventJoin, (byte)result, (short)TempleEventRules.IndunType(contest)));
         if (result != TempleJoinResult.Joined)
             return;
 
@@ -292,7 +293,7 @@ public class EventSystemsPacketCoordinator(
             await zoneTransitionService.ChangeZoneAsync(session, (byte)ZoneId.Moradon, 0f, 0f);
         }
 
-        var packet = EventPacketWriter.TempleEvent(TempleEventDisband, 1, 0);
+        var packet = EventPacketWriter.TempleEvent(TempleEventDisband, 1, (short)TempleEventRules.IndunType(leftSignUp));
         await session.Client.SendPacket(packet);
         if (leftSignUp != TempleEvent.None)
             await BroadcastTempleSignUpsAsync(leftSignUp);

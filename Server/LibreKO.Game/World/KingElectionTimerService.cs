@@ -15,6 +15,7 @@ public class KingElectionTimerService(
     IGameDataService gameData,
     SessionManager sessionManager,
     IServiceProvider serviceProvider,
+    IRankMarkService rankMarks,
     ILogger<KingElectionTimerService> logger) : BackgroundService
 {
     // Election phase constants (match GamePacketHandler)
@@ -233,6 +234,7 @@ public class KingElectionTimerService(
         // Update king name in memory and DB
         kingData.KingName = winner.CandidateName;
         await UpdateKingNameInDb(kingData);
+        await rankMarks.AwardKingAsync(winner.CandidateName);
 
         // Schedule next election (30 days from now)
         var nextElection = DateTime.Now.AddDays(30);

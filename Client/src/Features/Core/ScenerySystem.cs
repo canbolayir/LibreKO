@@ -161,10 +161,6 @@ internal sealed partial class ScenerySystem : IFeature, ITerrainQueries
     private Weather lastClockWeather = (Weather)(-1);
     private const float DayCycleSeconds = 4f * 3600f;
     private float dayFrac = 0.30f;
-    private const int WireWeatherRain = 2;
-    private const int WireWeatherSnow = 3;
-    private const int WireWeatherLeaves = 4;
-    private const int WireWeatherLeafRain = 5;
 
     private Weather weather = Weather.Sunny;
 
@@ -203,7 +199,12 @@ internal sealed partial class ScenerySystem : IFeature, ITerrainQueries
         lastClockMin = tm; lastClockWeather = weather;
         bool day = frac >= DayStartFraction && frac < DayEndFraction;
         string tc = day ? "#ffe08a" : "#9fb8e6";
-        string ww = weather switch { Weather.Rainy => "Rain", Weather.Snow => "Snow", Weather.Windy => "Windy", _ => "Clear" };
+        string ww = weather switch
+        {
+            Weather.Rainy => "Rain",
+            Weather.Snow => "Snow",
+            _ => "Clear",
+        };
         string clock = $"{tm / MinutesPerHour:00}:{tm % MinutesPerHour:00}";
         ClockLabel.Text = $"[right][color={tc}]{clock}[/color]  [color=#ccd6e6]{ww}[/color][/right]";
         ClockChanged?.Invoke($"{clock}   {ww}");
@@ -229,16 +230,24 @@ internal sealed partial class ScenerySystem : IFeature, ITerrainQueries
     private void OnServerWeather(int type, int amount)
     {
         if (WeatherRules.Ignored(context.Zone)) return;
-        int shown = WeatherRules.Type(context.Zone, type);
-        Sky.WeatherLight = WeatherRules.RelativeLight(shown, WeatherRules.Amount(shown, amount));
-        weather = shown switch
+        ShowWeather(WeatherRules.Type(context.Zone, type), amount);
+    }
+
+    internal void ShowWeather(int type, int amount)
+    {
+        if (type == WeatherRules.Unchanged) return;
+        int clamped = WeatherRules.Amount(type, amount);
+        Sky.WeatherLight = WeatherRules.RelativeLight(type, clamped);
+        Sky.WeatherShare = clamped / WeatherShareScale;
+        weather = type switch
         {
-            WireWeatherRain or WireWeatherLeafRain => Weather.Rainy,
-            WireWeatherSnow => Weather.Snow,
-            WireWeatherLeaves => Weather.Windy,
+            WeatherRules.Rain => Weather.Rainy,
+            WeatherRules.Snow => Weather.Snow,
             _ => Weather.Sunny,
         };
     }
+
+    private const float WeatherShareScale = 100f;
 
     internal void OnServerTime(int hour, int minute)
     {
@@ -256,7 +265,7 @@ internal sealed partial class ScenerySystem : IFeature, ITerrainQueries
         Audio.Ambience(weather switch
         {
             Weather.Rainy => Sfx.WeatherRainy,
-            Weather.Windy => Sfx.WeatherWindy,
+            Weather.Snow => Sfx.WeatherWindy,
             _ => 0,
         });
     }

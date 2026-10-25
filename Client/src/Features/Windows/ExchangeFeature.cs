@@ -44,6 +44,7 @@ internal sealed partial class ExchangeFeature : IFeature, IEscapable
     private const int TextTradeBusy = 3504;
     private const int TextTradeDeclined = 6311;
     private const int TextTradeDuplicate = 10761;
+    private const int TextTradeConfirm = 7655;
     private static readonly Color TradeBusyColour = new("9b9bff");
     private static readonly Color TradeConfirmedColour = new("7ddc6f");
 
@@ -60,6 +61,7 @@ internal sealed partial class ExchangeFeature : IFeature, IEscapable
     private Label roomLabel = null!;
     private BagCompanion? companion;
     private Button confirmBtn = null!;
+    private Notice? confirmBox;
     private Button cancelBtn = null!;
     private LineEdit goldEdit = null!;
     private ConfirmationDialog askDialog = null!;
@@ -514,6 +516,8 @@ internal sealed partial class ExchangeFeature : IFeature, IEscapable
 
     private void CloseWindow()
     {
+        confirmBox?.Close();
+        confirmBox = null;
         context.Tooltips.Hide();
         shown = false;
         Panel.Visible = false;
@@ -746,6 +750,16 @@ internal sealed partial class ExchangeFeature : IFeature, IEscapable
     {
         if (!shown || ConfirmedByMe) return;
         if (addInFlight || amountShown) { SetStatus("Finish adding your offer before confirming.", true); return; }
+        if (confirmBox != null && GodotObject.IsInstanceValid(confirmBox)) return;
+        confirmBox = Notice.Confirm(context.Root, ItemData.Text(TextTradeConfirm, "Will you trade?"), "OK", "Cancel",
+            () => { confirmBox = null; Decide(); },
+            () => { confirmBox = null; Abort(local: true); },
+            "Trade");
+    }
+
+    private void Decide()
+    {
+        if (!shown || ConfirmedByMe) return;
         ConfirmedByMe = true;
         confirmBtn.Disabled = true;
         confirmBtn.Text = "Confirmed";

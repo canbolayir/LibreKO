@@ -50,6 +50,7 @@ public partial class MiniMap : Control
     public string MapSource { get; private set; } = "relief";
 
     private float mapX, mapZ, headingDeg;
+    private float viewX, viewZ;
     private readonly List<Blip> blips = new();
 
     public MiniMap()
@@ -252,9 +253,13 @@ public partial class MiniMap : Control
         blips.Clear();
         blips.AddRange(currentBlips);
 
+        viewX = mapX;
+        viewZ = mapZ;
         if (hasMap && worldExtent > 0f)
         {
-            var center = new Vector2(mapX / worldExtent, 1f - mapZ / worldExtent);
+            viewX = MiniMapView.ClampCenter(mapX, ViewRadiusWorld, worldExtent);
+            viewZ = MiniMapView.ClampCenter(mapZ, ViewRadiusWorld, worldExtent);
+            var center = new Vector2(viewX / worldExtent, 1f - viewZ / worldExtent);
             discMat.SetShaderParameter("center", center);
         }
         coordLabel.Text = $"{mapX:0}, {mapZ:0}";
@@ -420,7 +425,7 @@ public partial class MiniMap : Control
         else
         {
             DrawBlips(c, ctr, radius);
-            DrawPlayer(c, ctr);
+            DrawPlayer(c, ctr + new Vector2(mapX - viewX, viewZ - mapZ) * PxPerWorld);
         }
     }
 

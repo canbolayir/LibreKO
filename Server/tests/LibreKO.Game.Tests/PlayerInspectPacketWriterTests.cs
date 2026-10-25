@@ -14,7 +14,8 @@ public class PlayerInspectPacketWriterTests
         new PlayerInspectPacketWriter.Clan(9, 3, 1, 2, "Vipers", "Chief", 2),
         1,
         PlayerInspectPacketWriter.NoParty,
-        [1, 2, 3, 4, 5, 6, 7]);
+        [1, 2, 3, 4, 5, 6, 7],
+        new LibreKO.Game.World.RankMarks());
 
     private static PlayerInspectPacketWriter.Equipment SampleEquipment(
         IReadOnlyList<PlayerInspectPacketWriter.WornItem> worn) => new(

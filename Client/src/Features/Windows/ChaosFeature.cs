@@ -5,7 +5,6 @@ namespace LibreKO.Features.Windows;
 internal sealed partial class ChaosFeature : IFeature, ITickFeature
 {
     private readonly IWorldContext context;
-    private readonly BifrostSession bifrost;
     private readonly ChaosSession chaos;
     private readonly MonsterStoneSession monsterStone;
     private readonly SelfSession self;
@@ -14,12 +13,10 @@ internal sealed partial class ChaosFeature : IFeature, ITickFeature
     private readonly RankFeature rank;
     private readonly EventPlatesFeature eventPlates;
     private readonly ChaosGuideFeature guide;
-    private readonly IBifrostRequests bifrostRequests;
 
-    public ChaosFeature(IWorldContext context, BifrostSession bifrost, ChaosSession chaos, MonsterStoneSession monsterStone, SelfSession self, IRankRequests rankRequests, MsgOutFeature msgOut, RankFeature rank, EventPlatesFeature eventPlates, ChaosGuideFeature chaosGuide, IBifrostRequests bifrostRequests)
+    public ChaosFeature(IWorldContext context, ChaosSession chaos, MonsterStoneSession monsterStone, SelfSession self, IRankRequests rankRequests, MsgOutFeature msgOut, RankFeature rank, EventPlatesFeature eventPlates, ChaosGuideFeature chaosGuide)
     {
         this.context = context;
-        this.bifrost = bifrost;
         this.chaos = chaos;
         this.monsterStone = monsterStone;
         this.self = self;
@@ -28,7 +25,6 @@ internal sealed partial class ChaosFeature : IFeature, ITickFeature
         this.rank = rank;
         this.eventPlates = eventPlates;
         guide = chaosGuide;
-        this.bifrostRequests = bifrostRequests;
     }
 
     public void Tick(double delta, double nowSec)
@@ -293,7 +289,6 @@ internal sealed partial class ChaosFeature : IFeature, ITickFeature
     }
 
     private const string NestTimerFallbackTitle = "Monster Stone";
-    private const string DrakiTimerTitle = "Draki's Tower";
 
     private CanvasLayer? nestTimerLayer;
     internal PanelContainer? NestTimerPanel { get; private set; }
@@ -327,7 +322,6 @@ internal sealed partial class ChaosFeature : IFeature, ITickFeature
 
         NestTimerPanel = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
         NestTimerPanel.AddThemeStyleboxOverride("panel", QuestProgressToastFeature.ToastStyle());
-        NestTimerPanel.GuiInput += OnTimerPlateInput;
         anchor.AddChild(NestTimerPanel);
 
         var rowsBox = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
@@ -364,43 +358,8 @@ internal sealed partial class ChaosFeature : IFeature, ITickFeature
         return label;
     }
 
-    private bool drakiPlate;
-
-    private void ShowDrakiPlate(bool shown)
-    {
-        if (drakiPlate == shown || NestTimerPanel == null) return;
-        drakiPlate = shown;
-        NestTimerPanel.MouseFilter = shown ? Control.MouseFilterEnum.Pass : Control.MouseFilterEnum.Ignore;
-        NestTimerPanel.TooltipText = shown ? DrakiTownTip : "";
-    }
-
-    private const string DrakiTownTip = "Right-click to go back to town";
-
-    private void OnTimerPlateInput(InputEvent input)
-    {
-        if (!drakiPlate || input is not InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: true }) return;
-        NestTimerPanel!.AcceptEvent();
-        Notice.Confirm(context.Root, DrakiTower.TownPrompt, "Yes", "No", bifrostRequests.DrakiTown);
-    }
-
     private void TickNestTimer()
     {
-        int draki = bifrost.DrakiSecondsLeft(Time.GetTicksMsec());
-        if (draki > 0)
-        {
-            ShowTimerPlate(DrakiTimerTitle, $"Stage {bifrost.DrakiStage}-{bifrost.DrakiSubStage}",
-                           $"{draki / 60}:{draki % 60:00}");
-            ShowDrakiPlate(true);
-            return;
-        }
-        if (bifrost.DrakiFinish is { } finish)
-        {
-            ShowTimerPlate(DrakiTimerTitle, $"Stage {finish.Stage}-{finish.SubStage}",
-                           $"{DrakiTower.StageEndLabel(finish.GaveUp)}  {finish.ElapsedSeconds / 60}:{finish.ElapsedSeconds % 60:00}");
-            ShowDrakiPlate(true);
-            return;
-        }
-        ShowDrakiPlate(false);
         if (context.Zone == ChaosBattle.Zone)
         {
             ShowPlate();

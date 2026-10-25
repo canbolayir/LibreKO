@@ -94,7 +94,7 @@ internal sealed class PluginSocialBridge(WarpFeature warp, WhispersFeature whisp
         var buffs = new List<GamePartyBuff>();
         foreach (int skillId in partySession.BuffsOf(id))
             if (SkillData.Get(skillId) is { } skill)
-                buffs.Add(new GamePartyBuff(skillId, SkillIcons.Get(skillId), SkillText.BuffTooltip(skill)));
+                buffs.Add(new GamePartyBuff(skillId, SkillIcons.Buff(skill), SkillText.BuffTooltip(skill)));
         return buffs;
     }
 

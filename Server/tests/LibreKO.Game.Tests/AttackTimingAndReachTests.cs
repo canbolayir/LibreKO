@@ -346,6 +346,48 @@ public class AttackTimingAndReachTests : GameTestBase
         Swings(sent).Should().Be(1, "a 10 m wide body is struck from far off its centre");
     }
 
+    [Fact]
+    public async Task TheSwingTheAttackerShowsIsEchoedToTheRegion()
+    {
+        using var provider = Provider(new Clock());
+        var (attacker, sent) = Attacker(provider);
+        var worm = Monster(provider, Here + 1);
+        var shown = new AttackPresentation(3, 1.25f, 0.4f);
+
+        await SwingAt(provider, attacker, worm.UniqueId, shown);
+
+        Echoed(sent).Should().Be(shown);
+    }
+
+    [Theory]
+    [InlineData(3, 0f, 0.4f)]
+    [InlineData(3, 1f, -1f)]
+    [InlineData(3, float.NaN, 0.4f)]
+    [InlineData(-1, 1f, 0.4f)]
+    public async Task AnImplausibleSwingIsEchoedWithoutIt(int anim, float rate, float phase)
+    {
+        using var provider = Provider(new Clock());
+        var (attacker, sent) = Attacker(provider);
+        var worm = Monster(provider, Here + 1);
+
+        await SwingAt(provider, attacker, worm.UniqueId, new AttackPresentation(anim, rate, phase));
+
+        Swings(sent).Should().Be(1);
+        Echoed(sent).Should().BeNull();
+    }
+
+    private static AttackPresentation? Echoed(List<Packet> sent)
+    {
+        var packet = sent.Last(packet => packet.GetOpcode() == (byte)GameOpcodes.GS_ATTACK);
+        packet.ResetOffset();
+        packet.ReadByte();
+        packet.ReadByte();
+        packet.ReadInt();
+        packet.ReadInt();
+        packet.ReadByte();
+        return AttackPresentation.Read(packet);
+    }
+
     private static ServiceProvider Provider(Clock clock) => CreateProvider(_ => { }, gameData =>
     {
         gameData.GetItem(Sword).Returns(new ItemData { Num = Sword, Kind = 21, Slot = 1, Delay = SwordDelay, Range = 10, Damage = 10, Duration = 100 });
@@ -396,7 +438,7 @@ public class AttackTimingAndReachTests : GameTestBase
     private static Task Swing(ServiceProvider provider, UserSession attacker, NpcInstance target) =>
         SwingAt(provider, attacker, target.UniqueId);
 
-    private static async Task SwingAt(ServiceProvider provider, UserSession attacker, int targetId)
+    private static async Task SwingAt(ServiceProvider provider, UserSession attacker, int targetId, AttackPresentation? shown = null)
     {
         var packet = new Packet(GameOpcodes.GS_ATTACK);
         packet.WriteByte(1);
@@ -406,6 +448,7 @@ public class AttackTimingAndReachTests : GameTestBase
         packet.WriteShort(0);
         packet.WriteByte(0);
         packet.WriteByte(0);
+        shown?.Write(packet);
         packet.ResetOffset();
         await provider.GetRequiredService<ICombatPacketCoordinator>().HandleAttackAsync(attacker.Client, packet);
     }

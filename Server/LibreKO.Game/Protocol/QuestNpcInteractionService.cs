@@ -308,7 +308,7 @@ public class QuestNpcInteractionService(
             NpcData.TypeWarehouse => BuildWarehousePacket(),
             NpcData.TypeClassChange => BuildClassChangePacket(),
             NpcData.TypeChaoticGenerator => BuildChaoticGeneratorPacket(npc),
-            NpcData.TypeRental => RentalPacketWriter.NpcState(RentalPacketWriter.Unavailable, npcData.SellingGroup),
+            NpcData.TypeRental => ItemRentalPacketWriter.Open(npc.UniqueId),
             NpcData.TypeElectionOfficer => BuildElectionOfficerPacket(session),
             NpcData.TypeGrandChamberlain => BuildTreasuryPacket(session),
             NpcData.TypeSiegeWarfare => SiegePacketWriter.WarfareNpc(),

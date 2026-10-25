@@ -37,6 +37,7 @@ public class TempleJoinTests
             Substitute.For<IKrowazService>(),
             Substitute.For<INereidMonumentService>(),
             Substitute.For<IBowlEventService>(),
+            Substitute.For<IManesSurvivalService>(),
             Substitute.For<IGameDataService>(),
             new ScheduleClock(),
             Substitute.For<ILogger<EventSchedulerService>>());
@@ -120,4 +121,56 @@ public class TempleJoinTests
         packet.ReadUShort().Should().Be(2);
         packet.ReadUShort().Should().Be(1);
     }
+
+    [Theory]
+    [InlineData(TempleEvent.Chaos, 24)]
+    [InlineData(TempleEvent.BorderDefenseWar, 2)]
+    public void ABoardEventOpensOnTheTempleEventSubWithItsTypeAndSeconds(TempleEvent contest, short indunType)
+    {
+        var packet = EventPacketWriter.SignUpTime(contest, 540);
+
+        packet.GetOpcode().Should().Be((byte)GameOpcodes.GS_EVENT);
+        packet.ResetOffset();
+        packet.ReadByte().Should().Be((byte)TempleSubOpcode.TempleEvent);
+        packet.ReadShort().Should().Be(indunType);
+        packet.ReadShort().Should().Be(540);
+        packet.RemainingBytes.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(TempleEvent.JuraidMountain)]
+    [InlineData(TempleEvent.UnderTheCastle)]
+    [InlineData(TempleEvent.ForgottenTemple)]
+    public void AnEventWithoutABoardKeepsTheBifrostTime(TempleEvent contest)
+    {
+        var packet = EventPacketWriter.SignUpTime(contest, 300);
+
+        packet.GetOpcode().Should().Be((byte)GameOpcodes.GS_BIFROST);
+        packet.ResetOffset();
+        packet.ReadByte().Should().Be((byte)TempleSubOpcode.BifrostRemaining);
+        packet.ReadInt().Should().Be(300);
+        packet.ReadByte().Should().Be((byte)contest);
+    }
+
+    [Theory]
+    [InlineData(24, TempleEvent.Chaos)]
+    [InlineData(1, TempleEvent.BorderDefenseWar)]
+    [InlineData(4, TempleEvent.BorderDefenseWar)]
+    [InlineData(10, TempleEvent.BorderDefenseWar)]
+    [InlineData(100, TempleEvent.JuraidMountain)]
+    [InlineData(101, TempleEvent.UnderTheCastle)]
+    [InlineData(102, TempleEvent.ForgottenTemple)]
+    [InlineData(47, TempleEvent.None)]
+    [InlineData(8, TempleEvent.None)]
+    public void TheWireTypeNamesTheEvent(ushort indunType, TempleEvent contest) =>
+        TempleEventRules.ContestOf(indunType).Should().Be(contest);
+
+    [Theory]
+    [InlineData(TempleEvent.Chaos)]
+    [InlineData(TempleEvent.BorderDefenseWar)]
+    [InlineData(TempleEvent.JuraidMountain)]
+    [InlineData(TempleEvent.UnderTheCastle)]
+    [InlineData(TempleEvent.ForgottenTemple)]
+    public void EveryEventRoundTripsThroughItsWireType(TempleEvent contest) =>
+        TempleEventRules.ContestOf(TempleEventRules.IndunType(contest)).Should().Be(contest);
 }

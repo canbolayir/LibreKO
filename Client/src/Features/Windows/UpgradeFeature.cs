@@ -76,6 +76,8 @@ internal sealed partial class UpgradeFeature : IFeature, IClosableWindow
     internal DetailStrip AnvilStrip { get; private set; } = null!;
     private FooterBand anvilFooter = null!;
     private Button btn = null!;
+    private Button previewButton = null!;
+    private bool previewShown;
     private ItemSlotView resultSocket = null!;
     private ItemSlotView itemResultSocket = null!;
     private ItemSlotView accessoryResultSocket = null!;
@@ -161,6 +163,10 @@ internal sealed partial class UpgradeFeature : IFeature, IClosableWindow
 
         AnvilStrip = new DetailStrip(AnvilItemSocketSize);
         AnvilStrip.Slot.Visible = false;
+        previewButton = UiTheme.SmallButton("Preview", "Scan the item to see what the upgrade makes");
+        previewButton.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        previewButton.Pressed += Preview;
+        AnvilStrip.Right.AddChild(previewButton);
         btn = UiTheme.ActionButton("Upgrade", "Upgrade the item on the anvil");
         btn.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         btn.Pressed += Confirm;
@@ -613,6 +619,7 @@ internal sealed partial class UpgradeFeature : IFeature, IClosableWindow
             sockets[i]?.Clear();
         }
         previewId = 0;
+        previewShown = false;
         ClearResultSocket();
         RefreshActions();
     }
@@ -632,6 +639,7 @@ internal sealed partial class UpgradeFeature : IFeature, IClosableWindow
     private void OnBenchChanged()
     {
         previewId = 0;
+        previewShown = false;
         ClearResultSocket();
 
         if (itemIds[0] == 0)
@@ -658,9 +666,12 @@ internal sealed partial class UpgradeFeature : IFeature, IClosableWindow
     private bool HasMaterial()
     {
         for (int i = MaterialFirst; i < MaterialEnd; i++)
-            if (itemIds[i] != 0) return true;
+            if (itemIds[i] != 0 && !IsProtection(itemIds[i])) return true;
         return false;
     }
+
+    private static bool IsProtection(int itemId) =>
+        itemId is TrinaPiece or TrinaPieceMiddle or TrinaPieceLow or TrinaPieceAccessory or KarivdisPiece or BlessingLogos;
 
     private string OperationName()
     {
@@ -942,9 +953,8 @@ internal sealed partial class UpgradeFeature : IFeature, IClosableWindow
         if (result.ResultCode == ItemUpgradeResult.Succeeded && previewId != 0)
         {
             this.previewId = previewId;
-            ShowResultItem(previewId, SlotLook.Ghost);
-            SetAnvilStrip($"{name} → {ItemData.DisplayName(previewId)}",
-                $"{OperationName()} · the item may be destroyed", UiTheme.Warning);
+            previewShown = false;
+            SetAnvilStrip(name, $"{OperationName()} · Preview scans for the result", UiTheme.Warning);
         }
         else
         {
@@ -974,6 +984,56 @@ internal sealed partial class UpgradeFeature : IFeature, IClosableWindow
     {
         if (btn == null) return;
         btn.Disabled = !CanSend();
+        previewButton.Disabled = !CanPreview();
+    }
+
+    private bool CanPreview() => shown && !InteractionLocked && previewId != 0 && !previewShown;
+
+    private void Preview()
+    {
+        if (!CanPreview()) return;
+        if (anvilBench == AnvilBench.Accessory)
+        {
+            compoundGauge.AddThemeStyleboxOverride("fill", UiKit.CachedMeterFill(UiTheme.Gold));
+            compoundGauge.Value = 0;
+            compoundGauge.Visible = true;
+            var fill = context.Root.CreateTween();
+            fill.TweenProperty(compoundGauge, "value", 1.0, AnvilScanSeconds);
+            fill.TweenCallback(Callable.From(() =>
+            {
+                scanTween = null;
+                compoundGauge.Visible = false;
+                RevealPreview();
+            }));
+            scanTween = fill;
+            RefreshActions();
+            return;
+        }
+        ResetAnvilLids();
+        anvilSeamGlow.Colors = SeamColours(fails: false);
+        AnvilLids.Visible = true;
+        var tween = context.Root.CreateTween();
+        tween.TweenProperty(AnvilLidTop, "anchor_bottom", 0.5f, AnvilLidSeconds);
+        tween.Parallel().TweenProperty(AnvilLidBottom, "anchor_top", 0.5f, AnvilLidSeconds);
+        tween.TweenProperty(AnvilSeam, "anchor_right", 1f, AnvilScanSeconds);
+        tween.TweenCallback(Callable.From(() =>
+        {
+            scanTween = null;
+            RevealPreview();
+            if (shown) OpenAnvilLids();
+        }));
+        scanTween = tween;
+        RefreshActions();
+    }
+
+    internal void RevealPreview()
+    {
+        if (previewId == 0 || itemIds[0] == 0) return;
+        previewShown = true;
+        ShowResultItem(previewId, SlotLook.Ghost);
+        SetAnvilStrip($"{ItemData.DisplayName(itemIds[0])} → {ItemData.DisplayName(previewId)}",
+            $"{OperationName()} · the item may be destroyed", UiTheme.Warning);
+        RefreshActions();
     }
 
     public bool StageAnvil(int originItemId, int materialItemId, int extraItemId = 0)

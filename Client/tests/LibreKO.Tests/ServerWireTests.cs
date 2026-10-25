@@ -25,6 +25,8 @@ public class ServerWireTests
         "CharacterSealPacketWriter.CharacterSheet(Sheet) zeros",
         "CharacterSealPacketWriter.CharacterSheet(Sheet) twos",
         "QuestPacketWriter.Objectives(QuestObjectives) zeros",
+        "QuestPacketWriter.ObjectivesBatches(IReadOnlyList`1) ones",
+        "QuestPacketWriter.ObjectivesBatches(IReadOnlyList`1) twos",
         "QuestPacketWriter.RewardReceipt(Int32,IReadOnlyList`1) zeros",
     };
 

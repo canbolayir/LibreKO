@@ -127,8 +127,44 @@ public sealed class AdminPanelPacketWriter
     public const byte FindPlayers = 2;
     public const byte FindMonsterFlag = 1;
     public const byte FindBotFlag = 2;
+    public const byte FindOnlineFlag = 4;
 
-    public readonly record struct FindRow(int Id, int SpawnRow, string Name, short Level, byte ZoneId, ushort X, ushort Z, bool Monster, bool Bot);
+    public readonly record struct FindRow(int Id, int SpawnRow, string Name, short Level, byte ZoneId, ushort X, ushort Z, bool Monster, bool Bot,
+        bool Online = false, short Class = 0, byte Nation = 0, uint LastSeen = 0);
+
+    public readonly record struct SheetSlot(byte Position, int ItemId, ushort Count, short Durability, byte Flag);
+
+    public readonly record struct PlayerSheet(int Id, string Name, bool Online, byte Level, short Class, byte Nation, byte ZoneId,
+        ushort X, ushort Z, int Gold, int KnightCash, int Loyalty, uint LastSeen, IReadOnlyList<SheetSlot> Slots);
+
+    public static Packet PlayerSheetPacket(byte sub, PlayerSheet sheet)
+    {
+        var packet = Sub(sub);
+        packet.WriteInt(sheet.Id);
+        packet.WriteSByteString(sheet.Name);
+        packet.WriteByte((byte)(sheet.Online ? Granted : Denied));
+        packet.WriteByte(sheet.Level);
+        packet.WriteShort(sheet.Class);
+        packet.WriteByte(sheet.Nation);
+        packet.WriteByte(sheet.ZoneId);
+        packet.WriteUShort(sheet.X);
+        packet.WriteUShort(sheet.Z);
+        packet.WriteInt(sheet.Gold);
+        packet.WriteInt(sheet.KnightCash);
+        packet.WriteInt(sheet.Loyalty);
+        packet.WriteUInt(sheet.LastSeen);
+        packet.WriteByte((byte)sheet.Slots.Count);
+        foreach (var slot in sheet.Slots)
+        {
+            packet.WriteByte(slot.Position);
+            packet.WriteInt(slot.ItemId);
+            packet.WriteUShort(slot.Count);
+            packet.WriteShort(slot.Durability);
+            packet.WriteByte(slot.Flag);
+        }
+
+        return packet;
+    }
 
     public readonly record struct SpawnRowInfo(
         bool CanPersist, int Index, int NpcId, string Name, byte ZoneId, bool Monster, int X, int Z, int YTenths,
@@ -169,19 +205,26 @@ public sealed class AdminPanelPacketWriter
             packet.WriteByte(row.ZoneId);
             packet.WriteUShort(row.X);
             packet.WriteUShort(row.Z);
-            packet.WriteByte((byte)((row.Monster ? FindMonsterFlag : 0) | (row.Bot ? FindBotFlag : 0)));
+            packet.WriteByte((byte)((row.Monster ? FindMonsterFlag : 0) | (row.Bot ? FindBotFlag : 0) | (row.Online ? FindOnlineFlag : 0)));
+            packet.WriteShort(row.Class);
+            packet.WriteByte(row.Nation);
+            packet.WriteUInt(row.LastSeen);
         }
 
         return packet;
     }
 
-    public static Packet Result(byte sub, bool ok, string message)
+    public const byte ResultSub = 0x11;
+
+    public static Packet Result(bool ok, string message)
     {
-        var packet = Sub(sub);
+        var packet = Sub(ResultSub);
         packet.WriteByte((byte)(ok ? Granted : Denied));
         packet.WriteString(message);
         return packet;
     }
+
+    public static ushort WireCoordinate(float value) => (ushort)Math.Clamp(value, 0, ushort.MaxValue);
 
     public const byte CommandsSub = 0x17;
 

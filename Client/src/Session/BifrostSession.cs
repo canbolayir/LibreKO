@@ -3,11 +3,13 @@
 public sealed class BifrostSession
 {
     private const ulong MsPerSecond = 1000;
+    private const ulong DrakiLingerMs = DrakiTower.PlateLingerSeconds * MsPerSecond;
 
-    public ulong DrakiEndsAtMs { get; private set; }
-
-    public int DrakiSecondsLeft(ulong nowMs) =>
-        DrakiEndsAtMs > nowMs ? (int)((DrakiEndsAtMs - nowMs + MsPerSecond - 1) / MsPerSecond) : 0;
+    private int drakiLimitSeconds;
+    private int drakiElapsedSeconds;
+    private int drakiFrozenSecondsLeft;
+    private ulong drakiClockFromMs;
+    private ulong drakiPlateClosesAtMs;
 
     public int DrakiStage { get; private set; }
 
@@ -15,18 +17,62 @@ public sealed class BifrostSession
 
     public DrakiStageEnd? DrakiFinish { get; private set; }
 
-    internal void ApplyDrakiTimer(int stage, int subStage, int secondsLeft, ulong nowMs)
+    public bool DrakiPlateOpen { get; private set; }
+
+    public bool DrakiPlateShown(ulong nowMs) =>
+        DrakiPlateOpen && (drakiPlateClosesAtMs == 0 || nowMs < drakiPlateClosesAtMs);
+
+    public bool DrakiPlateClosing => drakiPlateClosesAtMs != 0;
+
+    public int DrakiSecondsLeft(ulong nowMs)
+    {
+        if (!DrakiPlateOpen) return 0;
+        if (DrakiFinish != null) return drakiFrozenSecondsLeft;
+        ulong endsAt = drakiClockFromMs + (ulong)drakiLimitSeconds * MsPerSecond;
+        return endsAt > nowMs ? (int)((endsAt - nowMs + MsPerSecond - 1) / MsPerSecond) : 0;
+    }
+
+    public int DrakiElapsedSeconds(ulong nowMs)
+    {
+        if (DrakiFinish is { } finish) return finish.ElapsedSeconds;
+        if (DrakiSubStage == 0 || nowMs <= drakiClockFromMs) return drakiElapsedSeconds;
+        return drakiElapsedSeconds + (int)((nowMs - drakiClockFromMs) / MsPerSecond);
+    }
+
+    public DrakiPlateView DrakiPlate(ulong nowMs) =>
+        new(DrakiStage, DrakiSubStage, DrakiSecondsLeft(nowMs), DrakiElapsedSeconds(nowMs), DrakiFinish != null, DrakiFinish?.GaveUp ?? false);
+
+    public event Action? DrakiTimerEvent;
+
+    public event Action<int, int>? DrakiFloorEvent;
+
+    public event Action? DrakiClosingEvent;
+
+    internal void ApplyDrakiTimer(int stage, int subStage, int limitSeconds, int elapsedSeconds, ulong nowMs)
     {
         DrakiStage = stage;
         DrakiSubStage = subStage;
-        DrakiEndsAtMs = secondsLeft > 0 ? nowMs + (ulong)secondsLeft * MsPerSecond : 0;
+        drakiLimitSeconds = Math.Max(0, limitSeconds);
+        drakiElapsedSeconds = Math.Max(0, elapsedSeconds);
+        drakiClockFromMs = nowMs;
+        drakiPlateClosesAtMs = 0;
         DrakiFinish = null;
+        DrakiPlateOpen = true;
+        DrakiTimerEvent?.Invoke();
+        if (subStage != 0) DrakiFloorEvent?.Invoke(stage, subStage);
     }
 
-    internal void ApplyDrakiLeave()
+    internal void ApplyDrakiLeave(ulong nowMs)
     {
-        DrakiEndsAtMs = 0;
+        drakiPlateClosesAtMs = nowMs + DrakiLingerMs;
+        DrakiClosingEvent?.Invoke();
+    }
+
+    internal void CloseDrakiPlate()
+    {
+        DrakiPlateOpen = false;
         DrakiFinish = null;
+        drakiPlateClosesAtMs = 0;
     }
 
     public event Action<DrakiEnterResult>? DrakiEnterResultEvent;
@@ -37,12 +83,13 @@ public sealed class BifrostSession
 
     internal void RaiseDrakiRankList(DrakiRankList list) => DrakiRankListEvent?.Invoke(list);
 
-    internal void ApplyDrakiStageEnd(DrakiStageEnd finish)
+    internal void ApplyDrakiStageEnd(DrakiStageEnd finish, ulong nowMs)
     {
+        drakiFrozenSecondsLeft = DrakiSecondsLeft(nowMs);
         DrakiStage = finish.Stage;
         DrakiSubStage = finish.SubStage;
-        DrakiEndsAtMs = 0;
         DrakiFinish = finish;
+        DrakiPlateOpen = true;
     }
 
     public event Action<int, TempleEventType>? BifrostTimeEvent;

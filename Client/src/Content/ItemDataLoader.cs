@@ -1,16 +1,28 @@
-﻿using Godot;
+﻿using System.Text.Json;
+using Godot;
 
 namespace LibreKO.Content;
 
 internal static class ItemDataLoader
 {
+    private const string ItemsPath = "res://assets/items/items.json";
+    private const string PriceOverridesPath = "res://assets/items/price_overrides.json";
+
     internal static void Load()
     {
-        using var f = Godot.FileAccess.Open("res://assets/items/items.json", Godot.FileAccess.ModeFlags.Read);
-        if (f == null) { GD.PushWarning("[items] missing items.json (run tools/bake_items.py)"); return; }
-        var parsed = Json.ParseString(f.GetAsText());
-        if (parsed.VariantType != Variant.Type.Dictionary) return;
-        var d = parsed.AsGodotDictionary();
+        if (ContentFiles.ReadText(ItemsPath) is not { } json)
+        {
+            GD.PushWarning("[items] missing items.json (run tools/bake_items.py)");
+            return;
+        }
+        LoadFrom(json, ContentFiles.ReadText(PriceOverridesPath));
+    }
+
+    internal static void LoadFrom(string json, string? priceOverrides)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var d = doc.RootElement;
+        if (d.ValueKind != JsonValueKind.Object) return;
         LoadTexts(d);
         LoadExtensions(d);
         LoadSellGroups(d);
@@ -19,11 +31,11 @@ internal static class ItemDataLoader
         LoadUiHelp(d);
         LoadSetBonuses(d);
         LoadSkillOptions(d);
-        LoadPriceOverrides();
-        foreach (var key in d.Keys)
+        LoadPriceOverrides(priceOverrides);
+        foreach (var entry in d.EnumerateObject())
         {
-            if (!int.TryParse(key.AsString(), out int id)) continue;
-            var o = d[key].AsGodotDictionary();
+            if (!int.TryParse(entry.Name, out int id) || entry.Value.ValueKind != JsonValueKind.Object) continue;
+            var o = entry.Value;
             int reqLevel = Int(o, "reqLevel");
             if (reqLevel == 0) reqLevel = Int(o, "reqLvl");
             ItemData.AddItem(new ItemData.Item
@@ -49,27 +61,27 @@ internal static class ItemDataLoader
         }
     }
 
-    private static void LoadTexts(Godot.Collections.Dictionary root)
+    private static bool Section(JsonElement root, string name, JsonValueKind kind, out JsonElement section) =>
+        root.TryGetProperty(name, out section) && section.ValueKind == kind;
+
+    private static void LoadTexts(JsonElement root)
     {
-        if (!root.TryGetValue("_texts", out var tv) || tv.VariantType != Variant.Type.Dictionary) return;
-        var rawTexts = tv.AsGodotDictionary();
-        foreach (var key in rawTexts.Keys)
-            if (int.TryParse(key.AsString(), out int id))
-                ItemData.AddText(id, rawTexts[key].AsString());
+        if (!Section(root, "_texts", JsonValueKind.Object, out var texts)) return;
+        foreach (var text in texts.EnumerateObject())
+            if (int.TryParse(text.Name, out int id))
+                ItemData.AddText(id, AsString(text.Value));
     }
 
-    private static void LoadExtensions(Godot.Collections.Dictionary root)
+    private static void LoadExtensions(JsonElement root)
     {
-        if (!root.TryGetValue("_ext", out var ev) || ev.VariantType != Variant.Type.Dictionary) return;
-        var cats = ev.AsGodotDictionary();
-        foreach (var catKey in cats.Keys)
+        if (!Section(root, "_ext", JsonValueKind.Object, out var cats)) return;
+        foreach (var catEntry in cats.EnumerateObject())
         {
-            if (!int.TryParse(catKey.AsString(), out int cat)) continue;
-            var rows = cats[catKey].AsGodotDictionary();
-            foreach (var extKey in rows.Keys)
+            if (!int.TryParse(catEntry.Name, out int cat) || catEntry.Value.ValueKind != JsonValueKind.Object) continue;
+            foreach (var extEntry in catEntry.Value.EnumerateObject())
             {
-                if (!int.TryParse(extKey.AsString(), out int extId)) continue;
-                var o = rows[extKey].AsGodotDictionary();
+                if (!int.TryParse(extEntry.Name, out int extId) || extEntry.Value.ValueKind != JsonValueKind.Object) continue;
+                var o = extEntry.Value;
                 var e = new ItemData.Ext
                 {
                     Cat = cat, Id = extId,
@@ -113,14 +125,13 @@ internal static class ItemDataLoader
         ItemData.IndexReverseCategories();
     }
 
-    private static void LoadSetBonuses(Godot.Collections.Dictionary root)
+    private static void LoadSetBonuses(JsonElement root)
     {
-        if (!root.TryGetValue("_sets", out var sv) || sv.VariantType != Variant.Type.Dictionary) return;
-        var rows = sv.AsGodotDictionary();
-        foreach (var key in rows.Keys)
+        if (!Section(root, "_sets", JsonValueKind.Object, out var rows)) return;
+        foreach (var row in rows.EnumerateObject())
         {
-            if (!int.TryParse(key.AsString(), out int id)) continue;
-            var o = rows[key].AsGodotDictionary();
+            if (!int.TryParse(row.Name, out int id) || row.Value.ValueKind != JsonValueKind.Object) continue;
+            var o = row.Value;
             ItemData.AddSetBonus(id, new ItemData.SetBonus
             {
                 Name = Str(o, "name"),
@@ -136,103 +147,103 @@ internal static class ItemDataLoader
         }
     }
 
-    private static void LoadSkillOptions(Godot.Collections.Dictionary root)
+    private static void LoadSkillOptions(JsonElement root)
     {
-        if (!root.TryGetValue("_ops", out var ov) || ov.VariantType != Variant.Type.Dictionary) return;
-        var rows = ov.AsGodotDictionary();
-        foreach (var key in rows.Keys)
+        if (!Section(root, "_ops", JsonValueKind.Object, out var rows)) return;
+        foreach (var row in rows.EnumerateObject())
         {
-            if (!int.TryParse(key.AsString(), out int id)) continue;
+            if (!int.TryParse(row.Name, out int id) || row.Value.ValueKind != JsonValueKind.Array) continue;
             var list = new List<ItemData.SkillOption>();
-            foreach (var entry in rows[key].AsGodotArray())
-            {
-                var a = entry.AsGodotArray();
-                if (a.Count >= 3) list.Add(new ItemData.SkillOption(a[0].AsInt32(), a[1].AsInt32(), a[2].AsInt32()));
-            }
+            foreach (var entry in row.Value.EnumerateArray())
+                if (entry.ValueKind == JsonValueKind.Array && entry.GetArrayLength() >= 3)
+                    list.Add(new ItemData.SkillOption(AsInt(entry[0]), AsInt(entry[1]), AsInt(entry[2])));
             if (list.Count > 0) ItemData.AddSkillOptions(id, list);
         }
     }
 
-    private static void LoadSellGroups(Godot.Collections.Dictionary root)
+    private static void LoadSellGroups(JsonElement root)
     {
-        if (!root.TryGetValue("_sell", out var sv) || sv.VariantType != Variant.Type.Dictionary) return;
-        var groups = sv.AsGodotDictionary();
-        foreach (var key in groups.Keys)
+        if (!Section(root, "_sell", JsonValueKind.Object, out var groups)) return;
+        foreach (var groupEntry in groups.EnumerateObject())
         {
-            if (!int.TryParse(key.AsString(), out int group)) continue;
-            var arr = groups[key].AsGodotArray();
-            var list = new List<ItemData.SellEntry>(arr.Count);
-            foreach (var e in arr)
+            if (!int.TryParse(groupEntry.Name, out int group) || groupEntry.Value.ValueKind != JsonValueKind.Array) continue;
+            var list = new List<ItemData.SellEntry>(groupEntry.Value.GetArrayLength());
+            foreach (var e in groupEntry.Value.EnumerateArray())
             {
-                var t = e.AsGodotArray();
-                if (t.Count < 3) continue;
-                list.Add(new ItemData.SellEntry { Id = t[0].AsInt32(), Line = t[1].AsInt32(), List = t[2].AsInt32() });
+                if (e.ValueKind != JsonValueKind.Array || e.GetArrayLength() < 3) continue;
+                list.Add(new ItemData.SellEntry { Id = AsInt(e[0]), Line = AsInt(e[1]), List = AsInt(e[2]) });
             }
             ItemData.AddSellGroup(group, list);
         }
     }
 
-    private static void LoadPieceRewards(Godot.Collections.Dictionary root)
+    private static void LoadPieceRewards(JsonElement root)
     {
-        if (!root.TryGetValue("_pieces", out var pv) || pv.VariantType != Variant.Type.Dictionary) return;
-        var rawPieces = pv.AsGodotDictionary();
-        foreach (var key in rawPieces.Keys)
+        if (!Section(root, "_pieces", JsonValueKind.Object, out var pieces)) return;
+        foreach (var piece in pieces.EnumerateObject())
         {
-            if (!int.TryParse(key.AsString(), out int pieceId)) continue;
-            var arr = rawPieces[key].AsGodotArray();
-            var rewards = new int[arr.Count];
-            for (int i = 0; i < arr.Count; i++) rewards[i] = arr[i].AsInt32();
+            if (!int.TryParse(piece.Name, out int pieceId) || piece.Value.ValueKind != JsonValueKind.Array) continue;
+            var rewards = new int[piece.Value.GetArrayLength()];
+            int i = 0;
+            foreach (var reward in piece.Value.EnumerateArray()) rewards[i++] = AsInt(reward);
             if (rewards.Length > 0) ItemData.AddPieceRewards(pieceId, rewards);
         }
     }
 
-    private static void LoadAttendance(Godot.Collections.Dictionary root)
+    private static void LoadAttendance(JsonElement root)
     {
-        if (!root.TryGetValue("_attendance", out var av) || av.VariantType != Variant.Type.Dictionary) return;
-        var slots = av.AsGodotDictionary();
-        foreach (var key in slots.Keys)
+        if (!Section(root, "_attendance", JsonValueKind.Object, out var slots)) return;
+        foreach (var slotEntry in slots.EnumerateObject())
         {
-            if (!int.TryParse(key.AsString(), out int slot)) continue;
-            var arr = slots[key].AsGodotArray();
-            if (arr.Count < 2) continue;
-            ItemData.AddAttendance(slot, arr[0].AsInt32(), arr[1].AsInt32());
+            if (!int.TryParse(slotEntry.Name, out int slot) || slotEntry.Value.ValueKind != JsonValueKind.Array
+                || slotEntry.Value.GetArrayLength() < 2) continue;
+            ItemData.AddAttendance(slot, AsInt(slotEntry.Value[0]), AsInt(slotEntry.Value[1]));
         }
     }
 
-    private static void LoadUiHelp(Godot.Collections.Dictionary root)
+    private static void LoadUiHelp(JsonElement root)
     {
-        if (!root.TryGetValue("_help", out var hv) || hv.VariantType != Variant.Type.Dictionary) return;
-        var entries = hv.AsGodotDictionary();
-        foreach (var key in entries.Keys)
+        if (!Section(root, "_help", JsonValueKind.Object, out var entries)) return;
+        foreach (var entry in entries.EnumerateObject())
         {
-            if (!int.TryParse(key.AsString(), out int id)) continue;
-            var pair = entries[key].AsGodotArray();
-            if (pair.Count < 2) continue;
-            ItemData.AddHelp(id, pair[0].AsString(), pair[1].AsString());
+            if (!int.TryParse(entry.Name, out int id) || entry.Value.ValueKind != JsonValueKind.Array
+                || entry.Value.GetArrayLength() < 2) continue;
+            ItemData.AddHelp(id, AsString(entry.Value[0]), AsString(entry.Value[1]));
         }
     }
 
-    private static void LoadPriceOverrides()
+    private static void LoadPriceOverrides(string? json)
     {
-        using var f = Godot.FileAccess.Open("res://assets/items/price_overrides.json", Godot.FileAccess.ModeFlags.Read);
-        if (f == null) return;
-        var parsed = Json.ParseString(f.GetAsText());
-        if (parsed.VariantType != Variant.Type.Dictionary) return;
-        var d = parsed.AsGodotDictionary();
-        foreach (var key in d.Keys)
-            if (int.TryParse(key.AsString(), out int id)) ItemData.AddPriceOverride(id, d[key].AsInt32());
+        if (json == null) return;
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object) return;
+        foreach (var entry in doc.RootElement.EnumerateObject())
+            if (int.TryParse(entry.Name, out int id)) ItemData.AddPriceOverride(id, AsInt(entry.Value));
     }
 
-    private static string Str(Godot.Collections.Dictionary o, string k) => o.ContainsKey(k) ? o[k].AsString() : "";
-    private static int Int(Godot.Collections.Dictionary o, string k) =>
-        o.ContainsKey(k) && o[k].VariantType != Variant.Type.Nil ? o[k].AsInt32() : 0;
+    private static string Str(JsonElement o, string k) => o.TryGetProperty(k, out var v) ? AsString(v) : "";
+
+    private static int Int(JsonElement o, string k) => o.TryGetProperty(k, out var v) ? AsInt(v) : 0;
+
+    private static string AsString(JsonElement v) => v.ValueKind switch
+    {
+        JsonValueKind.String => v.GetString() ?? "",
+        JsonValueKind.Number => v.GetRawText(),
+        _ => "",
+    };
+
+    private static int AsInt(JsonElement v) => v.ValueKind switch
+    {
+        JsonValueKind.Number when v.TryGetInt64(out long whole) => unchecked((int)whole),
+        JsonValueKind.Number => (int)v.GetDouble(),
+        JsonValueKind.True => 1,
+        _ => 0,
+    };
 
     private const string ExtAttackIntervalColumn = "9";
     private const string ExtGradeClassColumn = "30";
     private const string ExtUnbindStonesColumn = "55";
 
-    private static int RawInt(Godot.Collections.Dictionary o, string column) =>
-        o.ContainsKey("raw") && o["raw"].VariantType == Variant.Type.Dictionary
-            ? Int(o["raw"].AsGodotDictionary(), column)
-            : 0;
+    private static int RawInt(JsonElement o, string column) =>
+        o.TryGetProperty("raw", out var raw) && raw.ValueKind == JsonValueKind.Object ? Int(raw, column) : 0;
 }

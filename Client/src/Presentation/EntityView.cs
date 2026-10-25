@@ -69,6 +69,7 @@ public sealed class EntityView
     public int Level;
     public int Hp, MaxHp;
     public int ModelId, Size, Nation, NpcId, NpcType;
+    public int SurvivalRow;
     public int Race, LookRace, Face, Hair;
     public int CapeId, CapeR, CapeG, CapeB, KnightsId, AllianceId, ClanGrade, ClanRanking, ClanMarkVersion;
     public string ClanName = "";
@@ -80,6 +81,7 @@ public sealed class EntityView
     public int PersonalRank = NationRankAura.Unranked;
     public int KnightsRank = NationRankAura.Unranked;
     public int[] Gear = System.Array.Empty<int>();
+    public BossPhase? BossPhase;
     public Dictionary<int, (Mesh? Mesh, Skin? Skin)> DefaultParts = new();
     public float SpawnX, SpawnZ, SpawnY, SpawnDir;
     public string ModelStem = "";

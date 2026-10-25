@@ -111,12 +111,13 @@ public static class PhysicalDamageCalculator
     }
 
     private static bool HasFixedDamage(byte zoneId) =>
-        zoneId is ZoneSnowBattle or ZoneChaosDungeon or ZoneDungeonDefence;
+        zoneId is ZoneSnowBattle or ZoneChaosDungeon or ZoneDungeonDefence || ManesSurvivalRules.IsZone(zoneId);
 
     private static int ZoneDamage(byte zoneId, int damage) => zoneId switch
     {
         ZoneSnowBattle => 0,
         ZoneChaosDungeon or ZoneDungeonDefence => FixedDungeonDamage,
+        _ when ManesSurvivalRules.IsZone(zoneId) => FixedDungeonDamage,
         _ => damage,
     };
 }

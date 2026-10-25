@@ -68,7 +68,7 @@ public static class NearbyRoster
 
     private static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
-    private static float Distance(NearbyViewer me, float x, float z)
+    public static float Distance(NearbyViewer me, float x, float z)
     {
         float dx = x - me.X, dz = z - me.Z;
         return MathF.Sqrt(dx * dx + dz * dz);

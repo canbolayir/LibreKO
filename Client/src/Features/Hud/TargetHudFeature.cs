@@ -16,8 +16,9 @@ internal sealed class TargetHudFeature : IFeature
     private readonly ClanMarksFeature clanMarks;
     private readonly SelectionFeature selection;
     private readonly PluginBridgeFeature pluginBridge;
+    private readonly TargetGmFeature targetGm;
 
-    public TargetHudFeature(IWorldContext context, ICombatRequests combatRequests, SiegeTowerSystem siegeTower, EntityPlatesSystem entityPlates, EntitySystem entities, TargetEffectsFeature targetEffects, TargetQuestDropsFeature targetQuestDrops, LootFilterFeature lootFilter, ClanMarksFeature clanMarks, SelectionFeature selection, PluginBridgeFeature pluginBridge)
+    public TargetHudFeature(IWorldContext context, ICombatRequests combatRequests, SiegeTowerSystem siegeTower, EntityPlatesSystem entityPlates, EntitySystem entities, TargetEffectsFeature targetEffects, TargetQuestDropsFeature targetQuestDrops, LootFilterFeature lootFilter, ClanMarksFeature clanMarks, SelectionFeature selection, PluginBridgeFeature pluginBridge, TargetGmFeature targetGm)
     {
         this.context = context;
         this.combatRequests = combatRequests;
@@ -30,6 +31,7 @@ internal sealed class TargetHudFeature : IFeature
         this.clanMarks = clanMarks;
         this.selection = selection;
         this.pluginBridge = pluginBridge;
+        this.targetGm = targetGm;
     }
 
     public void Build()
@@ -52,6 +54,15 @@ internal sealed class TargetHudFeature : IFeature
     internal StatBar TargetHp { get; private set; } = null!;
 
     private const float TargetHudBarHeight = 22f;
+
+    private static readonly Color?[] PhaseLayerColours =
+    {
+        null,
+        Color.Color8(26, 162, 163),
+        Color.Color8(163, 128, 26),
+        Color.Color8(110, 57, 124),
+        Color.Color8(77, 89, 39),
+    };
 
     private const float TargetCloseSize = 26f;
 
@@ -81,6 +92,7 @@ internal sealed class TargetHudFeature : IFeature
         targetQuestDrops.BuildRow(TargetBox);
         lootFilter.BuildDropListUi(TargetBox);
         siegeTower.BuildTowerButton(TargetBox);
+        targetGm.BuildRow(TargetBox);
         HudLayout.Attach(TargetBox, "hud_target", TargetName,
             () =>
             {
@@ -128,7 +140,7 @@ internal sealed class TargetHudFeature : IFeature
 
     private void SyncTargetClanRow(EntityView e)
     {
-        bool clan = !e.IsNpc && e.KnightsId > 0 && e.ClanName.Length > 0;
+        bool clan = !e.IsNpc && e.KnightsId > 0 && e.ClanName.Length > 0 && !entityPlates.HidesHunters;
         if (targetClanRow.Visible != clan) targetClanRow.Visible = clan;
         if (!clan) return;
         string text = $"{e.ClanName}  ·  {ClanTypes.Standing(e.ClanFlag, (byte)e.ClanGrade)}";
@@ -196,6 +208,8 @@ internal sealed class TargetHudFeature : IFeature
             combatRequests.TargetHpRequest(selection.SelectedId);
     }
 
+    internal void ShowPhaseLayer(BossPhase? phase) => TargetHp.FillOverride = phase != null ? PhaseLayerColours[phase.Layer] : null;
+
     internal int TargetHudId { get; private set; } = -1;
 
     private int targetHudLevel;
@@ -221,6 +235,7 @@ internal sealed class TargetHudFeature : IFeature
                 TargetName.Text = e.Level > 0 ? $"{shownName}   Lv {e.Level}" : shownName;
             }
             SyncTargetClanRow(e);
+            ShowPhaseLayer(e.BossPhase);
             if (e.MaxHp > 0) TargetHp.Set(e.Hp, e.MaxHp); else TargetHp.SetFull();
             if (!targetBoxShown) { targetBoxShown = true; TargetBox.Visible = true; }
         }
@@ -233,6 +248,7 @@ internal sealed class TargetHudFeature : IFeature
         lootFilter.SyncDropListButton(TargetHudId);
         targetQuestDrops.Sync(selection.SelectedId);
         siegeTower.SyncTowerButton(TargetHudId);
+        targetGm.Sync(TargetHudId);
         pluginBridge.NotifyTarget();
     }
 }

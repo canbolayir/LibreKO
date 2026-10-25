@@ -31,6 +31,7 @@ internal sealed class MailFeature : IFeature, IEscapable
     private const int AttachmentScrollGutter = 12;
     private const string UnreadGlyph = "●";
     private const string ReadGlyph = "○";
+    private const string DiscardWarning = "This letter still holds attachments. They will be lost for good. Delete it anyway?";
 
     internal CanvasLayer Layer { get; private set; } = null!;
     internal HudWindow Window { get; private set; } = null!;
@@ -52,6 +53,13 @@ internal sealed class MailFeature : IFeature, IEscapable
     private Button claimBtn = null!;
     private Button deleteBtn = null!;
     private List<MailEntry> mails = [];
+    private readonly MailSelection ticked = new();
+    private CheckBox selectAll = null!;
+    private Button deleteTicked = null!;
+    private HBoxContainer bulkConfirm = null!;
+    private Label bulkQuestion = null!;
+    private Queue<int>? deleteQueue;
+    private int deletedInRun;
 
     private int selectedId = -1;
 
@@ -136,6 +144,8 @@ internal sealed class MailFeature : IFeature, IEscapable
         unreadPill = UiTheme.Text("", 12, UiTheme.GoldBright);
         head.AddChild(unreadPill);
 
+        BuildBulkBar(body);
+
         var scroll = new ScrollContainer
         {
             CustomMinimumSize = new Vector2(BodyWidth, ListHeight),
@@ -159,6 +169,86 @@ internal sealed class MailFeature : IFeature, IEscapable
         foot.AddChild(fill);
 
         BuildReadWindow();
+    }
+
+    private void BuildBulkBar(VBoxContainer body)
+    {
+        var bulk = new HBoxContainer();
+        bulk.AddThemeConstantOverride("separation", 6);
+        body.AddChild(bulk);
+        selectAll = UiTheme.FlatCheck("Select all", false);
+        selectAll.TooltipText = "Tick every letter shown (not the ones with attachments to claim)";
+        selectAll.Toggled += on =>
+        {
+            ticked.SetAll(ShownMails(), on);
+            RenderList();
+        };
+        bulk.AddChild(selectAll);
+        bulk.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+        deleteTicked = UiTheme.SmallButton("Delete", "Delete the ticked letters");
+        deleteTicked.Pressed += AskDeleteTicked;
+        bulk.AddChild(deleteTicked);
+        bulkConfirm = new HBoxContainer { Visible = false };
+        bulkConfirm.AddThemeConstantOverride("separation", 6);
+        bulk.AddChild(bulkConfirm);
+        bulkQuestion = UiTheme.Text("", 12, UiTheme.Warning);
+        bulkConfirm.AddChild(bulkQuestion);
+        var yes = UiTheme.SmallButton("Delete", "Delete them now");
+        yes.Pressed += DeleteTicked;
+        bulkConfirm.AddChild(yes);
+        var no = UiTheme.SmallButton("Cancel", "Keep them");
+        no.Pressed += () => ShowBulkConfirm(false);
+        bulkConfirm.AddChild(no);
+        RefreshBulk();
+    }
+
+    private IEnumerable<MailEntry> ShownMails() =>
+        mails.Where(m => MailView.Shows(m, unreadOnlyToggle.ButtonPressed, parcelsOnlyToggle.ButtonPressed));
+
+    private void RefreshBulk()
+    {
+        bool running = deleteQueue != null;
+        deleteTicked.Text = ticked.Count > 0 ? $"Delete ({ticked.Count})" : "Delete";
+        deleteTicked.Disabled = ticked.Count == 0 || running;
+        selectAll.Disabled = running;
+        selectAll.SetPressedNoSignal(ticked.AllTicked(ShownMails()));
+        if (ticked.Count == 0) ShowBulkConfirm(false);
+    }
+
+    private void ShowBulkConfirm(bool on)
+    {
+        bulkConfirm.Visible = on;
+        deleteTicked.Visible = !on;
+        if (on) bulkQuestion.Text = $"{ItemData.Text(DeleteConfirmText, "Are you sure you want to delete?")} ({ticked.Count})";
+    }
+
+    private void AskDeleteTicked()
+    {
+        if (ticked.Count == 0 || deleteQueue != null) return;
+        ShowBulkConfirm(true);
+    }
+
+    private void DeleteTicked()
+    {
+        ShowBulkConfirm(false);
+        if (ticked.Count == 0 || deleteQueue != null) return;
+        deleteQueue = ticked.TakeAll();
+        deletedInRun = 0;
+        RefreshBulk();
+        DeleteNext();
+    }
+
+    private void DeleteNext()
+    {
+        if (deleteQueue != null && deleteQueue.TryDequeue(out int mailId))
+        {
+            requests.Delete(mailId);
+            return;
+        }
+        deleteQueue = null;
+        status.Text = deletedInRun == 1 ? "1 letter deleted." : $"{deletedInRun} letters deleted.";
+        requests.List();
+        RefreshBulk();
     }
 
     private void BuildReadWindow()
@@ -208,11 +298,13 @@ internal sealed class MailFeature : IFeature, IEscapable
     private void AskDelete()
     {
         int mailId = selectedId;
-        if (mailId <= 0) return;
-        string subject = mails.FirstOrDefault(m => m.Id == mailId)?.Subject ?? "";
-        string question = ItemData.Text(DeleteConfirmText, "Are you sure you want to delete?");
+        if (mailId <= 0 || mails.FirstOrDefault(m => m.Id == mailId) is not { } mailEntry) return;
+        bool discard = MailView.IsParcel(mailEntry);
+        if (discard && mailEntry.Kind == MailKind.Store) return;
+        string question = discard ? DiscardWarning : ItemData.Text(DeleteConfirmText, "Are you sure you want to delete?");
+        string subject = mailEntry.Subject;
         Notice.Confirm(context.Root, subject.Length > 0 ? $"{subject}\n{question}" : question, "Delete", "Cancel",
-            () => { if (selectedId == mailId) requests.Delete(mailId); });
+            () => { if (selectedId == mailId) requests.Delete(mailId, discard); });
     }
 
     internal void Show()
@@ -260,6 +352,7 @@ internal sealed class MailFeature : IFeature, IEscapable
     internal void OnList(List<MailEntry> mails)
     {
         this.mails = mails;
+        ticked.KeepOnly(mails);
         RenderList();
         if (selectedId > 0 && mails.All(m => m.Id != selectedId))
         {
@@ -299,6 +392,7 @@ internal sealed class MailFeature : IFeature, IEscapable
         }
         if (shownCount == 0)
             list.AddChild(UiTheme.Text(MailView.EmptyText(unreadOnly, parcelsOnly), 12, UiTheme.TextLo, HorizontalAlignment.Center));
+        RefreshBulk();
     }
 
     private Control BuildRow(MailEntry mailEntry)
@@ -314,6 +408,17 @@ internal sealed class MailFeature : IFeature, IEscapable
         row.AddThemeConstantOverride("separation", 8);
         margin.AddChild(row);
 
+        bool deletable = MailSelection.Deletable(mailEntry);
+        var tick = UiTheme.FlatCheck("", ticked.Has(mailEntry.Id));
+        tick.Disabled = !deletable || deleteQueue != null;
+        tick.TooltipText = deletable ? "Tick to delete it with the others" : "Claim the attachments first";
+        tick.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        tick.Toggled += on =>
+        {
+            ticked.Set(mailEntry, on);
+            RefreshBulk();
+        };
+        row.AddChild(tick);
         row.AddChild(UiTheme.Text(mailEntry.Read ? ReadGlyph : UnreadGlyph, 12, mailEntry.Read ? UiTheme.TextDim : UiTheme.GoldBright));
         var text = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         text.AddThemeConstantOverride("separation", 0);
@@ -431,9 +536,13 @@ internal sealed class MailFeature : IFeature, IEscapable
 
     private void PaintActions(MailEntry mailEntry)
     {
-        claimBtn.Visible = mailEntry.Attachments == MailAttachmentState.Pending;
-        deleteBtn.Disabled = mailEntry.Attachments == MailAttachmentState.Pending;
-        deleteBtn.TooltipText = mailEntry.Attachments == MailAttachmentState.Pending ? "Claim the attachments first" : "Delete this mail";
+        bool parcel = MailView.IsParcel(mailEntry);
+        bool storeParcel = parcel && mailEntry.Kind == MailKind.Store;
+        claimBtn.Visible = parcel;
+        deleteBtn.Disabled = storeParcel;
+        deleteBtn.TooltipText = storeParcel ? "Claim the Power-Up Store items first"
+            : parcel ? "Delete this mail and lose its attachments"
+            : "Delete this mail";
     }
 
     internal void OnRead(int mailId, bool ok, string body)
@@ -451,12 +560,19 @@ internal sealed class MailFeature : IFeature, IEscapable
 
     private void OnDeleteResult(int mailId, bool ok, string message)
     {
-        status.Text = ok ? "Mail deleted." : message;
         if (ok && mailId == selectedId)
         {
             selectedId = -1;
             ReadWindow.Visible = false;
         }
+        if (deleteQueue != null)
+        {
+            if (ok) deletedInRun++;
+            else status.Text = message;
+            DeleteNext();
+            return;
+        }
+        status.Text = ok ? "Mail deleted." : message;
         requests.List();
     }
 

@@ -1,11 +1,42 @@
 ﻿using LibreKO.Domain;
 using LibreKO.Network;
+using LibreKO.Network.Readers;
+using LibreKO.Network.Requests;
+using LibreKO.Session;
 using Xunit;
 
 namespace LibreKO.Tests;
 
 public class ChatNoticesTests
 {
+    private sealed class NoConnection : IPacketSink
+    {
+        public bool Connected => false;
+
+        public void Send(Packet packet) { }
+    }
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(0, false)]
+    public void OpcodeD1IsTheTwentySixNineteenMonsterNotice(byte flag, bool shown)
+    {
+        var session = new GameSession();
+        var dispatcher = new PacketDispatcher();
+        PacketReaders.Register(dispatcher, session, new GameRequests(new NoConnection(), session, new LoginState()), () => 0);
+        bool raised = false;
+        session.Chat.MonsterNotAttackableEvent += () => raised = true;
+        var p = new Packet(GameOpcodes.GS_MONSTER_NOT_ATTACKABLE);
+        p.WriteByte(flag);
+        p.ResetOffset();
+
+        dispatcher.Dispatch(p);
+
+        Assert.Equal(shown, raised);
+        Assert.Equal(0xD1, (int)GameOpcodes.GS_MONSTER_NOT_ATTACKABLE);
+        Assert.Equal(0xE2, (int)GameOpcodes.GS_CLAN_WAREHOUSE);
+    }
+
     [Fact]
     public void AMonumentCaptureCarriesTheNationAndTheName()
     {

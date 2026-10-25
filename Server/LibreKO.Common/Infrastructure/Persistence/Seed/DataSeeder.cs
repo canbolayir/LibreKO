@@ -22,13 +22,13 @@ public class DataSeeder(AppDbContext db, ILogger<DataSeeder> logger) : IDataSeed
             return false;
         }
 
+        if (!force && await dbSet.IgnoreQueryFilters().AnyAsync())
+            return false;
+
         var trackFingerprint = fileBackedSeed != null && saveChanges is true;
         var fingerprint = trackFingerprint
             ? await SeedFingerprint.ComputeAsync(entitySeed, fileBackedSeed!.SeedSources)
             : null;
-
-        if (fingerprint != null && !force && await IsUpToDateAsync(dbSet, seedName, fingerprint))
-            return false;
 
         var entityType = db.Model.FindEntityType(typeof(T));
 
@@ -126,24 +126,6 @@ public class DataSeeder(AppDbContext db, ILogger<DataSeeder> logger) : IDataSeed
         }
 
         return true;
-    }
-
-    private async Task<bool> IsUpToDateAsync<T>(DbSet<T> dbSet, string seedName, string fingerprint) where T : class
-    {
-        var recorded = await db.Set<SeedState>().AsNoTracking()
-            .FirstOrDefaultAsync(state => state.Name == seedName);
-
-        if (recorded == null || recorded.Fingerprint != fingerprint)
-            return false;
-
-        var rowCount = await dbSet.IgnoreQueryFilters().LongCountAsync();
-        if (rowCount == recorded.RowCount)
-            return true;
-
-        logger.LogInformation(
-            "Reseeding {SeedName}: {EntityType} holds {RowCount} rows, expected {ExpectedRowCount}",
-            seedName, typeof(T).Name, rowCount, recorded.RowCount);
-        return false;
     }
 
     private async Task RecordStateAsync(string seedName, string fingerprint, long rowCount)

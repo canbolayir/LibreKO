@@ -32,6 +32,10 @@ public static class ZoneCatalog
         new(53, "clanfight_b", "Goblin Quest"),
         new(54, "clanfight_b", "Cape Quest"),
         new(55, "clanfight_b", "Forgotten Temple"),
+        new(57, "manes survival", "Manes' Survival"),
+        new(58, "manes survival", "Manes' Survival"),
+        new(59, "manes survival", "Manes' Survival"),
+        new(60, "manes survival", "Manes' Survival"),
         new(61, "battlezone", "Napies Gorge"),
         new(62, "battlezone_b", "Alseids Prairie"),
         new(63, "battlezone_d", "Nieds Triangle"),
@@ -68,12 +72,14 @@ public static class ZoneCatalog
         new(109, "freezone_a", "Dark Ardream"),
     };
 
-    public static string Name(int zoneId)
+    public static string? Find(int zoneId)
     {
         foreach (var z in All)
             if (z.Id == zoneId) return z.Name;
-        return $"Zone {zoneId}";
+        return null;
     }
+
+    public static string Name(int zoneId) => Find(zoneId) ?? $"Zone {zoneId}";
 
     public static string? Stem(int zoneId)
     {

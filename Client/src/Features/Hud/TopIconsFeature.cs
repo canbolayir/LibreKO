@@ -2,19 +2,20 @@
 
 namespace LibreKO.Features.Hud;
 
-internal enum TopIconSlot { AttendanceGift, Trophy, Mail, PowerUpStore, Lottery, TimedItems, Events, Genie, DailyRank, Siege }
+internal enum TopIconSlot { AttendanceGift, Trophy, Mail, PowerUpStore, Lottery, TimedItems, Events, Genie, DailyRank, Siege, Craft, Discord }
 
 internal sealed class TopIconsFeature : IFeature
 {
-    private const float IconSize = 29f;
-    private const float IconGap = 6f;
-    private const float IconPadX = 9f;
+    private const float IconGap = 8f;
     private const float TopRightTolerance = 48f;
+    private const string DiscordInvite = "https://discord.gg/wyQ335WfPx";
+    private static readonly Color DiscordBlurple = new("5865f2");
 
     private readonly IWorldContext context;
     private readonly Action openPowerUpStore;
     private readonly Action toggleLottery;
     private readonly Action toggleGenie;
+    private readonly Action openCraft;
     private readonly Dictionary<TopIconSlot, Control> icons = new();
     private CanvasLayer layer = null!;
     private Control? anchor;
@@ -23,13 +24,15 @@ internal sealed class TopIconsFeature : IFeature
     private TextureRect lotteryImage = null!;
     private Button powerUpStoreIcon = null!;
     private TextureRect powerUpStoreImage = null!;
+    private Button craftIcon = null!;
 
-    public TopIconsFeature(IWorldContext context, Action openPowerUpStore, Action toggleLottery, Action toggleGenie)
+    public TopIconsFeature(IWorldContext context, Action openPowerUpStore, Action toggleLottery, Action toggleGenie, Action openCraft)
     {
         this.context = context;
         this.openPowerUpStore = openPowerUpStore;
         this.toggleLottery = toggleLottery;
         this.toggleGenie = toggleGenie;
+        this.openCraft = openCraft;
     }
 
     internal CanvasLayer HudLayer => layer;
@@ -56,6 +59,16 @@ internal sealed class TopIconsFeature : IFeature
         var genie = Add(TopIconSlot.Genie, "system/sparkle", "Genie", toggleGenie, out _);
         genie.Visible = !Platform.TouchUi;
 
+        craftIcon = Add(TopIconSlot.Craft, "system/hammer", "Item Combination", openCraft, out var craftImage);
+        craftImage.SelfModulate = UiKit.TopIconColor(true);
+        craftIcon.Visible = false;
+        craftIcon.VisibilityChanged += () => Place(TopIconSlot.Craft, HudPlacement.CraftIcon);
+
+        var discord = Add(TopIconSlot.Discord, "brand/discord", "Join the LibreKO Discord", () => OS.ShellOpen(DiscordInvite), out var discordImage,
+            disc: DiscordBlurple);
+        discordImage.SelfModulate = Colors.White;
+        discord.Visible = !Platform.TouchUi;
+
         if (context.Hud.PluginPart(HudPart.MiniMap) is { } themedMap)
         {
             themedMap.ItemRectChanged += PlaceAll;
@@ -77,20 +90,20 @@ internal sealed class TopIconsFeature : IFeature
         chip.Resized += PlaceAll;
     }
 
-    internal Button Add(TopIconSlot slot, string iconId, string tooltip, Action pressed, out TextureRect image, CanvasLayer? layer = null)
+    private static readonly Dictionary<TopIconSlot, string> Captions = new()
     {
-        var button = new Button { FocusMode = Control.FocusModeEnum.None, TooltipText = tooltip };
-        var flat = new StyleBoxEmpty();
-        button.AddThemeStyleboxOverride("normal", flat);
-        button.AddThemeStyleboxOverride("hover", flat);
-        button.AddThemeStyleboxOverride("pressed", flat);
-        button.Pressed += pressed;
-        (layer ?? this.layer).AddChild(button);
+        [TopIconSlot.AttendanceGift] = "Daily", [TopIconSlot.Trophy] = "Awards", [TopIconSlot.Mail] = "Mail",
+        [TopIconSlot.PowerUpStore] = "Store", [TopIconSlot.Lottery] = "Lottery", [TopIconSlot.TimedItems] = "Timed",
+        [TopIconSlot.Events] = "Events", [TopIconSlot.Genie] = "Genie", [TopIconSlot.DailyRank] = "Ranks", [TopIconSlot.Siege] = "Siege",
+        [TopIconSlot.Craft] = "Craft", [TopIconSlot.Discord] = "Discord",
+    };
 
-        image = UiIcons.Image(iconId, new Vector2(IconSize, IconSize), UiKit.TopIconColor(false));
-        image.MouseFilter = Control.MouseFilterEnum.Ignore;
-        image.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        button.AddChild(image);
+    internal Button Add(TopIconSlot slot, string iconId, string tooltip, Action pressed, out TextureRect image, CanvasLayer? layer = null,
+        Color? disc = null)
+    {
+        var button = HudDisc.IconButton(iconId, tooltip, pressed, UiKit.TopIconColor(false), out image, disc: disc);
+        (layer ?? this.layer).AddChild(button);
+        HudCaption.Attach(button, Captions.GetValueOrDefault(slot, ""));
         icons[slot] = button;
         return button;
     }
@@ -99,6 +112,12 @@ internal sealed class TopIconsFeature : IFeature
     {
         if (!GodotObject.IsInstanceValid(lotteryIcon)) return;
         lotteryIcon.Visible = active;
+    }
+
+    internal void RefreshCraft(bool shown)
+    {
+        if (!GodotObject.IsInstanceValid(craftIcon)) return;
+        craftIcon.Visible = shown;
     }
 
     internal float MiniMapRightSpan()
@@ -144,19 +163,18 @@ internal sealed class TopIconsFeature : IFeature
         if (Platform.TouchUi || anchor == null || !GodotObject.IsInstanceValid(anchor)) return;
 
         PinAnchor();
-        var row = anchor.Visible ? anchor.GetGlobalRect() : new Rect2();
-        var size = new Vector2(IconSize + IconPadX * 2f, Mathf.Max(anchor.Size.Y, IconSize));
-        float right = MiniMapRightSpan() + UiKit.StatusHudGap + anchor.Size.X;
-        float top = HudAnchor.Edge + (anchor.Size.Y - size.Y) * 0.5f;
+        float side = HudPlacement.HudLauncherButtonSize;
+        var size = new Vector2(side, side);
+        float right = HudAnchor.Edge;
+        float bottom = HudAnchor.Edge + (Config.IconCaptions ? HudCaption.Space : 0f);
         foreach (TopIconSlot slot in Enum.GetValues<TopIconSlot>())
         {
             if (!icons.TryGetValue(slot, out var icon) || !GodotObject.IsInstanceValid(icon) || !icon.Visible) continue;
-            right += IconGap;
             icon.CustomMinimumSize = size;
-            HudAnchor.Pin(icon, HudAnchor.Spot.TopRight, new Vector2(right, top));
-            right += size.X;
-            row = row.HasArea() ? row.Merge(icon.GetGlobalRect()) : icon.GetGlobalRect();
+            HudAnchor.Pin(icon, HudAnchor.Spot.BottomRight, new Vector2(right, bottom), size);
+            right += size.X + IconGap;
         }
+        var row = anchor.Visible ? anchor.GetGlobalRect() : new Rect2();
         if (row.IsEqualApprox(this.row)) return;
         this.row = row;
         PluginHost.Game.RaiseTopRightRow();

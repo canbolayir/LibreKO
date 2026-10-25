@@ -2,7 +2,7 @@
 
 namespace LibreKO;
 
-public enum Weather { Sunny, Windy, Rainy, Snow }
+public enum Weather { Sunny, Rainy, Snow }
 
 public partial class Sky : Node3D
 {
@@ -13,17 +13,63 @@ public partial class Sky : Node3D
     private DirectionalLight3D moon = null!;
     private GpuParticles3D rainParticles = null!;
     private GpuParticles3D snowParticles = null!;
+    private StandardMaterial3D rainMaterial = null!;
+    private StandardMaterial3D snowMaterial = null!;
+
+    public const string WetnessParam = "weather_wetness";
+    public const string RainParam = "weather_rain";
+    public const string SnowParam = "weather_snow";
+    public const string SkyParam = "weather_sky";
+    private const float SkyStep = 0.004f;
+    private const float WetPerSecond = 0.05f;
+    private const float DryPerSecond = 0.012f;
+    private const float SnowCoverPerSecond = 0.02f;
+    private const float SnowMeltPerSecond = 0.01f;
+    private const float RainLevelPerSecond = 0.5f;
+    private const float LightRainWetness = 0.55f;
+    private const float LightSnowCover = 0.45f;
+    private const float GlobalStep = 0.002f;
+    private const float BoltSpreadRadians = 0.6f;
+    private const float BoltEchoDelay = 0.12f;
+    private const float BoltEchoChance = 0.6f;
+    private const float BoltEchoShare = 0.7f;
+    private const float FlashDecayPerSecond = 4f;
+    private const float BoltDecayPerSecond = 7f;
+    private const float BoltSeedRange = 100f;
+    private const float PrecipNightLight = 0.38f;
+    private const float StormSkyEnergy = 0.82f;
+    private const float StormAmbientLoss = 0.4f;
+    private const float StormPrecipLight = 0.8f;
+    private const float PrecipHeight = 16f;
+    private const float RainFallSpeed = 75f;
+    private const float SnowFallSpeed = 2.4f;
+    private const float SnowDrift = 0.9f;
+    private static readonly Color RainTint = new(0.70f, 0.76f, 0.86f, 0.30f);
+    private static readonly Color SnowTint = new(1f, 1f, 1f, 0.92f);
 
     private float elapsed;
     private float wetTarget;
+    private float rainTarget;
+    private float snowTarget;
     private bool storm;
     private Weather lastWeather = Weather.Sunny;
     private float flash;
+    private float bolt;
+    private float echoIn = -1f;
     private float nextBolt = 5f;
+    private float shownWetness = -1f;
+    private float shownRain = -1f;
+    private float shownSnow = -1f;
+    private Vector3 shownSky = -Vector3.One;
     public float Wetness { get; private set; }
+    public float RainLevel { get; private set; }
+    public float SnowCover { get; private set; }
+    public float RainOnScreen { get; private set; }
     public float SunShine { get; private set; }
 
     public float WeatherLight { get; set; } = 1f;
+
+    public float WeatherShare { get; set; } = 1f;
 
     public float NightAmbient = 0.08f;
     public float NightSkyEnergy = 0.10f;
@@ -76,7 +122,7 @@ public partial class Sky : Node3D
             CloudTex = "cloud_tex", CloudPan = "cloud_pan", CirrusPan = "cirrus_pan",
             CloudScale = "cloud_scale", CloudCover = "cloud_cover", CloudHeight = "cloud_height",
             CloudDensity = "cloud_density", CloudLit = "cloud_lit", CloudDark = "cloud_dark",
-            CirrusAmount = "cirrus_amount";
+            CirrusAmount = "cirrus_amount", Bolt = "bolt", BoltAzimuth = "bolt_azimuth", BoltSeed = "bolt_seed";
     }
 
     public override void _Ready()
@@ -157,8 +203,8 @@ public partial class Sky : Node3D
         };
         AddChild(moon);
 
-        rainParticles = BuildPrecip(rain: true);
-        snowParticles = BuildPrecip(rain: false);
+        rainParticles = BuildPrecip(rain: true, out rainMaterial);
+        snowParticles = BuildPrecip(rain: false, out snowMaterial);
         AddChild(rainParticles);
         AddChild(snowParticles);
 
@@ -181,19 +227,84 @@ public partial class Sky : Node3D
         }
         float dt = (float)delta;
         elapsed += dt;
-        Wetness = Mathf.MoveToward(Wetness, wetTarget, dt * 0.4f);
+        Wetness = Mathf.MoveToward(Wetness, wetTarget, dt * (wetTarget > Wetness ? WetPerSecond : DryPerSecond));
+        SnowCover = Mathf.MoveToward(SnowCover, snowTarget, dt * (snowTarget > SnowCover ? SnowCoverPerSecond : SnowMeltPerSecond));
+        RainLevel = Mathf.MoveToward(RainLevel, rainTarget, dt * RainLevelPerSecond);
+        PushWeatherGlobals();
         ProcessClouds(dt);
+        ProcessLightning(dt);
+    }
 
+    private void ProcessLightning(float dt)
+    {
         if (storm)
         {
             nextBolt -= dt;
             if (nextBolt <= 0f)
             {
-                flash = GD.Randf() < 0.35f ? 1f : 0.6f;
+                AimBolt();
+                Strike(GD.Randf() < 0.35f ? 1f : 0.6f);
+                echoIn = GD.Randf() < BoltEchoChance ? BoltEchoDelay : -1f;
                 nextBolt = 5f + GD.Randf() * 9f;
             }
         }
-        flash = Mathf.MoveToward(flash, 0f, dt * 4f);
+        if (echoIn > 0f)
+        {
+            echoIn -= dt;
+            if (echoIn <= 0f) Strike(BoltEchoShare);
+        }
+        flash = Mathf.MoveToward(flash, 0f, dt * FlashDecayPerSecond);
+        bolt = Mathf.MoveToward(bolt, 0f, dt * BoltDecayPerSecond);
+        skyMat.SetShaderParameter(Param.Bolt, bolt);
+    }
+
+    private void Strike(float strength)
+    {
+        flash = Mathf.Max(flash, strength);
+        bolt = strength;
+    }
+
+    private void AimBolt()
+    {
+        Vector3 forward = GetViewport()?.GetCamera3D() is { } camera ? -camera.GlobalBasis.Z : Vector3.Forward;
+        float azimuth = Mathf.Atan2(forward.X, forward.Z) + (GD.Randf() * 2f - 1f) * BoltSpreadRadians;
+        skyMat.SetShaderParameter(Param.BoltAzimuth, azimuth);
+        skyMat.SetShaderParameter(Param.BoltSeed, GD.Randf() * BoltSeedRange);
+    }
+
+    private void PushWeatherGlobals()
+    {
+        Push(WetnessParam, Wetness, ref shownWetness);
+        Push(RainParam, RainLevel, ref shownRain);
+        Push(SnowParam, SnowCover, ref shownSnow);
+    }
+
+    private static void Push(string name, float value, ref float shown)
+    {
+        if (shown >= 0f && Mathf.Abs(value - shown) < GlobalStep && (value > 0f || shown == 0f)) return;
+        shown = value;
+        RenderingServer.GlobalShaderParameterSet(name, value);
+    }
+
+    private void PushSky(Vector3 sky)
+    {
+        if (shownSky.DistanceSquaredTo(sky) < SkyStep * SkyStep) return;
+        shownSky = sky;
+        RenderingServer.GlobalShaderParameterSet(SkyParam, sky);
+    }
+
+    internal void StrikeNow()
+    {
+        AimBolt();
+        Strike(1f);
+    }
+
+    internal void SettleWeather()
+    {
+        Wetness = wetTarget;
+        RainLevel = rainTarget;
+        SnowCover = snowTarget;
+        PushWeatherGlobals();
     }
 
     private const string DepthPrepassSetting = "rendering/driver/depth_prepass/enable";
@@ -266,7 +377,7 @@ public partial class Sky : Node3D
         float amb = AmbientFor(sunAlt);
         float gold = GoldFor(sunAlt);
         storm = weather == Weather.Rainy;
-        float overcast = weather switch { Weather.Windy => 0.5f, Weather.Rainy => 0.95f, Weather.Snow => 0.7f, _ => 0f };
+        float overcast = weather switch { Weather.Rainy => 0.95f, Weather.Snow => 0.7f, _ => 0f };
         gold *= 1f - 0.9f * overcast;
         Color cloudTop = storm ? StormTop : Overcast * 0.6f;
         Color cloudHor = storm ? StormHorizon : Overcast;
@@ -280,8 +391,8 @@ public partial class Sky : Node3D
             top = top.Lerp(cloudTop, tint);
             hor = hor.Lerp(cloudHor, tint);
         }
-        float skyEnergy = Mathf.Lerp(NightSkyEnergy * nightScale, 1.0f, amb) * (storm ? 0.72f : 1f);
-        float ambient = Mathf.Lerp(NightAmbient * nightScale, 1.0f, amb) * (1f - (storm ? 0.5f : 0.3f) * overcast);
+        float skyEnergy = Mathf.Lerp(NightSkyEnergy * nightScale, 1.0f, amb) * (storm ? StormSkyEnergy : 1f);
+        float ambient = Mathf.Lerp(NightAmbient * nightScale, 1.0f, amb) * (1f - (storm ? StormAmbientLoss : 0.3f) * overcast);
         if (flash > 0.001f) { skyEnergy += flash * 1.3f; ambient += flash * 1.6f; }
 
         var sunLight = SunGoldColor.Lerp(SunDayColor, day);
@@ -307,6 +418,7 @@ public partial class Sky : Node3D
 
         skyMat.SetShaderParameter(Param.SkyTop, top);
         skyMat.SetShaderParameter(Param.SkyHorizon, hor);
+        PushSky(new Vector3(top.R + hor.R, top.G + hor.G, top.B + hor.B) * (0.5f * skyEnergy));
         skyMat.SetShaderParameter(Param.SkyEnergy, skyEnergy);
         skyMat.SetShaderParameter(Param.SunTint, sunLight);
         skyMat.SetShaderParameter(Param.SunDisc, day * (1f - 0.95f * overcast));
@@ -319,77 +431,115 @@ public partial class Sky : Node3D
         env.FogLightColor = hor;
         env.VolumetricFogAlbedo = new Color(0.16f, 0.18f, 0.24f).Lerp(new Color(0.92f, 0.90f, 0.86f), amb);
 
-        bool rain = weather == Weather.Rainy, snow = weather == Weather.Snow;
-        rainParticles.Emitting = rain;
-        snowParticles.Emitting = snow;
-        wetTarget = rain ? 1f : 0f;
+        bool rain = storm, snow = weather == Weather.Snow;
+        StartOrStop(rainParticles, rain);
+        StartOrStop(snowParticles, snow);
+        float ratio = Mathf.Clamp(WeatherShare / FullPrecipShare, 0f, 1f);
+        if (!Mathf.IsEqualApprox(rainParticles.AmountRatio, ratio)) rainParticles.AmountRatio = ratio;
+        if (!Mathf.IsEqualApprox(snowParticles.AmountRatio, ratio)) snowParticles.AmountRatio = ratio;
+        wetTarget = rain ? Mathf.Lerp(LightRainWetness, 1f, ratio) : 0f;
+        rainTarget = rain ? ratio : 0f;
+        snowTarget = snow ? Mathf.Lerp(LightSnowCover, 1f, ratio) : 0f;
+        RainOnScreen = rain ? ratio : 0f;
         env.SsrEnabled = false;
-        if (rain || snow)
-        {
-            var p = followPos; p.Y += 16f;
-            rainParticles.GlobalPosition = p;
-            snowParticles.GlobalPosition = p;
-        }
+        if (!rain && !snow) return;
+
+        float precipLight = Mathf.Clamp(Mathf.Lerp(PrecipNightLight, 1f, amb) * (storm ? StormPrecipLight : 1f) + flash, PrecipNightLight, 1f);
+        var above = followPos + Vector3.Up * PrecipHeight;
+        var wd = WindDir;
         if (rain)
         {
+            rainParticles.GlobalPosition = above;
+            Tint(rainMaterial, RainTint, precipLight);
             float gust = 0.28f + 0.12f * Mathf.Sin(elapsed * 0.6f) + 0.07f * Mathf.Sin(elapsed * 1.7f + 1f);
-            var wd = WindDir;
-            var wind = new Vector3(wd.X, 0f, wd.Y) * gust;
-            var fall = (Vector3.Down + wind).Normalized();
+            var fall = (Vector3.Down + new Vector3(wd.X, 0f, wd.Y) * gust).Normalized();
             rainParticles.Quaternion = new Quaternion(Vector3.Down, fall);
-            if (rainParticles.ProcessMaterial is ParticleProcessMaterial pm)
-                pm.Gravity = fall * 75f;
+            if (rainParticles.ProcessMaterial is ParticleProcessMaterial rainProcess)
+                rainProcess.Gravity = fall * RainFallSpeed;
+        }
+        if (snow)
+        {
+            snowParticles.GlobalPosition = above;
+            Tint(snowMaterial, SnowTint, precipLight);
+            if (snowParticles.ProcessMaterial is ParticleProcessMaterial snowProcess)
+                snowProcess.Gravity = new Vector3(wd.X * SnowDrift, -SnowFallSpeed, wd.Y * SnowDrift);
         }
     }
 
-    private static GpuParticles3D BuildPrecip(bool rain)
+    private static void StartOrStop(GpuParticles3D particles, bool falling)
     {
-        var pm = new ParticleProcessMaterial
+        if (particles.Emitting == falling) return;
+        particles.Emitting = falling;
+        if (falling) particles.Restart();
+    }
+
+    private static void Tint(StandardMaterial3D material, Color tint, float light)
+    {
+        var color = new Color(tint.R * light, tint.G * light, tint.B * light, tint.A);
+        if (!material.AlbedoColor.IsEqualApprox(color)) material.AlbedoColor = color;
+    }
+
+    private const int RainCount = 2600;
+    private const int SnowCount = 2200;
+    private const double RainLifetime = 0.9;
+    private const double SnowLifetime = 7.0;
+
+    private static GpuParticles3D BuildPrecip(bool rain, out StandardMaterial3D material)
+    {
+        var process = new ParticleProcessMaterial
         {
             EmissionShape = ParticleProcessMaterial.EmissionShapeEnum.Box,
-            EmissionBoxExtents = new Vector3(26f, 0.5f, 26f),
+            EmissionBoxExtents = rain ? new Vector3(22f, 0.5f, 22f) : new Vector3(20f, 1.5f, 20f),
             Direction = new Vector3(0, -1, 0),
             Spread = 0f,
-            Gravity = new Vector3(0, rain ? -60f : -3f, 0),
-            InitialVelocityMin = rain ? 22f : 1.5f,
-            InitialVelocityMax = rain ? 30f : 3.0f,
-            ScaleMin = rain ? 1.0f : 0.6f,
-            ScaleMax = rain ? 1.4f : 1.2f,
+            Gravity = new Vector3(0, rain ? -RainFallSpeed : -SnowFallSpeed, 0),
+            InitialVelocityMin = rain ? 26f : 0.8f,
+            InitialVelocityMax = rain ? 34f : 2.0f,
+            ScaleMin = rain ? 0.8f : 0.35f,
+            ScaleMax = rain ? 1.3f : 1.5f,
         };
         if (!rain)
         {
-            pm.TurbulenceEnabled = true;
-            pm.TurbulenceNoiseStrength = 1.2f;
-            pm.TurbulenceNoiseScale = 1.0f;
+            process.TurbulenceEnabled = true;
+            process.TurbulenceNoiseStrength = 1.6f;
+            process.TurbulenceNoiseScale = 0.6f;
+            process.ColorInitialRamp = new GradientTexture1D
+            {
+                Gradient = new Gradient { Colors = [new Color(1f, 1f, 1f, 0.45f), Colors.White] },
+            };
         }
 
-        var mat = new StandardMaterial3D
+        material = new StandardMaterial3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             BillboardMode = rain ? BaseMaterial3D.BillboardModeEnum.FixedY : BaseMaterial3D.BillboardModeEnum.Enabled,
-            AlbedoColor = rain ? new Color(0.66f, 0.73f, 0.84f, 0.42f) : new Color(1f, 1f, 1f, 0.85f),
+            AlbedoColor = rain ? RainTint : SnowTint,
+            AlbedoTexture = rain ? RainStreakTexture() : SnowFlakeTexture(),
+            VertexColorUseAsAlbedo = !rain,
             CullMode = BaseMaterial3D.CullModeEnum.Disabled,
             DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.Disabled,
         };
-        if (rain) mat.AlbedoTexture = RainStreakTexture();
         var mesh = new QuadMesh
         {
-            Size = rain ? new Vector2(0.045f, 1.15f) : new Vector2(0.12f, 0.12f),
-            Material = mat,
+            Size = rain ? new Vector2(0.03f, 1.3f) : new Vector2(0.15f, 0.15f),
+            Material = material,
         };
 
         return new GpuParticles3D
         {
-            Amount = rain ? 2200 : 700,
-            Lifetime = rain ? 1.1 : 6.0,
+            Amount = rain ? RainCount : SnowCount,
+            Lifetime = rain ? RainLifetime : SnowLifetime,
+            Preprocess = rain ? RainLifetime : SnowLifetime,
             Emitting = false,
-            ProcessMaterial = pm,
+            ProcessMaterial = process,
             DrawPass1 = mesh,
             LocalCoords = false,
             VisibilityAabb = new Aabb(new Vector3(-30, -30, -30), new Vector3(60, 60, 60)),
         };
     }
+
+    private const float FullPrecipShare = WeatherRules.OtherMaxAmount / 100f;
 
     private static ImageTexture? rainStreak;
     private static ImageTexture RainStreakTexture()
@@ -408,5 +558,23 @@ public partial class Sky : Node3D
         }
         rainStreak = ImageTexture.CreateFromImage(img);
         return rainStreak;
+    }
+
+    private static ImageTexture? snowFlake;
+    private static ImageTexture SnowFlakeTexture()
+    {
+        if (snowFlake != null) return snowFlake;
+        const int size = 16;
+        const float half = (size - 1) * 0.5f;
+        var img = Image.CreateEmpty(size, size, false, Image.Format.Rgba8);
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float fromCentre = new Vector2(x - half, y - half).Length() / half;
+                float alpha = Mathf.Clamp(1f - fromCentre, 0f, 1f);
+                img.SetPixel(x, y, new Color(1f, 1f, 1f, Mathf.SmoothStep(0f, 1f, alpha)));
+            }
+        snowFlake = ImageTexture.CreateFromImage(img);
+        return snowFlake;
     }
 }

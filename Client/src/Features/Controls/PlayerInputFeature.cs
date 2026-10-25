@@ -26,9 +26,7 @@ internal sealed class PlayerInputFeature : IFeature, IMoveGates
         world.SkillCastSystem.DetachMoveGates();
     }
 
-    bool IMoveGates.InputHeld => world.Exchange.TradeHoldsInput;
-
-    bool IMoveGates.WhisperHasFocus => world.Whispers.WhisperInputHasFocus();
+    bool IMoveGates.InputHeld => world.Exchange.TradeHoldsInput || world.Movie.Playing;
 
     bool IMoveGates.StallBlocksMove() => world.MerchantStalls.BlocksMove();
 

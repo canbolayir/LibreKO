@@ -77,6 +77,8 @@ public static class ItemSearch
         if (query.Length == 0) return;
 
         var byName = new Dictionary<string, List<ItemSearchHit>>(StringComparer.OrdinalIgnoreCase);
+        if (int.TryParse(query, out int wanted) && ItemData.Get(wanted) is { } exact && (!tradeableOnly || IsTradeable(exact)))
+            Add(byName, new ItemSearchHit(exact, ItemData.ExtFor(wanted)));
 
         foreach (var def in ItemData.All())
         {

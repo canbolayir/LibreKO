@@ -353,7 +353,7 @@ internal sealed class NationChannelsFeature : IFeature, IEscapable
         col.AddChild(NcCreateTitle);
         ncCreatePasswordTitle = UiTheme.Text("Password", 12, UiTheme.TextLo);
         col.AddChild(ncCreatePasswordTitle);
-        NcCreatePassword = new LineEdit { MaxLength = NationChatRules.PasswordMaxLength, Secret = true };
+        NcCreatePassword = new LineEdit { MaxLength = NationChatRules.PasswordMaxLength, Secret = true, VirtualKeyboardType = LineEdit.VirtualKeyboardTypeEnum.Password };
         col.AddChild(NcCreatePassword);
         col.AddChild(UiTheme.Text("Options", 12, UiTheme.TextLo));
         NcCreateOption = new OptionButton { FocusMode = Control.FocusModeEnum.None };
@@ -415,7 +415,7 @@ internal sealed class NationChannelsFeature : IFeature, IEscapable
         ncLayer.AddChild(ncPassword);
         ncPassword.Body.AddThemeConstantOverride("separation", 6);
         ncPassword.Body.AddChild(UiTheme.Text("Enter the password.", 12, UiTheme.TextLo));
-        ncPasswordEdit = new LineEdit { MaxLength = NationChatRules.PasswordMaxLength, Secret = true };
+        ncPasswordEdit = new LineEdit { MaxLength = NationChatRules.PasswordMaxLength, Secret = true, VirtualKeyboardType = LineEdit.VirtualKeyboardTypeEnum.Password };
         ncPasswordEdit.TextSubmitted += _ => SubmitNationPassword();
         ncPassword.Body.AddChild(ncPasswordEdit);
         var buttons = new HBoxContainer();

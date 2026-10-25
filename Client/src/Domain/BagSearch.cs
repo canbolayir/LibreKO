@@ -17,6 +17,6 @@ public static class BagSearch
     }
 
     public static bool Searchable(int slot) =>
-        (slot >= InventoryConstants.InventoryStart && slot < InventoryConstants.InventoryStart + InventoryConstants.HaveMax)
+        InventoryConstants.IsGridSlot(slot)
         || (slot >= InventoryConstants.MagicBagStart && slot < InventoryConstants.MagicBagStart + InventoryConstants.MagicBagTotal);
 }

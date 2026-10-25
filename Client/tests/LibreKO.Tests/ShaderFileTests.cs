@@ -21,7 +21,21 @@ public class ShaderFileTests
         Assert.Contains($"global uniform float {ItemShine.ClassicParam};", Read("shaders/outfit_shine.gdshader"));
     }
 
+    [Fact]
+    public void TheTerrainReadsTheWeatherTheSkySets()
+    {
+        string terrain = Read("shaders/terrain_tile.gdshader");
+        Assert.Contains($"global uniform float {Sky.WetnessParam};", terrain);
+        Assert.Contains($"global uniform float {Sky.RainParam};", terrain);
+        Assert.Contains($"global uniform float {Sky.SnowParam};", terrain);
+        Assert.Contains($"global uniform vec3 {Sky.SkyParam};", terrain);
+    }
+
     [Theory]
+    [InlineData(Sky.WetnessParam)]
+    [InlineData(Sky.RainParam)]
+    [InlineData(Sky.SnowParam)]
+    [InlineData(Sky.SkyParam)]
     [InlineData(FxShading.SceneDepthParam)]
     [InlineData(FxShading.SceneViewProjectionParam)]
     [InlineData(FxShading.SceneDepthLiveParam)]

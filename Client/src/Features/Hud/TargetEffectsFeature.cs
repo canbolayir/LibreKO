@@ -109,7 +109,7 @@ internal sealed class TargetEffectsFeature : IFeature
         style.SetBorderWidthAll(1);
         cell.AddThemeStyleboxOverride("panel", style);
 
-        if (SkillIcons.Get(s.Id) is { } tex)
+        if (SkillIcons.Buff(s) is { } tex)
             cell.AddChild(new TextureRect
             {
                 Texture = tex,

@@ -25,14 +25,10 @@ internal sealed partial class UserInfoFeature : IFeature
         this.friends = friends;
     }
 
-    private const string RankMarkArt = "res://assets/ui/daily_rank/marks/";
 
     private const string ClanPodiumArt = "res://assets/ui/daily_rank/medal_{0}.png";
     private const int Width = 440;
     private const float MarkSize = 66f;
-    private const float RankRibbonWidth = 45f;
-    private const float RankRibbonHeight = 17f;
-    private const int RankRibbonFont = 9;
     private const int SummaryColumns = 9;
     private const float KeyWidth = 120f;
     private const float PlaceWidth = 56f;
@@ -46,7 +42,6 @@ internal sealed partial class UserInfoFeature : IFeature
 
     internal bool IsOpen => shown;
 
-    private readonly Dictionary<string, Texture2D?> rankRibbons = new();
 
     private TextureRect uiClanMark = null!;
     private TextureRect uiClanPodium = null!;
@@ -220,10 +215,7 @@ internal sealed partial class UserInfoFeature : IFeature
             : ItemData.Text(gradeText, "%d").Replace("%d", gradeNumber.ToString());
         int classText = UserInfoCard.ClassText(info.Class);
 
-        var summary = new List<GameRankRibbon>();
-        foreach (var cell in UserInfoCard.Summary(info.Marks))
-            summary.Add(new GameRankRibbon(RankRibbon(UserInfoCard.Ribbon(cell.Type, cell.Tier, cell.Count)),
-                cell.Count.ToString(), MarkTooltipText(cell.Type)));
+        var summary = RankRibbonArt.Summary(info.Marks);
 
         var rows = new List<GameUserRankRow>();
         var ranks = UserInfoCard.Rows(info.RankPlaces);
@@ -239,8 +231,8 @@ internal sealed partial class UserInfoFeature : IFeature
                     bool special = mark.Type >= UserInfoCard.SpecialMarkFirst;
                     tiers[t] = special && t < UserInfoCard.Tiers - 1
                         ? default
-                        : new GameRankRibbon(RankRibbon(UserInfoCard.Ribbon(mark.Type, t, count)),
-                            count > 0 ? count.ToString() : "", MarkTooltipText(mark.Type));
+                        : new GameRankRibbon(RankRibbonArt.Texture(UserInfoCard.Ribbon(mark.Type, t, count)),
+                            count > 0 ? count.ToString() : "", RankRibbonArt.Tooltip(mark.Type));
                 }
             }
             int place = ranks[r].Place;
@@ -277,21 +269,6 @@ internal sealed partial class UserInfoFeature : IFeature
 
     private string DailyRankTitle(int board) => dailyRankWindow.DrBoards.Find(b => b.Id == board)?.Title ?? "";
 
-    private static string MarkTooltipText(int type)
-    {
-        int text = UserInfoCard.MarkTooltip(type);
-        return text > 0 ? ItemData.Text(text, "") : "";
-    }
-
-    private Texture2D? RankRibbon(string name)
-    {
-        if (rankRibbons.TryGetValue(name, out var cached)) return cached;
-        string path = RankMarkArt + name + ".png";
-        var texture = ResourceLoader.Exists(path) ? ResourceLoader.Load<Texture2D>(path) : null;
-        rankRibbons[name] = texture;
-        return texture;
-    }
-
     private static string RelationText(UserRelation relation) => relation switch
     {
         UserRelation.Friend => "Friend",
@@ -320,7 +297,7 @@ internal sealed partial class UserInfoFeature : IFeature
         uiRelation.Text = RelationText(card.Relation);
 
         foreach (var child in uiSummary.GetChildren()) child.QueueFree();
-        foreach (var cell in card.Summary) uiSummary.AddChild(RibbonCell(cell));
+        foreach (var cell in card.Summary) uiSummary.AddChild(RankRibbonArt.Cell(cell));
         uiSummary.Visible = card.Summary.Count > 0;
 
         foreach (var child in uiRows.GetChildren()) child.QueueFree();
@@ -334,32 +311,9 @@ internal sealed partial class UserInfoFeature : IFeature
             var place = UiTheme.Text(row.Place, 12, row.PlaceColour, HorizontalAlignment.Center);
             place.CustomMinimumSize = new Vector2(PlaceWidth, 0);
             line.AddChild(place);
-            foreach (var tier in row.Tiers) line.AddChild(RibbonCell(tier));
+            foreach (var tier in row.Tiers) line.AddChild(RankRibbonArt.Cell(tier));
             uiRows.AddChild(line);
         }
-    }
-
-    private static Control RibbonCell(GameRankRibbon ribbon)
-    {
-        var cell = new Control { CustomMinimumSize = new Vector2(RankRibbonWidth, RankRibbonHeight), TooltipText = ribbon.Tooltip };
-        if (ribbon.Ribbon == null) return cell;
-        var image = new TextureRect
-        {
-            Texture = ribbon.Ribbon,
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            StretchMode = TextureRect.StretchModeEnum.Scale,
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        image.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        cell.AddChild(image);
-        var count = UiTheme.Text(ribbon.Count, RankRibbonFont, UiTheme.GoldBright, HorizontalAlignment.Center);
-        count.VerticalAlignment = VerticalAlignment.Center;
-        count.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        count.MouseFilter = Control.MouseFilterEnum.Ignore;
-        count.AddThemeConstantOverride("outline_size", 3);
-        count.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 0.85f));
-        cell.AddChild(count);
-        return cell;
     }
 
     private sealed class PluginUserInfoBridge : IGameUserInfo

@@ -2,19 +2,21 @@
 
 namespace LibreKO.Features.Windows;
 
-internal sealed partial class QuestTargetFeature : IFeature
+internal sealed partial class QuestTargetFeature : IFeature, ITickFeature
 {
     private readonly IWorldContext context;
     private readonly NpcQuestSession npc;
     private readonly MapFeature map;
     private readonly SelfSession self;
+    private readonly QuestBook questBook;
 
-    public QuestTargetFeature(IWorldContext context, NpcQuestSession npcQuest, MapFeature map, SelfSession self)
+    public QuestTargetFeature(IWorldContext context, NpcQuestSession npcQuest, MapFeature map, SelfSession self, QuestBook questBook)
     {
         this.context = context;
         npc = npcQuest;
         this.map = map;
         this.self = self;
+        this.questBook = questBook;
     }
 
     public void Build()
@@ -28,11 +30,16 @@ internal sealed partial class QuestTargetFeature : IFeature
     }
 
     private const int TargetMapSide = 260;
+    private const double LiveInterval = 0.2;
 
     internal HudWindow? TargetWindow { get; private set; }
     private TargetMapView? targetMap;
     private VBoxContainer? targetText;
     private Label? targetCaption;
+    private int targetZone = -1;
+    private double nextLive;
+    private readonly Dictionary<int, (Texture2D? Map, float Extent)> zoneMaps = new();
+    private readonly List<Vector2> liveMonsters = new();
 
     internal void OnTarget(QuestTargetDetail target)
     {
@@ -49,13 +56,53 @@ internal sealed partial class QuestTargetFeature : IFeature
         if (lore.Length > 0)
             targetText.AddChild(QuestRows.Paragraph(lore, UiTheme.TextLo, self.LastEnter.Name, TargetMapSide));
 
-        targetCaption!.Text = target.Where.Length > 0 ? target.Where : ZoneCatalog.Name(target.ZoneId);
-        targetMap!.SetTarget(
-            target.ZoneId == context.Zone ? map.MiniMap?.MapTexture : null,
-            map.MiniMap?.MapExtent ?? 0f,
-            target.ZoneId == context.Zone && target.HasCoordinates ? new Vector2(target.X, target.Z) : null,
-            target.ZoneId == context.Zone ? "" : $"In {ZoneCatalog.Name(target.ZoneId)}");
+        string where = target.Where.Length > 0 ? target.Where : ZoneCatalog.Name(target.ZoneId);
+        targetCaption!.Text = target.HasCoordinates ? $"{where} ({target.X}, {target.Z})" : where;
+        targetZone = target.ZoneId;
+        var (texture, extent) = MapOf(target.ZoneId);
+        targetMap!.SetTarget(texture, extent, target.HasCoordinates ? new Vector2(target.X, target.Z) : null,
+            texture == null && extent <= 0f ? $"In {ZoneCatalog.Name(target.ZoneId)}" : "");
+        nextLive = 0;
+        UpdateLive();
         TargetWindow.Visible = true;
+    }
+
+    private (Texture2D? Map, float Extent) MapOf(int zoneId)
+    {
+        if (zoneId == context.Zone) return (map.MiniMap?.MapTexture, map.MiniMap?.MapExtent ?? 0f);
+        if (zoneMaps.TryGetValue(zoneId, out var known)) return known;
+        var loaded = ZoneCatalog.Stem(zoneId) is { } stem
+            ? (MiniMap.LoadBaked(stem), Heightmap.LoadPng(stem)?.WorldExtent ?? 0f)
+            : ((Texture2D?)null, 0f);
+        zoneMaps[zoneId] = loaded;
+        return loaded;
+    }
+
+    public void Tick(double delta, double nowSec)
+    {
+        if (TargetWindow is not { Visible: true } || nowSec < nextLive) return;
+        nextLive = nowSec + LiveInterval;
+        UpdateLive();
+    }
+
+    private void UpdateLive()
+    {
+        if (targetMap == null) return;
+        liveMonsters.Clear();
+        if (targetZone != context.Zone || context.Self.Body == null)
+        {
+            targetMap.SetLive(null, Vector2.Zero, liveMonsters);
+            return;
+        }
+        foreach (var e in context.Entities.Views.Values)
+        {
+            if (!e.IsNpc || e.Dead || e.Body == null || !questBook.TargetNpcs.Contains(e.NpcId)) continue;
+            var (mx, mz) = Coord.ToMap(e.Body.GlobalPosition.X, e.Body.GlobalPosition.Z);
+            liveMonsters.Add(new Vector2(mx, mz));
+        }
+        var facing = context.Self.Facing;
+        var (fx, fz) = Coord.ToMap(facing.X, facing.Z);
+        targetMap.SetLive(new Vector2(context.Self.MapXZ.X, context.Self.MapXZ.Z), new Vector2(fx, fz), liveMonsters);
     }
 
     private void EnsureTargetWindow()
@@ -94,14 +141,30 @@ internal sealed partial class QuestTargetFeature : IFeature
 
     private sealed partial class TargetMapView : Control
     {
+        private const float SelfArrowLength = 9f;
+        private const float SelfArrowWidth = 5f;
+        private const float MonsterDotRadius = 3f;
+
         private Texture2D? tex;
         private float extent;
         private Vector2? target;
         private string note = "";
+        private Vector2? selfAt;
+        private Vector2 selfFacing;
+        private readonly List<Vector2> monsters = new();
 
         public void SetTarget(Texture2D? tex, float extent, Vector2? target, string note)
         {
             this.tex = tex; this.extent = extent; this.target = target; this.note = note;
+            QueueRedraw();
+        }
+
+        public void SetLive(Vector2? selfAt, Vector2 selfFacing, List<Vector2> monsters)
+        {
+            this.selfAt = selfAt;
+            this.selfFacing = selfFacing;
+            this.monsters.Clear();
+            this.monsters.AddRange(monsters);
             QueueRedraw();
         }
 
@@ -125,14 +188,33 @@ internal sealed partial class QuestTargetFeature : IFeature
                     note, HorizontalAlignment.Left, -1, 13, UiTheme.TextLo);
                 return;
             }
-
-            if (target is not { } spot || extent <= 0f) return;
+            if (extent <= 0f) return;
             float scale = side / extent;
-            var point = rect.Position + new Vector2(spot.X * scale, side - spot.Y * scale);
-            DrawCircle(point, 11, new Color(0, 0, 0, 0.8f));
-            DrawArc(point, 9, 0, Mathf.Tau, 24, UiTheme.GoldBright, 3, true);
-            DrawLine(point - new Vector2(15, 0), point + new Vector2(15, 0), UiTheme.GoldBright, 2, true);
-            DrawLine(point - new Vector2(0, 15), point + new Vector2(0, 15), UiTheme.GoldBright, 2, true);
+            Vector2 OnMap(Vector2 spot) => rect.Position + new Vector2(spot.X * scale, side - spot.Y * scale);
+
+            foreach (var monster in monsters)
+                DrawCircle(OnMap(monster), MonsterDotRadius, UiTheme.Bad);
+
+            if (target is { } spot)
+            {
+                var point = OnMap(spot);
+                DrawCircle(point, 11, new Color(0, 0, 0, 0.8f));
+                DrawArc(point, 9, 0, Mathf.Tau, 24, UiTheme.GoldBright, 3, true);
+                DrawLine(point - new Vector2(15, 0), point + new Vector2(15, 0), UiTheme.GoldBright, 2, true);
+                DrawLine(point - new Vector2(0, 15), point + new Vector2(0, 15), UiTheme.GoldBright, 2, true);
+            }
+
+            if (selfAt is not { } me) return;
+            var at = OnMap(me);
+            var dir = new Vector2(selfFacing.X, -selfFacing.Y);
+            dir = dir.LengthSquared() > 0f ? dir.Normalized() : Vector2.Up;
+            var side90 = new Vector2(-dir.Y, dir.X);
+            DrawColoredPolygon(new[]
+            {
+                at + dir * SelfArrowLength,
+                at - dir * SelfArrowLength * 0.5f + side90 * SelfArrowWidth,
+                at - dir * SelfArrowLength * 0.5f - side90 * SelfArrowWidth,
+            }, UiTheme.Good);
         }
     }
 }

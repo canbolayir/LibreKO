@@ -15,4 +15,10 @@ public static class LootBoxPlacement
 
     public static bool Ready(bool ownerKnown, bool ownerDead, double now, double deathClipEnd) =>
         !ownerKnown || (ownerDead && now >= deathClipEnd);
+
+    public const double LifeSeconds = 20.0;
+    public const double OpenGraceSeconds = 10.0;
+
+    public static double SpawnAfterOpen(double spawnTime, double now) =>
+        LifeSeconds - (now - spawnTime) < OpenGraceSeconds ? now + OpenGraceSeconds - LifeSeconds : spawnTime;
 }

@@ -61,9 +61,20 @@ public sealed class EventPacketWriter
     {
         var packet = new Packet(GameOpcodes.GS_EVENT);
         packet.WriteByte((byte)TempleSubOpcode.TempleEventCounter);
-        packet.WriteUShort(TempleEventRules.SignUpEventId(contest));
+        packet.WriteUShort(TempleEventRules.IndunType(contest));
         packet.WriteUShort(karus);
         packet.WriteUShort(elMorad);
+        return packet;
+    }
+
+    public static Packet SignUpTime(TempleEvent contest, int seconds)
+    {
+        if (!TempleEventRules.HasJoinBoard(contest))
+            return BifrostPacketWriter.Remaining(TempleSubOpcode.BifrostRemaining, seconds, (byte)contest);
+        var packet = new Packet(GameOpcodes.GS_EVENT);
+        packet.WriteByte((byte)TempleSubOpcode.TempleEvent);
+        packet.WriteShort((short)TempleEventRules.IndunType(contest));
+        packet.WriteShort((short)Math.Clamp(seconds, 0, short.MaxValue));
         return packet;
     }
 

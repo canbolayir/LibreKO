@@ -12,6 +12,7 @@ public sealed class ChatPacketWriter
     public const byte TypeSystemNotice = 8;
     public const byte TypeGameMaster = 12;
     public const byte TypeDeathNotice = 26;
+    public const byte TypeGameplayTip = (byte)Common.Enums.ChatType.GameplayTip;
 
     public const byte AuthorityPlayer = 1;
     public const byte AuthorityGameMaster = 2;
@@ -43,6 +44,14 @@ public sealed class ChatPacketWriter
         {
             type = TypeSystemNotice,
             nation = nation,
+            characterId = NoSender,
+            message = message,
+        }.Build();
+
+    public static Packet Tip(string message) =>
+        new ChatPacketWriter
+        {
+            type = TypeGameplayTip,
             characterId = NoSender,
             message = message,
         }.Build();

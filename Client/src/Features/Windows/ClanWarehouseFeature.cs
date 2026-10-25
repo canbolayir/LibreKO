@@ -67,6 +67,8 @@ internal sealed partial class ClanWarehouseFeature : IFeature, IClosableWindow
 
     private ClanPending pending;
     private bool inFlight;
+    private int sentTransfers;
+    private int contentsAsked;
 
     private bool CanWithdraw => clan.MyClan.IsChief || clan.MyClan.IsViceChief;
 
@@ -174,7 +176,7 @@ internal sealed partial class ClanWarehouseFeature : IFeature, IClosableWindow
         Show();
         companion ??= new BagCompanion(TakeFromBag, ClanBagFit, _ => "", Close, WithdrawInto);
         context.BagCompanions.Attach(companion);
-        requests.ClanWhOpen();
+        ReadContents();
         Refresh();
     }
 
@@ -206,7 +208,7 @@ internal sealed partial class ClanWarehouseFeature : IFeature, IClosableWindow
 
     internal void OnContents(int money, ItemSlot[] slots)
     {
-        inFlight = false;
+        if (contentsAsked == sentTransfers) inFlight = false;
         this.money = money;
         for (int i = 0; i < Slots && i < slots.Length; i++) this.slots[i] = slots[i];
         if (shown) Refresh();
@@ -305,6 +307,7 @@ internal sealed partial class ClanWarehouseFeature : IFeature, IClosableWindow
         }
         pending = new ClanPending { Op = WarehouseSubOpcode.Input, Merge = merge, InvAbs = abs, WhIdx = whIdx, Count = count };
         inFlight = true;
+        sentTransfers++;
         requests.ClanWhInput(slot.ItemId, (byte)(whIdx / PageSize),
             (byte)(abs - Inventory.GridStart), (byte)(whIdx % PageSize), count);
     }
@@ -341,6 +344,7 @@ internal sealed partial class ClanWarehouseFeature : IFeature, IClosableWindow
         }
         pending = new ClanPending { Op = WarehouseSubOpcode.Output, Merge = merge, InvAbs = dest, WhIdx = whIdx, Count = count };
         inFlight = true;
+        sentTransfers++;
         requests.ClanWhOutput(slot.ItemId, (byte)(whIdx / PageSize),
             (byte)(whIdx % PageSize), (byte)(dest - Inventory.GridStart), count);
     }
@@ -353,6 +357,7 @@ internal sealed partial class ClanWarehouseFeature : IFeature, IClosableWindow
         if (!slots[to].IsEmpty) { status.Status("That slot is taken.", bad: true); return; }
         pending = new ClanPending { Op = WarehouseSubOpcode.Move, WhIdx = from, WhTo = to, Count = slots[from].Count };
         inFlight = true;
+        sentTransfers++;
         requests.ClanWhMoveInside(slots[from].ItemId, (byte)(from / PageSize), (byte)(from % PageSize),
             (byte)(to / PageSize), (byte)(to % PageSize));
     }
@@ -384,6 +389,7 @@ internal sealed partial class ClanWarehouseFeature : IFeature, IClosableWindow
         if (!deposit && amount > money) { status.Status("Not enough clan gold.", bad: true); return; }
         pending = new ClanPending { Op = deposit ? WarehouseSubOpcode.Input : WarehouseSubOpcode.Output, Gold = true, Count = amount };
         inFlight = true;
+        sentTransfers++;
         if (deposit) requests.ClanWhInput(LootWire.GoldItemId, 0, 0, 0, amount);
         else requests.ClanWhOutput(LootWire.GoldItemId, 0, 0, 0, amount);
     }
@@ -415,7 +421,7 @@ internal sealed partial class ClanWarehouseFeature : IFeature, IClosableWindow
                 ? ItemData.Text(WarehouseFeature.NoRoomText, "Your bags are full.") : RefusalText(result), bad: true);
             if (shown)
             {
-                requests.ClanWhOpen();
+                ReadContents();
                 Refresh();
             }
             return;
@@ -453,6 +459,14 @@ internal sealed partial class ClanWarehouseFeature : IFeature, IClosableWindow
             if (context.MainWindows.CharTabOpen()) context.Inventory.Refresh();
             status.Status($"Took out {WarehouseFeature.ItemLine(itemId, p.Count)}.", bad: false);
         }
-        if (shown) Refresh();
+        if (!shown) return;
+        Refresh();
+        ReadContents();
+    }
+
+    private void ReadContents()
+    {
+        contentsAsked = sentTransfers;
+        requests.ClanWhOpen();
     }
 }

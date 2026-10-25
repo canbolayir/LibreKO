@@ -107,6 +107,7 @@ public class StarterSeedQuestTests
             Substitute.For<IDrakiTowerService>(),
             Substitute.For<IFullMoonRiftService>(),
             Substitute.For<IBifrostEventService>(),
+            Substitute.For<IManesSurvivalService>(),
             combatRewardLogger);
 
         await service.AwardNpcKillAsync(npc, killer);

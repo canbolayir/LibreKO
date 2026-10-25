@@ -30,4 +30,5 @@ public enum ChatType : byte
     AnnouncementWhite = 29,
     ChatRoom = 33,
     NoahKnights = 34,
+    GameplayTip = 152,
 }

@@ -10,8 +10,9 @@ internal sealed partial class SkillWindowFeature : IFeature
     private readonly HotbarFeature hotbar;
     private readonly SelfSession self;
     private readonly SkillPresetFeature skillPreset;
+    private readonly QuickslotSavesFeature quickslots;
 
-    public SkillWindowFeature(IWorldContext context, DevelopSession develop, IDevelopRequests developRequests, HotbarFeature hotbar, SelfSession self, SkillPresetFeature skillPreset)
+    public SkillWindowFeature(IWorldContext context, DevelopSession develop, IDevelopRequests developRequests, HotbarFeature hotbar, SelfSession self, SkillPresetFeature skillPreset, QuickslotSavesFeature quickslots)
     {
         this.context = context;
         this.develop = develop;
@@ -19,6 +20,7 @@ internal sealed partial class SkillWindowFeature : IFeature
         this.hotbar = hotbar;
         this.self = self;
         this.skillPreset = skillPreset;
+        this.quickslots = quickslots;
     }
 
     public void Build()
@@ -320,6 +322,16 @@ internal sealed partial class SkillWindowFeature : IFeature
         presetButton.AddThemeFontSizeOverride("font_size", 12);
         presetButton.Pressed += skillPreset.TogglePreset;
         poolRow.AddChild(presetButton);
+        var quickslotButton = new Button
+        {
+            Text = "Save Quickslot",
+            FocusMode = Control.FocusModeEnum.None,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+            TooltipText = "Keep named sets of ten skills and put one on a hotbar page",
+        };
+        quickslotButton.AddThemeFontSizeOverride("font_size", 12);
+        quickslotButton.Pressed += quickslots.Toggle;
+        poolRow.AddChild(quickslotButton);
         root.AddChild(poolRow);
 
         var grid = new GridContainer { Columns = 3 };

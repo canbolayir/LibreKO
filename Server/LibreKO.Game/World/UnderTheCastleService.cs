@@ -39,11 +39,21 @@ public sealed class UnderTheCastleService(
     public const int HornOfPluwitonItemId = 810479000;
     public const int VictoryDelaySeconds = 60;
 
-    public const int EmperorMammothNpcId = 9501;
+    public const int EmperorMammothNpcId = 9503;
     public const int CrasherGimmickNpcId = 9507;
     public const int ShackledLordFluwitonNpcId = 9566;
-    public const int ShackledLordFluwitonAltNpcId = 9512;
-    public const int PluwitonFinalBossNpcId = 9515;
+    public const int ShackledLordFluwitonAltNpcId = 9514;
+    public const int PluwitonFinalBossNpcId = 9518;
+    public const int NoMovie = 0;
+
+    public static readonly IReadOnlyDictionary<int, (int Next, int Movie)> BossPhases = new Dictionary<int, (int, int)>
+    {
+        [9501] = (9502, 7), [9502] = (9503, 8), [9503] = (0, 2),
+        [9504] = (9505, 6), [9505] = (9506, 6), [9506] = (9507, 6), [9507] = (0, 3),
+        [9508] = (9509, 6), [9509] = (9510, 6), [9510] = (9511, 6), [9511] = (0, 4),
+        [9512] = (9513, 6), [9513] = (9514, 6), [9514] = (0, 5),
+        [9515] = (9516, 6), [9516] = (9517, 6), [9517] = (9518, 6), [9518] = (0, NoMovie),
+    };
 
     public const int Gate1DoorNpcId = 9550;
     public const int Gate2DoorNpcId = 9561;
@@ -159,6 +169,17 @@ public sealed class UnderTheCastleService(
     {
         if (npc.ZoneId != UtcZoneId || !IsActive)
             return;
+
+        if (BossPhases.TryGetValue(npc.NpcId, out var phase))
+        {
+            if (phase.Movie != NoMovie)
+                await BroadcastToZoneAsync(UtcMoviePacketWriter.Movie(phase.Movie));
+            if (phase.Next != 0)
+            {
+                SpawnNextPhase(npc, phase.Next);
+                return;
+            }
+        }
 
         int stageToUnlock = 0;
         string? noticeMessage = null;
@@ -403,6 +424,30 @@ public sealed class UnderTheCastleService(
                 logger.LogError(ex, "Failed to warp {Name} from UTC to Moradon", player.Name);
             }
         }
+    }
+
+    private void SpawnNextPhase(NpcInstance npc, int nextNpcId)
+    {
+        var pos = new NpcPosData
+        {
+            ZoneId = UtcZoneId,
+            NpcId = nextNpcId,
+            LeftX = (int)npc.X,
+            TopZ = (int)npc.Z,
+            ActType = npc.SpawnActType,
+            Direction = npc.Direction,
+            NumNPC = 1,
+            Room = (short)npc.Room,
+        };
+        foreach (var spawned in npcSpawnRowService.Spawn(pos))
+            spawned.RespawnType = NpcRespawnType.Never;
+        logger.LogInformation("Under the Castle boss {From} moved to its next phase {To}", npc.NpcId, nextNpcId);
+    }
+
+    private async Task BroadcastToZoneAsync(Packet packet)
+    {
+        foreach (var session in sessionManager.GetAll().Where(s => s.ZoneId == UtcZoneId))
+            await session.Client.SendPacket(packet);
     }
 
     private async Task BroadcastStageNoticeAsync(string message)

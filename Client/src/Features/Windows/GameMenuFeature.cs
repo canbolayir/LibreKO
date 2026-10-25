@@ -2,22 +2,27 @@
 
 namespace LibreKO.Features.Windows;
 
-internal sealed partial class GameMenuFeature : IFeature, ITickFeature
+internal sealed partial class GameMenuFeature : IFeature, ITickFeature, IEdgePanPause
 {
     private readonly IWorldContext context;
     private readonly CombatSession combat;
     private readonly SelfSession self;
     private readonly PetSession pet;
     private readonly IClientSettingsRequests settingsRequests;
+    private readonly CameraSystem camera;
 
-    public GameMenuFeature(IWorldContext context, CombatSession combat, SelfSession self, PetSession pet, IClientSettingsRequests settingsRequests)
+    public GameMenuFeature(IWorldContext context, CombatSession combat, SelfSession self, PetSession pet, IClientSettingsRequests settingsRequests,
+        CameraSystem camera)
     {
         this.context = context;
         this.combat = combat;
         this.self = self;
         this.pet = pet;
         this.settingsRequests = settingsRequests;
+        this.camera = camera;
     }
+
+    bool IEdgePanPause.EdgePanPaused => IsOpen;
 
     public void Tick(double delta, double nowSec) => ExitTick(delta);
 
@@ -28,12 +33,14 @@ internal sealed partial class GameMenuFeature : IFeature, ITickFeature
         BuildMenu();
         Game.Connection.WindowCloseHandler = OpenForWindowClose;
         combat.AttackEvent += OnExitBattleAttack;
+        camera.AttachEdgePanPause(this);
     }
 
     public void Dispose()
     {
         if (Game.Connection.WindowCloseHandler == OpenForWindowClose) Game.Connection.WindowCloseHandler = null;
         combat.AttackEvent -= OnExitBattleAttack;
+        camera.DetachEdgePanPause();
     }
 
     internal enum ExitKind { None, CharacterSelect, Quit }

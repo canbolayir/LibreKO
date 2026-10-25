@@ -29,7 +29,8 @@ public sealed class PlayerInspectPacketWriter
         Clan Clan,
         byte RebirthLevel,
         short PartyMarker,
-        IReadOnlyList<int> RankPlaces);
+        IReadOnlyList<int> RankPlaces,
+        World.RankMarks Marks);
 
     public readonly record struct Equipment(
         string Name,
@@ -85,8 +86,7 @@ public sealed class PlayerInspectPacketWriter
         for (var i = 0; i < RankPlaceCount; i++)
             packet.WriteInt(i < detail.RankPlaces.Count ? detail.RankPlaces[i] : 0);
 
-        packet.WriteByte(0);
-        packet.WriteByte(0);
+        RankMarkPacketWriter.WriteBlocks(packet, detail.Marks);
         return packet;
     }
 

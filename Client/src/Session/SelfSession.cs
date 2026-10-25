@@ -227,6 +227,16 @@ public sealed class SelfSession
         LastEnter = info;
     }
 
+    public IReadOnlyList<RankMark> RankMarks { get; private set; } = [];
+
+    public event Action? RankMarksEvent;
+
+    internal void ApplyRankMarks(IReadOnlyList<RankMark> marks)
+    {
+        RankMarks = marks;
+        RankMarksEvent?.Invoke();
+    }
+
     public event Action? NationRanksEvent;
 
     internal void ApplyNationRanks(int knightsRank, int personalRank)

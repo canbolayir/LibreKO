@@ -9,13 +9,11 @@ internal sealed class AdminClassTab
 
     private readonly IAdminRequests requests;
     private readonly Func<AdminState> state;
-    private readonly Action<string, bool> setStatus;
 
-    public AdminClassTab(IAdminRequests requests, Func<AdminState> state, Action<string, bool> setStatus)
+    public AdminClassTab(IAdminRequests requests, Func<AdminState> state)
     {
         this.requests = requests;
         this.state = state;
-        this.setStatus = setStatus;
     }
 
     private Label classLbl = null!;
@@ -187,7 +185,6 @@ internal sealed class AdminClassTab
         if (classPickIds.Length == 0 || classPick.Selected < 0) return;
         int id = classPickIds[classPick.Selected];
         requests.SetClass(id);
-        setStatus($"Changing class to {CharacterClassCatalog.SpecializationName(id)} ({id})…", false);
     }
 
     private void OnSetPickedLook()
@@ -196,6 +193,5 @@ internal sealed class AdminClassTab
         int nation = nationPick.Selected == 0 ? Nations.Karus : Nations.ElMorad;
         int race = racePickIds[racePick.Selected];
         requests.SetLook(nation, race);
-        setStatus("Applying nation + body — relog to load the new model.", false);
     }
 }

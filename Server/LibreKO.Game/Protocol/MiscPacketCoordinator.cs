@@ -492,7 +492,7 @@ public class MiscPacketCoordinator(
 
         var sub = packet.ReadByte();
 
-        if (!CanUseSheriff(session))
+        if (!CanUseSheriff(gameDataService, session))
         {
             await SendReportResultAsync(client, sub, success: false);
             return;
@@ -521,8 +521,8 @@ public class MiscPacketCoordinator(
         }
     }
 
-    private static bool CanUseSheriff(UserSession session) =>
-        session.IsGM || session.Fame == 100;
+    internal static bool CanUseSheriff(IGameDataService gameData, UserSession session) =>
+        session.IsGM || KingSystemRuntimeService.IsKingOf(gameData, session.Nation, session.Name);
 
     private async Task HandleFileReportAsync(IClient client, UserSession session, Packet packet)
     {

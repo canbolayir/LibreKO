@@ -38,10 +38,10 @@ public class CombatRewardService(
     IDrakiTowerService drakiTowerService,
     IFullMoonRiftService fullMoonRiftService,
     IBifrostEventService bifrostEventService,
+    IManesSurvivalService manesSurvivalService,
     ILogger<CombatRewardService> logger) : ICombatRewardService
 {
-    private const int CoinRollMinPercent = 70;
-    private const int CoinRollMaxPercent = 100;
+    private const int PercentScale = 100;
 
     public async Task AwardPlayerKillAsync(UserSession victim, UserSession? killer)
     {
@@ -65,6 +65,17 @@ public class CombatRewardService(
         logger.LogDebug("NPC {NpcId} killed by {Name}: {Exp} exp, {Gold} gold", npc.NpcId, killer.Name, npc.Experience, npc.GoldDrop);
 
         var rewardRecipient = ResolveRewardRecipient(npc, killer);
+
+        if (ManesSurvivalRules.IsZone(npc.ZoneId))
+        {
+            await manesSurvivalService.OnMonsterKilledAsync(npc, rewardRecipient);
+            npc.WithLock(n =>
+            {
+                n.DamageMap.Clear();
+                n.TopDamagerCharId = 0;
+            });
+            return;
+        }
 
         if (npc.Experience > 0)
         {
@@ -199,6 +210,9 @@ public class CombatRewardService(
 
     private async Task AwardKillExpAsync(UserSession player, long exp)
     {
+        var flash = player.Flash.Bonus(FlashKind.Exp, DateTime.UtcNow);
+        if (flash > 0)
+            exp = exp * (PercentScale + flash) / PercentScale;
         int times = JackpotRules.Roll(player, settings.Value.Jackpot.ExpRates);
         if (times > JackpotRules.None)
         {
@@ -209,50 +223,24 @@ public class CombatRewardService(
             await playerProgressionService.AwardExperienceAsync(player, exp);
     }
 
-    private ushort RollCoins(NpcInstance npc)
-    {
-        if (npc.GoldDrop <= 0)
-            return 0;
-
-        var rolled = (long)npc.GoldDrop * Random.Shared.Next(CoinRollMinPercent, CoinRollMaxPercent + 1) / 100;
-        var coins = timeWeather.ApplyCoinBonus((int)Math.Min(rolled, int.MaxValue));
-        return (ushort)Math.Clamp(coins, 0, ushort.MaxValue);
-    }
-
-    private int ResolveDropItem(int dropValue)
-    {
-        if (dropValue >= 100_000_000)
-            return dropValue;
-
-        if (dropValue >= 100)
-        {
-            if (!gameDataService.MakeItemGroupTable.TryGetValue(dropValue, out var pool) || pool.Length == 0)
-                return 0;
-            return pool[Random.Shared.Next(pool.Length)];
-        }
-
-        return 0;
-    }
-
     private async Task CreateDropsAsync(NpcInstance npc, UserSession rewardRecipient)
     {
-        var coins = RollCoins(npc);
+        var coins = DropRoll.Coins(npc.GoldDrop, timeWeather.CoinEventAmount, Random.Shared);
         var droppedItems = new List<(int ItemId, ushort Count)>();
         var dropTable = npc.DropItemGroup > 0 ? gameDataService.GetNpcItem(npc.DropItemGroup, npc.IsMonster) : null;
         if (dropTable != null)
         {
-            var dropBonus = gameDataService.GetPremiumProperty(rewardRecipient.PremiumType, PremiumPropertyType.Drop);
+            var dropBonus = gameDataService.GetPremiumProperty(rewardRecipient.PremiumType, PremiumPropertyType.Drop)
+                + rewardRecipient.Flash.Bonus(FlashKind.Drop, DateTime.UtcNow);
             foreach (var (itemId, percent) in dropTable.GetDrops())
             {
                 if (itemId <= 0 || percent <= 0)
                     continue;
 
-                var adjustedPercent = dropBonus > 0 ? percent + percent * dropBonus / 100 : percent;
-                adjustedPercent = timeWeather.ApplyDropBonus(adjustedPercent);
-                if (Random.Shared.Next(1, 10001) > adjustedPercent)
+                if (!DropRoll.Lands(DropRoll.Chance(percent, dropBonus, timeWeather.DropEventAmount), Random.Shared))
                     continue;
 
-                var resolvedItemId = ResolveDropItem(itemId);
+                var resolvedItemId = DropRoll.ResolveItem(itemId, gameDataService.MakeItemGroupTable, Random.Shared);
                 if (resolvedItemId <= 0 || gameDataService.GetItem(resolvedItemId) == null)
                     continue;
 

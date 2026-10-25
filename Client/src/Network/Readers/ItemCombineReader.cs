@@ -15,22 +15,7 @@ internal sealed class ItemCombineReader : IPacketReader
         dispatcher.On(GameOpcodes.GS_ITEM_UPGRADE, ItemUpgradeSubOpcode.Combine, HandleItemCombineReply);
     }
 
-    private void HandleItemCombineReply(Packet p)
-    {
-        byte result = p.ReadByte();
-        short row = 0;
-        byte slot = 0;
-        if (ItemCombine.IsDone(result))
-        {
-            row = p.ReadShort();
-            if (result == ItemCombine.Succeeded)
-            {
-                p.ReadInt();
-                slot = p.ReadByte();
-            }
-        }
-        itemCombine.RaiseItemCombineReply(new CombineReply(result, row, slot));
-    }
+    private void HandleItemCombineReply(Packet p) => itemCombine.RaiseItemCombineReply(ItemCombineWire.ReadReply(p));
 
     private void HandleNpcEvent(Packet p)
     {

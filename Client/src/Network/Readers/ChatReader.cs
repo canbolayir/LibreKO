@@ -17,6 +17,12 @@ internal sealed class ChatReader : IPacketReader
     {
         dispatcher.On(GameOpcodes.GS_CHAT, HandleChat);
         dispatcher.On(GameOpcodes.GS_CHAT_TARGET, HandleChatTarget);
+        dispatcher.On(GameOpcodes.GS_MONSTER_NOT_ATTACKABLE, HandleMonsterNotAttackable);
+    }
+
+    private void HandleMonsterNotAttackable(Packet p)
+    {
+        if (p.RemainingBytes >= 1 && p.ReadByte() == ChatWire.MonsterNotAttackable) chat.RaiseMonsterNotAttackable();
     }
 
     private void HandleChat(Packet p)

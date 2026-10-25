@@ -319,6 +319,7 @@ public class PreGameService(
 
                 packets.Add(BuildQuestClockPacket());
                 packets.Add(BuildQuestStatePacket(session));
+                packets.Add(RankMarkPacketWriter.Own(session.RankMarks));
 
                 var clan = session.KnightsId > 0 ? sessionManager.Knights.GetClan(session.KnightsId) : null;
                 if (clan != null)

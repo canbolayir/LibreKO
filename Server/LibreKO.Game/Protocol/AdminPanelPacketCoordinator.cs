@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.Hosting;
-using LibreKO.Common.Domain.Entities.GameData;
+﻿using LibreKO.Common.Domain.Entities.GameData;
 using LibreKO.Common.Domain.Services;
 using LibreKO.Common.Enums;
 using LibreKO.Common.Infrastructure.Network;
@@ -28,7 +27,11 @@ public class AdminPanelPacketCoordinator(
     IWorldMovementService worldMovementService,
     INpcSpawnRowService spawnRows,
     INpcSpawnRowStore spawnStore,
-    IHostEnvironment hostEnvironment,
+    IAdminMonsterEditor monsterEditor,
+    IAdminEventScheduleEditor eventEditor,
+    IAdminEventContentEditor contentEditor,
+    IAdminTipEditor tipEditor,
+    IAdminPlayerEditor playerEditor,
     ICollectionRaceService collectionRaceService,
     IPlayerProgressionService playerProgressionService,
     ILoyaltyService loyaltyService,
@@ -57,11 +60,12 @@ public class AdminPanelPacketCoordinator(
     private const byte ReqSpawnPersist = 18;
     private const byte ReqCash = 19;
     private const byte ReqCommands = 20;
+    private const byte ReqTargetSpawnRow = 30;
 
     private static readonly HashSet<byte> GameMasterOnlySubs =
     [
         ReqCollectionRaces, ReqCollectionRaceStart, ReqCollectionRaceClose,
-        ReqFind, ReqGo, ReqSpawnRow, ReqSpawnSet, ReqSpawnPersist,
+        ReqFind, ReqGo, ReqSpawnRow, ReqSpawnSet, ReqSpawnPersist, ReqTargetSpawnRow,
     ];
 
     private const byte KeepProgress = 0;
@@ -69,7 +73,6 @@ public class AdminPanelPacketCoordinator(
     private const int SkillEditBodySize = 2 + ProgressionTable.MasteryClassSlotCount;
 
     private const byte AckState = 0x10;
-    private const byte AckResult = 0x11;
     private const byte AckGrant = 0x12;
     private const byte AckCollectionRaces = 0x14;
     private const byte AckFind = 0x15;
@@ -110,11 +113,42 @@ public class AdminPanelPacketCoordinator(
             return;
         }
 
-        if (!session.IsGM && GameMasterOnlySubs.Contains(sub))
+        if (!session.IsGM && (GameMasterOnlySubs.Contains(sub) || monsterEditor.Handles(sub) || eventEditor.Handles(sub) || contentEditor.Handles(sub)
+                              || tipEditor.Handles(sub) || playerEditor.Handles(sub)))
         {
             logger.LogWarning(
                 "Admin-panel sub {Sub} is GM-only, refused for public-demo grant {Name} (character {CharacterId})",
                 sub, session.Name, session.CharacterId);
+            return;
+        }
+
+        if (monsterEditor.Handles(sub))
+        {
+            await monsterEditor.HandleAsync(session, sub, packet);
+            return;
+        }
+
+        if (eventEditor.Handles(sub))
+        {
+            await eventEditor.HandleAsync(session, sub, packet);
+            return;
+        }
+
+        if (contentEditor.Handles(sub))
+        {
+            await contentEditor.HandleAsync(session, sub, packet);
+            return;
+        }
+
+        if (tipEditor.Handles(sub))
+        {
+            await tipEditor.HandleAsync(session, sub, packet);
+            return;
+        }
+
+        if (playerEditor.Handles(sub))
+        {
+            await playerEditor.HandleAsync(session, sub, packet);
             return;
         }
 
@@ -174,6 +208,10 @@ public class AdminPanelPacketCoordinator(
 
             case ReqSpawnRow:
                 await HandleSpawnRowAsync(session, packet);
+                break;
+
+            case ReqTargetSpawnRow:
+                await HandleTargetSpawnRowAsync(session, packet);
                 break;
 
             case ReqSpawnSet:
@@ -546,18 +584,20 @@ public class AdminPanelPacketCoordinator(
             return;
         }
 
+        if (kind == AdminPanelPacketWriter.FindPlayers)
+        {
+            var players = await playerEditor.FindPlayersAsync(query, FindRowCap);
+            await session.Client.SendPacket(AdminPanelPacketWriter.FindResults(
+                AckFind, kind, players.Count, players.Take(FindRowCap).ToList()));
+            return;
+        }
+
         var byId = int.TryParse(query, out var wanted);
-        IEnumerable<AdminPanelPacketWriter.FindRow> rows = kind == AdminPanelPacketWriter.FindPlayers
-            ? sessionManager.GetAll()
-                .Where(s => FindMatches(s.Name, s.CharacterId, query, byId, wanted))
-                .Select(s => new AdminPanelPacketWriter.FindRow(
-                    s.CharacterId, 0, s.Name, s.Level, s.ZoneId, WireCoordinate(s.X), WireCoordinate(s.Z), false, s.IsBot))
-            : sessionManager.Regions.GetAllNpcs()
-                .Where(n => n.Room == 0 && !n.IsDead && n.IsMonster == (kind == AdminPanelPacketWriter.FindMonsters)
-                            && FindMatches(n.Name, n.NpcId, query, byId, wanted))
-                .Select(n => new AdminPanelPacketWriter.FindRow(
-                    n.NpcId, n.SpawnRow, n.Name, n.Level, n.ZoneId, WireCoordinate(n.X), WireCoordinate(n.Z), n.IsMonster, false));
-        var found = rows
+        var found = sessionManager.Regions.GetAllNpcs()
+            .Where(n => n.Room == 0 && !n.IsDead && n.IsMonster == (kind == AdminPanelPacketWriter.FindMonsters)
+                        && FindMatches(n.Name, n.NpcId, query, byId, wanted))
+            .Select(n => new AdminPanelPacketWriter.FindRow(
+                n.NpcId, n.SpawnRow, n.Name, n.Level, n.ZoneId, AdminPanelPacketWriter.WireCoordinate(n.X), AdminPanelPacketWriter.WireCoordinate(n.Z), n.IsMonster, false))
             .OrderBy(r => r.ZoneId)
             .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(r => r.X)
@@ -568,8 +608,6 @@ public class AdminPanelPacketCoordinator(
 
     private static bool FindMatches(string name, int id, string query, bool byId, int wanted) =>
         (byId && id == wanted) || name.Contains(query, StringComparison.OrdinalIgnoreCase);
-
-    private static ushort WireCoordinate(float value) => (ushort)Math.Clamp(value, 0, ushort.MaxValue);
 
     private static ushort WarpUnits(ushort coordinate) => (ushort)Math.Min(coordinate * 10, ushort.MaxValue);
 
@@ -623,18 +661,33 @@ public class AdminPanelPacketCoordinator(
         await SendSpawnRowAsync(session, row);
     }
 
+    private async Task HandleTargetSpawnRowAsync(UserSession session, Packet packet)
+    {
+        if (packet.RemainingBytes < 4)
+            return;
+
+        var npc = sessionManager.Regions.GetNpc(packet.ReadInt());
+        var row = npc == null ? null : spawnRows.Find(npc.SpawnRow);
+        if (row == null)
+        {
+            await SendResultAsync(session, false, npc == null
+                ? "That target is not an NPC or a monster."
+                : $"{npc.Name} has no spawn row: an event or a summon placed it.");
+            return;
+        }
+
+        await SendSpawnRowAsync(session, row);
+    }
+
     private async Task SendSpawnRowAsync(UserSession session, NpcPosData row)
     {
         var name = gameDataService.GetSpawnProto(row)?.Name ?? $"npc {row.NpcId}";
         var height = sessionManager.Maps?.GetHeight(row.ZoneId, row.LeftX, row.TopZ) ?? 0f;
         await session.Client.SendPacket(AdminPanelPacketWriter.SpawnRow(AckSpawnRow, new AdminPanelPacketWriter.SpawnRowInfo(
-            CanPersist(row), row.Index, row.NpcId, name, (byte)row.ZoneId, row.ActType < NpcPosData.NpcSpawnActTypeBase,
+            true, row.Index, row.NpcId, name, (byte)row.ZoneId, row.ActType < NpcPosData.NpcSpawnActTypeBase,
             row.LeftX, row.TopZ, (int)MathF.Round(height * 10f), row.Direction, row.NumNPC, row.RegTime, row.SpawnRange,
             spawnRows.AliveCount(row))));
     }
-
-    private bool CanPersist(NpcPosData row) =>
-        hostEnvironment.IsDevelopment() && NpcPositionSeedFile.PathFor(hostEnvironment.ContentRootPath, row.ZoneId) != null;
 
     private async Task HandleSpawnEditAsync(UserSession session, Packet packet, bool persist)
     {
@@ -661,12 +714,6 @@ public class AdminPanelPacketCoordinator(
             return;
         }
 
-        if (persist && !CanPersist(row))
-        {
-            await SendResultAsync(session, false, "Persisting is only available on a local development server.");
-            return;
-        }
-
         spawnRows.Edit(row, x, z, direction, count, respawn, range);
         var spawned = await spawnRows.RespawnRowAsync(row);
 
@@ -677,18 +724,14 @@ public class AdminPanelPacketCoordinator(
             return;
         }
 
-        var path = NpcPositionSeedFile.PathFor(hostEnvironment.ContentRootPath, row.ZoneId)!;
-        if (!NpcPositionSeedFile.TryUpdate(path, spawnRows.LastPersisted(row), row, out var error))
+        if (!await spawnStore.UpdateAsync(row))
         {
-            await SendResultAsync(session, false, $"Spawn row {index} set ({spawned} spawned) but not persisted: {error}");
+            await SendResultAsync(session, false, $"Spawn row {index} set ({spawned} spawned) but not saved: the database has no row {index}.");
             await SendSpawnRowAsync(session, row);
             return;
         }
 
-        var stored = await spawnStore.UpdateAsync(row);
-        spawnRows.MarkPersisted(row);
-        await SendResultAsync(session, true,
-            $"Spawn row {index} persisted to {Path.GetFileName(path)}{(stored ? " and the database" : "")} ({spawned} spawned).");
+        await SendResultAsync(session, true, $"Spawn row {index} saved to the database ({spawned} spawned).");
         logger.LogInformation("GM {Name} persisted spawn row {Index} ({NpcId} in zone {Zone} at {X}, {Z})",
             session.Name, index, row.NpcId, row.ZoneId, x, z);
         await SendSpawnRowAsync(session, row);
@@ -821,7 +864,7 @@ public class AdminPanelPacketCoordinator(
 
     private static async Task SendResultAsync(UserSession session, bool ok, string message)
     {
-        await session.Client.SendPacket(AdminPanelPacketWriter.Result(AckResult, ok, message));
+        await session.Client.SendPacket(AdminPanelPacketWriter.Result(ok, message));
     }
 
     private static byte ClampStat(byte value) => Math.Clamp(value, StatFloor, StatCeiling);

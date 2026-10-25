@@ -19,6 +19,8 @@ internal sealed class QuestTrackerFeature : IFeature
 
     internal event Action<int>? QuestPicked;
 
+    internal void Pick(int questId) => QuestPicked?.Invoke(questId);
+
     public void Build()
     {
         context.Inventory.Refreshed += RefreshTracker;
@@ -130,7 +132,7 @@ internal sealed class QuestTrackerFeature : IFeature
         var active = new List<QuestEntry>();
         foreach (var q in book.Entries)
         {
-            if (!Config.LegacyQuestFallback && !book.Views.ContainsKey(q.QuestId)) continue;
+            if (!Config.LegacyQuestFallback && !book.Listed(q.QuestId)) continue;
             if (q.State != QuestStates.Active && q.State != QuestStates.ReadyToTurnIn) continue;
             if (book.Tracked.Count > 0 && !book.Tracked.Contains(q.QuestId)) continue;
             active.Add(q);

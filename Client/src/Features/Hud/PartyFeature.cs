@@ -27,6 +27,14 @@ internal sealed partial class PartyFeature : IFeature, ITickFeature, IPartyPick
 
     private PartyCommanderFeature? commander;
     private PartyWarBoardFeature? warBoard;
+    private PartyLootFeature? drops;
+
+    internal void Attach(PartyLootFeature drops) => this.drops = drops;
+
+    internal void Detach(PartyLootFeature drops)
+    {
+        if (this.drops == drops) this.drops = null;
+    }
 
     internal void Attach(PartyCommanderFeature commander) => this.commander = commander;
 
@@ -199,6 +207,8 @@ internal sealed partial class PartyFeature : IFeature, ITickFeature, IPartyPick
     private const float BuffIconGap = 3f;
     private const int BuffLetterFont = 9;
     private const int HudTitleFont = 16;
+    private const string PartyTitle = "Party";
+    private Label? hudTitle;
     private const int HudNameFont = 14;
     private const int NameLineSeparation = 5;
     private const int TextOutline = 3;
@@ -218,6 +228,7 @@ internal sealed partial class PartyFeature : IFeature, ITickFeature, IPartyPick
     private const string RejoinLabel = "Re-invite after disconnection";
     private const string WarBoardLabel = "Show Party War Board";
     private const string CommanderLabel = "Show Commander Board";
+    private const string DropsLabel = "Show Party Drops";
     private const string CommanderOnlyTip = "Only the party commander has the commander board.";
     private const string LeaveLabel = "Leave Party";
     private const int TextMakeLeader = 3431;
@@ -292,6 +303,7 @@ internal sealed partial class PartyFeature : IFeature, ITickFeature, IPartyPick
     private CheckButton configRejoin = null!;
     private CheckButton configBoard = null!;
     private CheckButton configCommander = null!;
+    private CheckButton configDrops = null!;
 
     internal void BuildHud()
     {
@@ -351,10 +363,10 @@ internal sealed partial class PartyFeature : IFeature, ITickFeature, IPartyPick
             SelfModulate = TitleColour,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         });
-        var title = UiTheme.Text("Party", HudTitleFont, TitleColour);
-        title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        title.MouseFilter = Control.MouseFilterEnum.Ignore;
-        line.AddChild(title);
+        hudTitle = UiTheme.Text(PartyTitle, HudTitleFont, TitleColour);
+        hudTitle.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        hudTitle.MouseFilter = Control.MouseFilterEnum.Ignore;
+        line.AddChild(hudTitle);
         gearButton = UiTheme.IconButton(UiIcons.Get("system/gear"), "Party settings");
         gearButton.CustomMinimumSize = new Vector2(GearSize, GearSize);
         gearButton.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
@@ -466,6 +478,7 @@ internal sealed partial class PartyFeature : IFeature, ITickFeature, IPartyPick
         context.Plugins.Party();
         bool shown = party.InParty;
         if (Hud.Visible != shown) Hud.Visible = shown;
+        if (hudTitle != null) hudTitle.Text = $"{PartyTitle} {party.Members.Count}/{PartyWire.MaxMembers}";
         long second = (long)context.Now;
         hudSecond = second;
         hudCycles = false;
@@ -654,7 +667,7 @@ internal sealed partial class PartyFeature : IFeature, ITickFeature, IPartyPick
     private static Control BuffIcon(SkillData.Skill skill)
     {
         var size = new Vector2(BuffIconSize, BuffIconSize);
-        if (SkillIcons.Get(skill.Id) is { } texture)
+        if (SkillIcons.Buff(skill) is { } texture)
             return new TextureRect
             {
                 Texture = texture,
@@ -834,6 +847,11 @@ internal sealed partial class PartyFeature : IFeature, ITickFeature, IPartyPick
         {
             commander?.SetUserHidden(!on);
         });
+        configDrops = ConfigToggle(column, DropsLabel, on =>
+        {
+            if (on != (drops?.IsOpen ?? false)) drops?.Toggle();
+            RefreshConfig();
+        });
         var leave = UiTheme.SmallButton(LeaveLabel, "");
         leave.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
         leave.Pressed += () =>
@@ -864,6 +882,7 @@ internal sealed partial class PartyFeature : IFeature, ITickFeature, IPartyPick
         configRejoin.SetPressedNoSignal(party.Rejoin.On);
         configRejoin.TooltipText = RejoinTip;
         configBoard.SetPressedNoSignal(warBoard?.Panel is { Visible: true });
+        configDrops.SetPressedNoSignal(drops?.IsOpen ?? false);
         configCommander.SetPressedNoSignal(commander is { AmCommander: true, UserHidden: false });
         configCommander.Disabled = commander is not { AmCommander: true };
         configCommander.TooltipText = commander is { AmCommander: true } ? "" : CommanderOnlyTip;

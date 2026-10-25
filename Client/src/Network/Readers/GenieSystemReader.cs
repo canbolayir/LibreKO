@@ -44,7 +44,9 @@ internal sealed class GenieSystemReader : IPacketReader
         }
         else if ((command is GenieSystemCommand.UseSpiritPotion or GenieSystemCommand.RemainingTime) && p.RemainingBytes >= 2)
         {
-            genie.ApplyRemainingTime(p.ReadUShort());
+            int minutes = p.ReadUShort();
+            if (command == GenieSystemCommand.UseSpiritPotion) genie.RaiseSpiritUsed();
+            genie.ApplyRemainingTime(minutes);
         }
     }
 }

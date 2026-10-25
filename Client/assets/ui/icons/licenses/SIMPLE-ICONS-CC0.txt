@@ -1,0 +1,2 @@
+brand/discord.svg: the Discord mark from Simple Icons (https://simpleicons.org), CC0 1.0 Universal.
+Discord and the Discord mark are trademarks of Discord Inc.; the mark is used only to link to the LibreKO Discord server.

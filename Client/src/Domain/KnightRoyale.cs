@@ -7,6 +7,7 @@ namespace LibreKO.Domain;
 public static class KnightRoyale
 {
     public const int DuoMode = 2;
+    public const int BagSlots = 9;
     public const int FirstGasRegion = 20051;
     public const int LastGasRegion = 20055;
     public const int LastArea = LastGasRegion - FirstGasRegion + 1;

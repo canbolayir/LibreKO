@@ -10,6 +10,7 @@ internal sealed class GenieFeature : IFeature, ILateTickFeature, IClosableWindow
     private readonly GenieSession genieSession;
     private readonly PartySession party;
     private readonly SelfSession self;
+    private readonly ZoneSession zone;
     private readonly IGenieRequests requests;
     private readonly PartyInvitesFeature partyInvites;
     private readonly EntityActionSystem entityAction;
@@ -21,7 +22,7 @@ internal sealed class GenieFeature : IFeature, ILateTickFeature, IClosableWindow
     private readonly GenieScrollsFeature genieScrolls;
     private readonly GenieTownFeature genieTown;
 
-    public GenieFeature(IWorldContext context, ChatSession chat, CombatSession combat, GenieSession genie, PartySession party, SelfSession self, IGenieRequests requests, PartyInvitesFeature partyInvites, EntityActionSystem entityAction, MerchantStallsFeature merchantStalls, SkillCastSystem skillCast, BasicAttackSystem basicAttack, GenieHammerFeature genieHammer, GeniePotionsFeature geniePotions, GenieScrollsFeature genieScrolls, GenieTownFeature genieTown)
+    public GenieFeature(IWorldContext context, ChatSession chat, CombatSession combat, GenieSession genie, PartySession party, SelfSession self, ZoneSession zone, IGenieRequests requests, PartyInvitesFeature partyInvites, EntityActionSystem entityAction, MerchantStallsFeature merchantStalls, SkillCastSystem skillCast, BasicAttackSystem basicAttack, GenieHammerFeature genieHammer, GeniePotionsFeature geniePotions, GenieScrollsFeature genieScrolls, GenieTownFeature genieTown)
     {
         this.context = context;
         this.chat = chat;
@@ -29,6 +30,7 @@ internal sealed class GenieFeature : IFeature, ILateTickFeature, IClosableWindow
         genieSession = genie;
         this.party = party;
         this.self = self;
+        this.zone = zone;
         this.requests = requests;
         this.partyInvites = partyInvites;
         this.entityAction = entityAction;
@@ -305,7 +307,7 @@ internal sealed class GenieFeature : IFeature, ILateTickFeature, IClosableWindow
         main.AddChild(footer);
         start = GenieControls.Button(footer, "Start", ToggleRun);
         GenieControls.Button(footer, "Save Settings", SaveAdvanced);
-        GenieControls.Button(footer, "Use Spirit of Genie", () => requests.System(GenieSystemCommand.UseSpiritPotion));
+        GenieControls.Button(footer, "Use Spirit of Genie", UseSpirit);
         misc.AddChild(UiTheme.SectionTitle("Genie Settings"));
         range = controls.Percent(misc, "Range from Start Position", GenieSetup.MinRange, GenieSetup.MaxRange, v => Genie.Range = v);
         returnHome = controls.Option(misc, ItemData.Text(ReturnHomeText, "When no monsters are in range, return to the start position"),
@@ -315,7 +317,7 @@ internal sealed class GenieFeature : IFeature, ILateTickFeature, IClosableWindow
         cureCurse = controls.Option(misc, ItemData.Text(CureCurseText, "Auto Cure Curse"), on => Genie.Set(GenieExtra.CureCurse, on));
         autoParty = new CheckButton { Text = "Auto Party" };
         misc.AddChild(autoParty);
-        ptCode = new LineEdit { PlaceholderText = "PT CODE — code to send in a private message", Secret = true, MaxLength = 64 };
+        ptCode = new LineEdit { PlaceholderText = "PT CODE — code to send in a private message", Secret = true, VirtualKeyboardType = LineEdit.VirtualKeyboardTypeEnum.Password, MaxLength = 64 };
         misc.AddChild(UiTheme.SectionTitle("PT CODE"));
         misc.AddChild(ptCode);
         ptCode.TextChanged += _ => ConfigurePartyCode();
@@ -336,7 +338,9 @@ internal sealed class GenieFeature : IFeature, ILateTickFeature, IClosableWindow
         };
         LoadAdvanced();
         genieSession.GenieSystemState += OnSystemState;
+        genieSession.GenieSpiritUsedEvent += OnSpiritUsed;
         genieSession.GenieOptionsReceived += OnOptions;
+        zone.WarpEvent += OnWarp;
         chat.ChatEvent += OnPrivateMessage;
         combat.AttackEvent += ObserveAttack;
         combat.MagicEvent += ObserveMagic;
@@ -424,6 +428,11 @@ internal sealed class GenieFeature : IFeature, ILateTickFeature, IClosableWindow
         if (RequestPending) return;
         if (genieSession.GenieRunning) { StopAdvanced(); return; }
         if (context.Self.Dead || merchantStalls.BlocksMove() || !Game.Connection.Connected || Game.Connection.Reconnect.Blocking) return;
+        if (Points <= 0)
+        {
+            AskForSpirit();
+            return;
+        }
         SaveAdvanced();
         wantsRunning = true;
         RequestPending = true;
@@ -433,6 +442,38 @@ internal sealed class GenieFeature : IFeature, ILateTickFeature, IClosableWindow
         context.Plugins.Genie();
         requests.System(GenieSystemCommand.Start);
     }
+
+    private int OwnedSpirit() => GenieSpirit.FirstOwned(id => self.Inventory.CountInBackpack(id) > 0);
+
+    private void AskForSpirit()
+    {
+        int spirit = OwnedSpirit();
+        if (spirit == GenieSpirit.NoSpirit)
+        {
+            Notice.Show(context.Root, ItemData.Text(GenieSpirit.NoneText, GenieSpirit.NoneFallback));
+            return;
+        }
+        Notice.Confirm(context.Root, ItemData.Text(GenieSpirit.AskText, GenieSpirit.AskFallback), "Yes", "No",
+            () => requests.UseSpirit(spirit));
+    }
+
+    internal void UseSpirit()
+    {
+        int spirit = OwnedSpirit();
+        if (spirit == GenieSpirit.NoSpirit)
+        {
+            Notice.Show(context.Root, ItemData.Text(GenieSpirit.NoneText, GenieSpirit.NoneFallback));
+            return;
+        }
+        requests.UseSpirit(spirit);
+    }
+
+    private void OnWarp(float mapX, float mapZ)
+    {
+        if (genieSession.GenieRunning || RequestPending) StopAdvanced();
+    }
+
+    private void OnSpiritUsed() => context.Log.Notice(ItemData.Text(GenieSpirit.UsedText, GenieSpirit.UsedFallback));
 
     internal bool AddTarget()
     {
@@ -713,7 +754,9 @@ internal sealed class GenieFeature : IFeature, ILateTickFeature, IClosableWindow
         if (genieSession.GenieRunning || RequestPending) StopAdvanced();
         genieSession.Reset();
         genieSession.GenieSystemState -= OnSystemState;
+        genieSession.GenieSpiritUsedEvent -= OnSpiritUsed;
         genieSession.GenieOptionsReceived -= OnOptions;
+        zone.WarpEvent -= OnWarp;
         partyCodes.Clear();
         chat.ChatEvent -= OnPrivateMessage;
         combat.AttackEvent -= ObserveAttack;

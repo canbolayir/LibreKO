@@ -10,6 +10,7 @@ internal sealed class EntityStatesSystem : IFeature
     private readonly ClanSession clan;
     private readonly GenieSession genie;
     private readonly ProgressSession progress;
+    private readonly ManesSurvivalSession manes;
     private readonly SelfSession self;
     private readonly IPlayerRequests playerRequests;
     private readonly ISoccerRequests soccerRequests;
@@ -18,13 +19,14 @@ internal sealed class EntityStatesSystem : IFeature
     private readonly StealthSystem stealth;
     private readonly EntityPlatesSystem entityPlates;
 
-    public EntityStatesSystem(IWorldContext context, AchievementSession achievement, ClanSession clan, GenieSession genie, ProgressSession progress, SelfSession self, IPlayerRequests playerRequests, ISoccerRequests soccerRequests, SelfAvatar avatar, EntityLooksSystem entityLooks, EntityActionSystem entityAction, StealthSystem stealth, EntityPlatesSystem entityPlates)
+    public EntityStatesSystem(IWorldContext context, AchievementSession achievement, ClanSession clan, GenieSession genie, ProgressSession progress, ManesSurvivalSession manes, SelfSession self, IPlayerRequests playerRequests, ISoccerRequests soccerRequests, SelfAvatar avatar, EntityLooksSystem entityLooks, EntityActionSystem entityAction, StealthSystem stealth, EntityPlatesSystem entityPlates)
     {
         this.context = context;
         this.achievement = achievement;
         this.clan = clan;
         this.genie = genie;
         this.progress = progress;
+        this.manes = manes;
         this.self = self;
         this.playerRequests = playerRequests;
         this.soccerRequests = soccerRequests;
@@ -37,11 +39,15 @@ internal sealed class EntityStatesSystem : IFeature
 
     public void Build()
     {
+        manes.StartEvent += OnManesStart;
     }
 
     public void Dispose()
     {
+        manes.StartEvent -= OnManesStart;
     }
+
+    private void OnManesStart(ManesStart start) => ApplyZoneLook(context.Self.CharId);
 
     internal HashSet<int> SittingIds { get; } = new();
     internal HashSet<int> StanceIds { get; } = new();
@@ -600,7 +606,7 @@ internal sealed class EntityStatesSystem : IFeature
 
     private static void SetBlinkAlpha(Node3D body, float alpha)
     {
-        float transparency = Mathf.Clamp(1f - alpha, 0f, 1f);
+        float transparency = Mathf.Clamp(1f - LookOpacity.Shown(alpha, StealthLook.LookOpacityOf(body)), 0f, 1f);
         foreach (var node in StealthLook.StealthDescendants(body))
             if (node is GeometryInstance3D gi)
                 Fx.SetTransparency(gi, transparency);
@@ -667,7 +673,9 @@ internal sealed class EntityStatesSystem : IFeature
 
     internal event Action<int, bool>? GenieAuraChanged;
 
-    internal HashSet<int> GenieUsers { get; } = new();
+    private readonly HashSet<int> genieUsers = new();
+
+    internal IReadOnlySet<int> GenieUsers => genieUsers;
 
     internal void GenieAuraInit() => genie.GenieAuraEvent += OnGenieAura;
 
@@ -680,10 +688,12 @@ internal sealed class EntityStatesSystem : IFeature
 
     internal void ShowGenieAura(int entityId, bool on)
     {
-        if (on) GenieUsers.Add(entityId);
-        else GenieUsers.Remove(entityId);
+        if (on) genieUsers.Add(entityId);
+        else genieUsers.Remove(entityId);
         GenieAuraChanged?.Invoke(entityId, on);
     }
+
+    internal void GenieForgetEntity(int id) => genieUsers.Remove(id);
 
     internal HashSet<int> DevilForms { get; } = new();
 
@@ -691,9 +701,18 @@ internal sealed class EntityStatesSystem : IFeature
 
     private int ZoneLookSkill(int charId)
     {
+        if (ManesSurvival.IsZone(context.Zone)) return ManesLookSkill(charId);
         if (charId == context.Self.CharId) return ZoneLooks.SelfLook(context.Zone, self.Nation);
         int nation = context.Entities.Views.TryGetValue(charId, out var e) ? e.Nation : 0;
         return ZoneLooks.OtherLook(context.Zone, self.Nation, nation);
+    }
+
+    private int ManesLookSkill(int charId)
+    {
+        int row = charId == context.Self.CharId
+            ? manes.Running ? manes.Row : 0
+            : context.Entities.Views.TryGetValue(charId, out var survivor) ? survivor.SurvivalRow : 0;
+        return row > 0 ? ManesSurvival.LookSkill(row) : 0;
     }
 
     internal bool ZoneLookHolds(int charId) => ZoneLookSkill(charId) > 0;

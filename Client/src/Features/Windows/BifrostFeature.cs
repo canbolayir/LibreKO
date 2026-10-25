@@ -1,4 +1,4 @@
-﻿using Godot;
+﻿﻿using Godot;
 
 namespace LibreKO.Features.Windows;
 
@@ -22,6 +22,7 @@ internal sealed class BifrostFeature : IFeature
     }
 
     private CanvasLayer layer = null!;
+    private CanvasLayer signUpLayer = null!;
     private PanelContainer banner = null!;
     private Label titleLbl = null!;
     private Label timerLbl = null!;
@@ -68,6 +69,7 @@ internal sealed class BifrostFeature : IFeature
         bifrost.TempleSignUpsEvent  += OnTempleSignUps;
 
         if (context.Ready) requests.TimeRequest();
+        PluginHost.Game.AttachTempleSignUps(new PluginSignUpsBridge(this));
     }
 
     public void Dispose()
@@ -79,7 +81,10 @@ internal sealed class BifrostFeature : IFeature
 
         if (layer != null && GodotObject.IsInstanceValid(layer))
             layer.QueueFree();
+        if (signUpLayer != null && GodotObject.IsInstanceValid(signUpLayer))
+            signUpLayer.QueueFree();
         layer = null!;
+        signUpLayer = null!;
         inZoneLeaveBanner = null;
         inZoneLeaveAsk = null;
     }
@@ -90,6 +95,9 @@ internal sealed class BifrostFeature : IFeature
     {
         layer = new CanvasLayer { Layer = UiLayers.GameMenu };
         context.Root.AddChild(layer);
+        signUpLayer = new CanvasLayer { Layer = UiLayers.GameMenu };
+        context.Root.AddChild(signUpLayer);
+        context.Hud.PluginSeam(signUpLayer, LibreKO.Plugins.HudPart.TempleSignUp);
 
         BuildBanner();
         BuildJoinDialog();
@@ -109,7 +117,7 @@ internal sealed class BifrostFeature : IFeature
             TooltipText = "Click to open registration window",
         };
         banner.AddThemeStyleboxOverride("panel", UiTheme.Panel(5, true));
-        layer.AddChild(banner);
+        signUpLayer.AddChild(banner);
         const string bifrostBannerLayoutId = "hud_bifrost";
         var bifrostLayout = HudLayout.Attach(
             banner,
@@ -166,7 +174,7 @@ internal sealed class BifrostFeature : IFeature
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         joinModal.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        layer.AddChild(joinModal);
+        signUpLayer.AddChild(joinModal);
 
         var center = new CenterContainer
         {
@@ -268,17 +276,8 @@ internal sealed class BifrostFeature : IFeature
         TempleEventType.JuraidMountain => "Juraid Mountain",
         TempleEventType.UnderTheCastle => "Under The Castle",
         TempleEventType.ForgottenTemple => "Forgotten Temple",
+        TempleEventType.ManesSurvival => "Manes' Survival",
         _ => Title,
-    };
-
-    private static TempleEventType TypeForJoinReply(int id) => id switch
-    {
-        TempleJoin.ChaosSignUpEventId or TempleZones.ChaosDungeon => TempleEventType.Chaos,
-        TempleZones.BorderDefenseWar => TempleEventType.BorderDefenseWar,
-        TempleZones.JuraidMountain => TempleEventType.JuraidMountain,
-        TempleZones.UnderTheCastle => TempleEventType.UnderTheCastle,
-        TempleZones.ForgottenTemple => TempleEventType.ForgottenTemple,
-        _ => TempleEventType.None,
     };
 
     private void CloseJoinModal()
@@ -317,7 +316,7 @@ internal sealed class BifrostFeature : IFeature
     private void SignUpEnded(TempleEventType type)
     {
         signUpPrompted.Remove(type);
-        signUpCounts.Remove(TempleJoin.SignUpEventId(type));
+        signUpCounts.Remove(TempleJoin.IndunType(type));
         context.Log.Notice($"[{EventTitle(type)}] Event registration has ended.");
     }
 
@@ -327,6 +326,7 @@ internal sealed class BifrostFeature : IFeature
     private void RefreshBanner()
     {
         if (banner == null || !GodotObject.IsInstanceValid(banner)) return;
+        PluginHost.Game.RaiseTempleSignUps();
         var utcNow = DateTime.UtcNow;
         var shows = SignUps.Current;
         int seconds = shows != TempleEventType.None ? SignUps.SecondsLeft(shows, utcNow) : SecondsLeft(utcNow);
@@ -351,7 +351,7 @@ internal sealed class BifrostFeature : IFeature
         titleLbl.Text = title;
         if (joinModalTitle != null && GodotObject.IsInstanceValid(joinModalTitle))
             joinModalTitle.Text = FormatModalTitle(title);
-        banner.Visible = true;
+        banner.Visible = signUpLayer.Visible;
         if (tick.IsStopped()) tick.Start();
         UpdateBanner(seconds);
         UpdateJoinModalState();
@@ -369,10 +369,15 @@ internal sealed class BifrostFeature : IFeature
         if (type == TempleEventType.None) return;
         if (SignUps.Registered == type)
         {
-            requests.Disband();
+            requests.Disband(type);
             return;
         }
-        if (SignUps.Registered != TempleEventType.None || type == TempleEventType.JuraidMountain) return;
+        Join(type);
+    }
+
+    private void Join(TempleEventType type)
+    {
+        if (!SignUps.IsOpen(type) || SignUps.Registered != TempleEventType.None || type == TempleEventType.JuraidMountain) return;
         if (type == TempleEventType.Chaos && HoldsPickaxe())
         {
             msgOut.ShowSkill(ItemData.Text(ChaosBattle.PickaxeJoinText, "Disarm your Pickaxe and resubmit your request to participate."));
@@ -383,8 +388,41 @@ internal sealed class BifrostFeature : IFeature
         requests.Join(type);
     }
 
+    private string? JoinHint(TempleEventType type)
+    {
+        if (SignUps.Registered == type) return null;
+        if (SignUps.Registered != TempleEventType.None) return $"You are registered for {EventTitle(SignUps.Registered)}.";
+        return type == TempleEventType.JuraidMountain ? JuraidSignUpText : null;
+    }
+
+    private IReadOnlyList<GameTempleSignUp> SignUpsForPlugins()
+    {
+        var utcNow = DateTime.UtcNow;
+        return SignUps.Open.Select(type =>
+        {
+            signUpCounts.TryGetValue(TempleJoin.IndunType(type), out var count);
+            return new GameTempleSignUp(type, EventTitle(type), SignUps.SecondsLeft(type, utcNow), SignUps.Registered == type,
+                JoinHint(type), count.Karus, count.ElMorad);
+        }).ToList();
+    }
+
+    private sealed class PluginSignUpsBridge(BifrostFeature feature) : IGameTempleSignUps
+    {
+        event Action? IGameTempleSignUps.Changed { add { } remove { } }
+
+        public IReadOnlyList<GameTempleSignUp> Open => feature.SignUpsForPlugins();
+
+        public void Join(TempleEventType type) => feature.Join(type);
+
+        public void Cancel()
+        {
+            if (feature.SignUps.Registered != TempleEventType.None) feature.requests.Disband(feature.SignUps.Registered);
+        }
+    }
+
     private void UpdateJoinModalState()
     {
+        PluginHost.Game.RaiseTempleSignUps();
         if (joinModalStatus == null || !GodotObject.IsInstanceValid(joinModalStatus)) return;
         if (joinModalBtn == null || !GodotObject.IsInstanceValid(joinModalBtn)) return;
 
@@ -419,15 +457,15 @@ internal sealed class BifrostFeature : IFeature
         }
 
         if (joinModalCount == null || !GodotObject.IsInstanceValid(joinModalCount)) return;
-        int eventId = TempleJoin.SignUpEventId(type);
+        int eventId = TempleJoin.IndunType(type);
         joinModalCount.Visible = signUpCounts.TryGetValue(eventId, out var count);
         if (joinModalCount.Visible)
-            joinModalCount.Text = TempleJoin.CountLine(eventId == TempleJoin.ChaosSignUpEventId, count.Karus, count.ElMorad);
+            joinModalCount.Text = TempleJoin.CountLine(type, count.Karus, count.ElMorad);
     }
 
-    private void OnJoinResult(TempleJoinResult result, int zone)
+    private void OnJoinResult(TempleJoinResult result, int indunType)
     {
-        var type = TypeForJoinReply(zone);
+        var type = TempleJoin.FromIndunType(indunType);
         if (type == TempleEventType.None)
             type = pendingJoin != TempleEventType.None ? pendingJoin : SignUps.Current;
         pendingJoin = TempleEventType.None;
@@ -599,7 +637,7 @@ internal sealed class BifrostFeature : IFeature
 
     private void OnInZoneLeaveConfirmed()
     {
-        requests.Disband();
+        requests.Disband(SignUps.Registered);
         context.Log.Notice($"[{ZoneCatalog.Name(context.Zone)}] Leaving event and returning to Moradon...");
     }
 

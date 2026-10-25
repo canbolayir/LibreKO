@@ -44,6 +44,13 @@ public sealed record UserInfoReply(
         var places = new int[UserInfoCard.RankPlaces];
         for (int i = 0; i < places.Length && p.RemainingBytes >= 4; i++) places[i] = p.ReadInt();
 
+        var marks = ReadMarks(p);
+        return ((byte)result, new UserInfoReply(name, level, cls, loyalty, monthly, clanId, markVersion, clanFlag, clanGrade,
+            clanName, clanChief, clanRanking, rebirth, party, places, marks));
+    }
+
+    public static List<RankMark> ReadMarks(Packet p)
+    {
         var marks = new List<RankMark>();
         if (p.RemainingBytes >= 1)
         {
@@ -65,7 +72,6 @@ public sealed record UserInfoReply(
                 if (amount > 0) marks.Add(new RankMark(id + UserInfoCard.SpecialMarkFirst, 0, 0, amount));
             }
         }
-        return ((byte)result, new UserInfoReply(name, level, cls, loyalty, monthly, clanId, markVersion, clanFlag, clanGrade,
-            clanName, clanChief, clanRanking, rebirth, party, places, marks));
+        return marks;
     }
 }

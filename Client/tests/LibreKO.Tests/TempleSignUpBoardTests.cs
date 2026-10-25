@@ -62,9 +62,12 @@ public class TempleSignUpBoardTests
     }
 
     [Fact]
-    public void ChaosCountsArriveUnderItsOwnSignUpId()
+    public void EveryEventRoundTripsThroughItsWireType()
     {
-        Assert.Equal(TempleJoin.ChaosSignUpEventId, TempleJoin.SignUpEventId(TempleEventType.Chaos));
-        Assert.Equal((int)TempleEventType.BorderDefenseWar, TempleJoin.SignUpEventId(TempleEventType.BorderDefenseWar));
+        Assert.Equal(TempleJoin.ChaosIndunType, TempleJoin.IndunType(TempleEventType.Chaos));
+        Assert.Equal(TempleJoin.BorderDefenseWarIndunType, TempleJoin.IndunType(TempleEventType.BorderDefenseWar));
+        foreach (var type in new[] { TempleEventType.Chaos, TempleEventType.BorderDefenseWar, TempleEventType.JuraidMountain,
+                     TempleEventType.UnderTheCastle, TempleEventType.ForgottenTemple })
+            Assert.Equal(type, TempleJoin.FromIndunType(TempleJoin.IndunType(type)));
     }
 }

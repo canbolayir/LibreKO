@@ -100,8 +100,8 @@ using (var scope = builder.Services.CreateScope())
     await db.Database.MigrateAsync();
 
     var seeder = scope.ServiceProvider.GetRequiredService<IDataSeeder>();
-    await seeder.SeedEntityAsync(new ServerGroupSeed());
-    await seeder.SeedEntityAsync(new ServerSeed());
+    await seeder.SeedEntityAsync(new ServerGroupSeed(), force: true);
+    await seeder.SeedEntityAsync(new ServerSeed(), force: true);
 }
 
 try

@@ -263,7 +263,6 @@ internal sealed class PlayerSystem : IFeature, IMovement, ISelfView
             return;
         }
         bool typing = context.Root.GetViewport().GuiGetFocusOwner() is LineEdit or TextEdit or SpinBox;
-        if (typing && moveGates?.WhisperHasFocus != true && !context.Chat.IsActive) { avatar.Moving = false; SendMoveStop(); return; }
 
         if (avatar.Sitting)
         {

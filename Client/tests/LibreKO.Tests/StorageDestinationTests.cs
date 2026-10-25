@@ -18,6 +18,17 @@ public class StorageDestinationTests
     }
 
     [Fact]
+    public void AQuickDepositFillsThePageOnScreenAfterAnyStackElsewhere()
+    {
+        ItemSlot[] slots = [default, default, default, new() { ItemId = 10, Count = 1 }, default, default];
+
+        Assert.Equal(4, StorageDestination.Find(slots, Item(20), 1, false, pageStart: 3, pageSize: 3));
+        Assert.Equal(3, StorageDestination.Find(slots, Item(10), 1, true, pageStart: 0, pageSize: 3));
+        slots[4] = slots[5] = Item(30);
+        Assert.Equal(0, StorageDestination.Find(slots, Item(20), 1, false, pageStart: 3, pageSize: 3));
+    }
+
+    [Fact]
     public void FullStacksAreSkippedAndEquipmentDoesNotMerge()
     {
         ItemSlot[] slots = [new() { ItemId = 10, Count = Inventory.StackMax }, default];

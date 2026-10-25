@@ -42,6 +42,10 @@ internal sealed class WhispersFeature : IFeature
     private static readonly Color WhisperBlueText = new("eaf3fd");
     private static readonly Vector2 WhisperFirstPos = new(430, 300);
     private static readonly Vector2 WhisperCascade = new(28, 26);
+    private const float StackGap = 4f;
+    private const float StackTopMargin = 8f;
+    private bool stackQueued;
+    private bool stacking;
 
     internal sealed class Whisper
     {
@@ -53,6 +57,10 @@ internal sealed class WhispersFeature : IFeature
         public Button? Block;
         public Tween? Blink;
         public bool StartCollapsed;
+        public double LastActive;
+        public float OpenHeight;
+        public bool AutoFolded;
+        public bool StackHidden;
 
         public LineEdit Input => Composer.Input;
     }
@@ -77,11 +85,13 @@ internal sealed class WhispersFeature : IFeature
         context.Chat.WhisperEcho += OnWhisperEcho;
         context.Chat.WhisperNotice += OnWhisperNotice;
         context.Chat.WhisperOpened += OnWhisperOpened;
+        context.Chat.InputFocused += ForgetActiveWhisper;
         Config.WhisperLookChanged += OnWhisperLookChanged;
 
         foreach (var open in roomMedia.OpenWhispers)
         {
             var whisper = GetOrCreateWhisper(open.Name, open.Minimized, new Vector2(open.X, open.Y));
+            if (open.Moved) whisper.Window.Layout.Place(whisper.Window.Position, whisper.Window.Size);
             if (open.Unread) StartWhisperBlink(whisper);
         }
     }
@@ -92,11 +102,12 @@ internal sealed class WhispersFeature : IFeature
         roomMedia.KeepOpenWhispers(Windows.Values
             .Where(whisper => GodotObject.IsInstanceValid(whisper.Window) && whisper.Window.Visible)
             .Select(whisper => new OpenWhisper(whisper.Name, whisper.Window.Position.X, whisper.Window.Position.Y, Folded(whisper),
-                whisper.Blink != null && whisper.Blink.IsValid())));
+                whisper.Blink != null && whisper.Blink.IsValid(), whisper.Window.Layout.UserPlaced)));
         chat.ChatEvent -= OnWhisper;
         roomMedia.DirectTimelineEvent -= OnDirectTimeline;
         roomMedia.DirectPostedEvent -= OnDirectPosted;
         context.Chat.WhisperEcho -= OnWhisperEcho;
+        context.Chat.InputFocused -= ForgetActiveWhisper;
         context.Chat.WhisperNotice -= OnWhisperNotice;
         context.Chat.WhisperOpened -= OnWhisperOpened;
         Config.WhisperLookChanged -= OnWhisperLookChanged;
@@ -138,8 +149,15 @@ internal sealed class WhispersFeature : IFeature
         whisper.Block = AddWhisperHeaderIcon(whisper, "system/lock", "", ToggleWhisperBlock);
         RefreshWhisperBlock(whisper);
         whisper.Window.Closed += () => CloseWhisper(name);
+        whisper.Window.Layout.Placed += QueueStack;
         whisper.Window.MinimizedChanged += isMinimized =>
         {
+            if (!stacking)
+            {
+                whisper.AutoFolded = false;
+                if (!isMinimized) whisper.LastActive = context.Now;
+                QueueStack();
+            }
             foreach (var icon in whisper.HeaderIcons) icon.Visible = !isMinimized;
             if (isMinimized) return;
             StopWhisperBlink(whisper);
@@ -166,9 +184,18 @@ internal sealed class WhispersFeature : IFeature
         root.AddChild(whisper.Thread);
 
         whisper.Composer = new ChatComposer(name);
-        whisper.Composer.Submitted += wire => context.Chat.SendWhisper(name, wire);
+        whisper.Composer.Submitted += wire =>
+        {
+            context.Chat.SendWhisper(name, wire);
+            whisper.Input.CallDeferred(Control.MethodName.ReleaseFocus);
+        };
         whisper.Composer.Notice += text => AddWhisperPost(whisper, RoomPost.Notice(text, DateTime.Now));
-        whisper.Input.FocusEntered += () => whisperTyping = name;
+        whisper.Input.FocusEntered += () =>
+        {
+            whisperTyping = name;
+            whisper.LastActive = context.Now;
+            QueueStack();
+        };
         root.AddChild(whisper.Composer);
 
         Windows[name] = whisper;
@@ -177,9 +204,65 @@ internal sealed class WhispersFeature : IFeature
         if (!timeline.HistoryLoaded) roomMediaRequests.DirectHistory(name, 0);
         if (minimized) whisper.Window.SetMinimized(true);
         whisper.Window.Modulate = WhisperRestModulate();
+        whisper.LastActive = context.Now;
         context.Plugins.Whispers();
+        QueueStack();
         return whisper;
     }
+
+    private void QueueStack()
+    {
+        if (stackQueued) return;
+        stackQueued = true;
+        Callable.From(StackWhispers).CallDeferred();
+    }
+
+    private void StackWhispers()
+    {
+        stackQueued = false;
+        if (!Platform.PointerUi || !GodotObject.IsInstanceValid(context.Chat.Panel)) return;
+        var stacked = Windows.Values
+            .Where(w => GodotObject.IsInstanceValid(w.Window) && !w.Window.PluginReplaced && !w.Window.Layout.UserPlaced
+                        && (w.Window.Visible || w.StackHidden))
+            .OrderByDescending(w => w.Name == whisperTyping)
+            .ThenByDescending(w => w.LastActive)
+            .ToList();
+        if (stacked.Count == 0) return;
+        foreach (var w in stacked)
+            if (!w.Window.Minimized) w.OpenHeight = w.Window.Size.Y;
+        var chatRect = context.Chat.Panel.GetGlobalRect();
+        var plan = WhisperStack.Plan(stacked.Select(w => new WhisperSlot(w.Name, !w.Window.Minimized || w.AutoFolded,
+                w.OpenHeight > 0 ? w.OpenHeight : WhisperLogSize().Y, FoldedHeight(w))).ToList(),
+            chatRect.Position.Y - StackGap, StackTopMargin, StackGap);
+        bool foldsChanged = false;
+        stacking = true;
+        for (int i = 0; i < stacked.Count; i++)
+        {
+            var w = stacked[i];
+            var place = plan[i];
+            w.StackHidden = place.Hidden;
+            w.Window.Visible = !place.Hidden;
+            if (place.Hidden) continue;
+            if (place.Open && w.Window.Minimized && w.AutoFolded)
+            {
+                w.Window.SetMinimized(false);
+                w.AutoFolded = false;
+                foldsChanged = true;
+            }
+            else if (!place.Open && !w.Window.Minimized)
+            {
+                w.Window.SetMinimized(true);
+                w.AutoFolded = true;
+                foldsChanged = true;
+            }
+            w.Window.Position = new Vector2(chatRect.Position.X, place.Y);
+        }
+        stacking = false;
+        if (foldsChanged) QueueStack();
+    }
+
+    private static float FoldedHeight(Whisper whisper) =>
+        whisper.Window.Minimized ? whisper.Window.Size.Y : whisper.Window.GetCombinedMinimumSize().Y;
 
     private Button? AddWhisperHeaderIcon(Whisper whisper, string icon, string tooltip, Action pressed)
     {
@@ -288,7 +371,10 @@ internal sealed class WhispersFeature : IFeature
         if (name.Length == 0) return;
         var whisper = GetOrCreateWhisper(name, minimized: false);
         whisper.Window.Visible = true;
+        whisper.StackHidden = false;
         whisper.Window.SetMinimized(false);
+        whisper.LastActive = context.Now;
+        QueueStack();
         RaiseWhisper(whisper);
         StopWhisperBlink(whisper);
         whisper.Thread.StickBottom = true;
@@ -304,6 +390,7 @@ internal sealed class WhispersFeature : IFeature
         if (VoiceChat.I is { } voice && voice.RecordingFor(name)) voice.StopRecording(send: false);
         whisper.Window.QueueFree();
         context.Plugins.Whispers();
+        QueueStack();
     }
 
     internal void FocusWhisperAt(Vector2 screenPos)
@@ -335,16 +422,19 @@ internal sealed class WhispersFeature : IFeature
         if (string.Equals(line.Name, self.LastEnter.Name, StringComparison.OrdinalIgnoreCase)) return;
 
         var whisper = ShowIncomingWhisper(line.Name);
-        AddWhisperPost(whisper, RoomPost.Line(line.CharId, line.Name, ChatSystem.ReadableText(line, self.Nation, zoneAbility.CurrentZoneAbility.CanTalk), DateTime.Now));
+        AddWhisperPost(whisper, RoomPost.Line(line.CharId, line.Name, ChatSystem.ReadableText(line, self.IsGm, self.Nation, zoneAbility.CurrentZoneAbility.CanTalk), DateTime.Now));
         if (whisper.Window.Minimized) StartWhisperBlink(whisper);
     }
 
     private Whisper ShowIncomingWhisper(string name)
     {
         bool isNew = !Windows.ContainsKey(name);
-        var whisper = GetOrCreateWhisper(name, minimized: isNew);
-        whisper.Window.Visible = true;
-        if (WindowStack.RaisesIncoming(FocusedWhisperIndex(), whisper.Window.GetIndex())) RaiseWhisper(whisper);
+        bool quiet = ManesSurvival.IsZone(context.Zone);
+        var whisper = GetOrCreateWhisper(name, minimized: isNew || quiet);
+        if (!whisper.StackHidden && !quiet) whisper.Window.Visible = true;
+        whisper.LastActive = context.Now;
+        QueueStack();
+        if (!quiet && WindowStack.RaisesIncoming(FocusedWhisperIndex(), whisper.Window.GetIndex())) RaiseWhisper(whisper);
         return whisper;
     }
 
@@ -394,6 +484,16 @@ internal sealed class WhispersFeature : IFeature
         context.Plugins.WhisperLine(whisper.Name, post);
         whisper.Thread.Render();
     }
+
+    internal bool FocusActiveWhisper()
+    {
+        if (!Windows.TryGetValue(whisperTyping, out var whisper)) return false;
+        if (!GodotObject.IsInstanceValid(whisper.Window) || !whisper.Window.Visible || whisper.Window.Minimized) return false;
+        whisper.Input.GrabFocus();
+        return true;
+    }
+
+    private void ForgetActiveWhisper() => whisperTyping = "";
 
     internal bool InsertWhisperItemLink(int itemId)
     {
@@ -448,14 +548,6 @@ internal sealed class WhispersFeature : IFeature
 
     private bool IsWhisperExpanded(Whisper whisper) =>
         GodotObject.IsInstanceValid(whisper.Window) && whisper.Window.Visible && !Folded(whisper);
-
-    internal bool WhisperInputHasFocus()
-    {
-        if (context.Root.GetViewport().GuiGetFocusOwner() is not LineEdit focused) return false;
-        foreach (var whisper in Windows.Values)
-            if (whisper.Input == focused) return true;
-        return false;
-    }
 
     internal bool TryMinimizeFocusedWhisper()
     {

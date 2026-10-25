@@ -34,7 +34,6 @@ public partial class Sky
     // At 16 u/s a cloud crossed the sun every ~40s and every shadow pulsed with it.
     private static float BaseWindSpeed(Weather weather) => weather switch
     {
-        Weather.Windy => 11f,
         Weather.Rainy => 14f,
         Weather.Snow => 5.5f,
         _ => 4f,
@@ -42,7 +41,6 @@ public partial class Sky
 
     private static float CoverFor(Weather weather) => weather switch
     {
-        Weather.Windy => 0.62f,
         Weather.Rainy => 0.95f,
         Weather.Snow => 0.78f,
         _ => 0.45f,

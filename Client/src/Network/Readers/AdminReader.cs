@@ -8,7 +8,8 @@ internal sealed class AdminReader : IPacketReader
 
     private const int FindMonsterFlag = 1;
     private const int FindBotFlag = 2;
-    private const int FindRowMinBytes = 17;
+    private const int FindOnlineFlag = 4;
+    private const int FindRowMinBytes = 24;
     private const int SpawnRowMinBytes = 31;
     private const int CollectionRaceRowMinBytes = 26;
 
@@ -32,6 +33,15 @@ internal sealed class AdminReader : IPacketReader
             case AdminReplySubOpcode.CollectionRaces: ParseAdminCollectionRaces(p); break;
             case AdminReplySubOpcode.Find: ParseAdminFind(p); break;
             case AdminReplySubOpcode.SpawnRow: ParseAdminSpawnRow(p); break;
+            case AdminReplySubOpcode.Monster: admin.RaiseAdminMonsterSheet(AdminWire.ReadMonsterSheet(p)); break;
+            case AdminReplySubOpcode.ItemGroup: admin.RaiseAdminItemGroup(AdminWire.ReadItemGroup(p)); break;
+            case AdminReplySubOpcode.DropSimulation: admin.RaiseAdminDropSimulation(AdminWire.ReadDropSimulation(p)); break;
+            case AdminReplySubOpcode.EventSchedules: admin.RaiseAdminEventSchedules(AdminWire.ReadEventSchedules(p)); break;
+            case AdminReplySubOpcode.Lottery: admin.RaiseAdminLottery(AdminWire.ReadLottery(p)); break;
+            case AdminReplySubOpcode.Race: admin.RaiseAdminRace(AdminWire.ReadRace(p)); break;
+            case AdminReplySubOpcode.Tips: admin.RaiseAdminTips(AdminWire.ReadTips(p)); break;
+            case AdminReplySubOpcode.PlayerSheet: admin.RaiseAdminPlayerSheet(AdminWire.ReadPlayerSheet(p)); break;
+            case AdminReplySubOpcode.ItemGroups: admin.RaiseAdminItemGroups(AdminWire.ReadItemGroups(p)); break;
             case AdminReplySubOpcode.Commands:
                 {
                     var (commands, open) = AdminWire.ReadCommands(p);
@@ -145,6 +155,10 @@ internal sealed class AdminReader : IPacketReader
             int flags = p.ReadByte();
             hit.Monster = (flags & FindMonsterFlag) != 0;
             hit.Bot = (flags & FindBotFlag) != 0;
+            hit.Online = (flags & FindOnlineFlag) != 0;
+            hit.Class = p.ReadShort();
+            hit.Nation = p.ReadByte();
+            hit.LastSeen = AdminWire.FromUnixSeconds(p.ReadUInt());
             hits.Add(hit);
         }
         admin.RaiseAdminFind(kind, total, hits);

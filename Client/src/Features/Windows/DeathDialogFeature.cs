@@ -80,7 +80,20 @@ internal sealed class DeathDialogFeature : IFeature, ILateTickFeature
 
     private void OnSelfDied()
     {
-        if (!knightRoyale.RoyaleDeath()) Show();
+        if (knightRoyale.RoyaleDeath()) return;
+        if (context.Zone == DrakiTower.Zone) ShowSentToTown();
+        else Show();
+    }
+
+    internal void ShowSentToTown()
+    {
+        scrolls.Clear();
+        autoRespawnAt = double.PositiveInfinity;
+        RefreshRows();
+        RefreshText();
+        hintLbl.Text = GameText.System(DrakiTower.DiedText, DrakiTower.DiedFallback);
+        okBtn.Visible = false;
+        Layer.Visible = true;
     }
 
     internal void BuildDeathDialog()
@@ -181,6 +194,7 @@ internal sealed class DeathDialogFeature : IFeature, ILateTickFeature
         RefreshRows();
         RefreshText();
         ArmRespawnButton(OffersScrolls ? ScrollConfirmHint : RespawnHint);
+        okBtn.Visible = true;
         Layer.Visible = true;
     }
 
@@ -247,6 +261,7 @@ internal sealed class DeathDialogFeature : IFeature, ILateTickFeature
         respawnToken++;
         scrolls.Clear();
         autoRespawnAt = double.PositiveInfinity;
+        okBtn.Visible = true;
         Layer.Visible = false;
     }
 

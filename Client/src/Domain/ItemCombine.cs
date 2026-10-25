@@ -19,7 +19,7 @@ public sealed record CombineBook(CombineCategory[] Categories, CombineRecipe[] R
 
     public CombineRecipe? Row(int id) => Recipes.FirstOrDefault(r => r.Id == id);
 
-    public IReadOnlyList<CombineCategory> Shown => Categories.Where(c => c.Visibility == ItemCombine.ShownCategory).ToList();
+    public IReadOnlyList<CombineCategory> Shown(int visibility) => Categories.Where(c => c.Visibility == visibility).ToList();
 
     public IReadOnlyList<CombineRecipe> Listed(int category) =>
         Recipes.Where(r => r.Category == category && r.Listed).OrderBy(r => r.Id).ToList();
@@ -38,6 +38,7 @@ public static class ItemCombine
     public const int MaterialSlots = 10;
     public const int MaxCount = 999;
     public const int ShownCategory = 1;
+    public const int RoyaleCategory = 2;
     public const double Cooldown = 5.0;
     public const double CooldownReady = 1.0;
 
@@ -68,6 +69,11 @@ public static class ItemCombine
         nearby.Where(n => n.Template == template).OrderBy(n => n.Distance).Select(n => n.Id).DefaultIfEmpty(NoCraftsman).First();
 
     public static bool IsDone(byte result) => result is Succeeded or Failed;
+
+    public static int BookVisibility(int zone) => KnightRoyale.IsZone(zone) ? RoyaleCategory : ShownCategory;
+
+    public static bool HasBagRoom(IEnumerable<int> freeBagSlots, int zone) =>
+        freeBagSlots.Any(slot => !KnightRoyale.IsZone(zone) || slot < KnightRoyale.BagSlots);
 
     public static bool Craftable(CombineRecipe recipe, Func<int, bool> known) => recipe.Materials.All(m => known(m.Item));
 

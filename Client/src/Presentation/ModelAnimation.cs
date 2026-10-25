@@ -11,6 +11,7 @@ internal static class ModelAnimation
     internal const int ActionRankDeath = 4;
 
     internal const string ModelNodeName = "Model";
+    internal const string MetadataSuffix = ".anim.json";
 
     private static readonly Dictionary<string, (Dictionary<int, ModelNodes.AnimMeta> ByIndex, Dictionary<string, ModelNodes.AnimMeta> ByName)>
         AnimationMetaByPath = new();
@@ -76,6 +77,26 @@ internal static class ModelAnimation
         ModelNodes.AnimationMetaByIndex[anim.GetInstanceId()] = map;
         ModelNodes.AnimationMetaByName[anim.GetInstanceId()] = names;
         AnimationMetaByPath[path] = (map, names);
+    }
+
+    internal static void UseClipSet(AnimationPlayer anim, string path)
+    {
+        using var f = Godot.FileAccess.Open(path, Godot.FileAccess.ModeFlags.Read);
+        if (f == null) return;
+        var root = Json.ParseString(f.GetAsText()).AsGodotDictionary();
+        if (!root.TryGetValue("animations", out var av) || av.VariantType != Variant.Type.Array) return;
+        var library = new AnimationLibrary();
+        foreach (var v in av.AsGodotArray())
+        {
+            var e = v.AsGodotDictionary();
+            if (!e.TryGetValue("exported", out var nv) || nv.VariantType != Variant.Type.String
+                || !e.TryGetValue("clip", out var cv) || cv.VariantType != Variant.Type.String) continue;
+            string clip = cv.AsString();
+            if (anim.HasAnimation(clip) && !library.HasAnimation(nv.AsString())) library.AddAnimation(nv.AsString(), anim.GetAnimation(clip));
+        }
+        foreach (var name in anim.GetAnimationLibraryList()) anim.RemoveAnimationLibrary(name);
+        anim.AddAnimationLibrary("", library);
+        RegisterAnimationMetadata(anim, path);
     }
 
     internal static string? AnimationNameAt(AnimationPlayer anim, int sourceIndex)

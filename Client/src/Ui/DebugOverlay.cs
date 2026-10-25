@@ -14,6 +14,9 @@ public partial class DebugOverlay : CanvasLayer
     private const float CompactWidth = 320f;
     private const float DetailWidth = 860f;
     private const double FrameWindowSeconds = 10.0;
+    private const string LayoutId = "hud_stats";
+    private const float MapGap = 4f;
+    private HudLayout? layout;
 
     private const string Green = "#5cff5c";
     private const string Yellow = "#ffd24a";
@@ -43,13 +46,26 @@ public partial class DebugOverlay : CanvasLayer
             CustomMinimumSize = new Vector2(CompactWidth, 0f),
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        HudPlacement.Stats(new Vector2(HudAnchor.Edge, HudAnchor.Edge)).ApplyTo(stack);
         label.AddThemeFontSizeOverride("normal_font_size", 14);
         label.AddThemeColorOverride("font_outline_color", Colors.Black);
         label.AddThemeConstantOverride("outline_size", 4);
         stack.AddChild(graph);
         stack.AddChild(label);
         AddChild(stack);
+        if (Platform.TouchUi) HudPlacement.TouchStats.ApplyTo(stack);
+        else
+        {
+            label.TooltipText = "Drag to move";
+            layout = HudLayout.Attach(stack, LayoutId, label, Home);
+        }
+    }
+
+    private Vector2 Home()
+    {
+        float width = stack.Size.X;
+        if (GetTree().CurrentScene is WorldRoot { Map: { } map } && map.MiniMapRect is { } shown)
+            return new Vector2(shown.End.X - width, shown.End.Y + MapGap);
+        return new Vector2(GetViewport().GetVisibleRect().Size.X - HudAnchor.Edge - width, HudAnchor.Edge + HudAnchor.ClockHeight);
     }
 
     private bool InWorld => GetTree().CurrentScene is WorldRoot;
@@ -63,6 +79,12 @@ public partial class DebugOverlay : CanvasLayer
         stack.CustomMinimumSize = new Vector2(this.detail ? DetailWidth : CompactWidth, 0f);
         graph.Visible = this.detail;
         accum = 1.0;
+        FollowHome();
+    }
+
+    private void FollowHome()
+    {
+        if (layout is { UserPlaced: false } placed) Callable.From(placed.ReapplyDefault).CallDeferred();
     }
 
     public override void _Process(double delta)
@@ -72,7 +94,11 @@ public partial class DebugOverlay : CanvasLayer
         auto.Tick(delta);
         EngineProfile.Sample();
         bool show = InWorld && Config.ShowStats;
-        if (Visible != show) Visible = show;
+        if (Visible != show)
+        {
+            Visible = show;
+            if (show) FollowHome();
+        }
         FrameProbe.Detailed = show && detail;
         if (!show) return;
 

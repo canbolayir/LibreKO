@@ -312,6 +312,9 @@ public partial class SettingsPanel : CanvasLayer
     private OptionButton renderer = null!;
     private CheckButton showTitles = null!;
     private CheckButton questNotices = null!;
+    private CheckButton monsterBalloons = null!;
+    private CheckButton iconCaptions = null!;
+    private CheckButton rainEffects = null!;
     private CheckButton tradeBlock = null!;
     private Button applyButton = null!;
     private bool dirty;
@@ -474,6 +477,9 @@ public partial class SettingsPanel : CanvasLayer
                                (Config.UpscaleLevel)upscaleQuality.Selected, (Config.FpsCap)fps.Selected);
             Config.SetShowTitles(showTitles.ButtonPressed);
             Config.SetQuestNotices(questNotices.ButtonPressed);
+            Config.SetMonsterBalloons(monsterBalloons.ButtonPressed);
+            Config.SetIconCaptions(iconCaptions.ButtonPressed);
+            Config.SetRainEffects(rainEffects.ButtonPressed);
             Config.SetTradeRequestsBlocked(tradeBlock.ButtonPressed);
             var hidden = CospreKinds.None;
             foreach (var (kind, check) in cospreShown)
@@ -720,6 +726,19 @@ public partial class SettingsPanel : CanvasLayer
         questRow.TooltipText = "The quest progress notice in the middle of the screen when you kill or collect for a quest.";
         vb.AddChild(questRow);
 
+        var balloonRow = Row("Monster Speech", monsterBalloons = new CheckButton { ButtonPressed = Config.MonsterBalloons });
+        balloonRow.TooltipText = "Monsters say a line in a balloon over their heads as their health drops and when they die.";
+        vb.AddChild(balloonRow);
+
+        var captionRow = Row("Icon Names", iconCaptions = new CheckButton { ButtonPressed = Config.IconCaptions });
+        captionRow.TooltipText = "A small name under the HUD buttons (Town, Skills, Inventory, Store, Mail ...).";
+        captionRow.Visible = Platform.PointerUi;
+        vb.AddChild(captionRow);
+
+        var rainRow = Row("Rain Effects", rainEffects = new CheckButton { ButtonPressed = Config.RainEffects });
+        rainRow.TooltipText = "Raindrops on the screen while it rains.";
+        vb.AddChild(rainRow);
+
         var combatLogRow = Row("Combat Log", combatLog = new CheckButton { ButtonPressed = Config.CombatLog });
         combatLogRow.TooltipText = "The combat log window with damage, skills, loot and system notices.";
         vb.AddChild(combatLogRow);
@@ -740,6 +759,9 @@ public partial class SettingsPanel : CanvasLayer
             fps.Selected = (int)Config.DefaultOf<Config.FpsCap>(nameof(Config.FpsLimit), "graphics", "fps_limit");
             showTitles.ButtonPressed = Config.DefaultOf<bool>(nameof(Config.ShowTitles), "hud", "show_titles");
             questNotices.ButtonPressed = Config.DefaultOf<bool>(nameof(Config.QuestNotices), "hud", "quest_notices");
+            monsterBalloons.ButtonPressed = Config.DefaultOf<bool>(nameof(Config.MonsterBalloons), "hud", "monster_balloons");
+            iconCaptions.ButtonPressed = Config.DefaultOf<bool>(nameof(Config.IconCaptions), "hud", "icon_captions");
+            rainEffects.ButtonPressed = Config.DefaultOf<bool>(nameof(Config.RainEffects), "graphics", "rain_effects");
             combatLog.ButtonPressed = Config.DefaultOf<bool>(nameof(Config.CombatLog), "hud", "combat_log");
             tradeBlock.ButtonPressed = Config.DefaultOf<bool>(nameof(Config.TradeRequestsBlocked), "user_option", "trade_state");
         });

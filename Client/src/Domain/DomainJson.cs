@@ -7,4 +7,5 @@ namespace LibreKO.Domain;
 [JsonSerializable(typeof(DisguiseForm[]))]
 [JsonSerializable(typeof(AuctionScheduleLot[]))]
 [JsonSerializable(typeof(CombineBook))]
+[JsonSerializable(typeof(ManesBook))]
 internal partial class DomainJson : JsonSerializerContext;

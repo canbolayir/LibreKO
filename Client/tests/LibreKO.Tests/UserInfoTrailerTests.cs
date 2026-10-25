@@ -9,12 +9,12 @@ public class UserInfoTrailerTests
     private const int CharacterId = 4242;
     private const ushort TitleId = 17;
 
-    private static Packet Record(bool helmetHidden, bool costumeHidden, bool genie, int transformSkill = 0)
+    private static Packet Record(bool helmetHidden, bool costumeHidden, bool genie, int transformSkill = 0, byte survivalRow = 0)
     {
         var p = new Packet(GameOpcodes.GS_USER_INOUT);
         p.WriteSByteString("Aurelia");
         p.WriteByte(1);
-        p.WriteByte(0); p.WriteByte(0); p.WriteByte(0);
+        p.WriteByte(0); p.WriteByte(0); p.WriteByte(survivalRow);
         p.WriteShort(0);
         p.WriteByte(0);
         p.WriteInt(0); p.WriteShort(0); p.WriteByte(0); p.WriteUShort(93); p.WriteInt(0); p.WriteByte(0);
@@ -75,5 +75,17 @@ public class UserInfoTrailerTests
 
         Assert.Equal(transformSkill, e.TransformSkill);
         Assert.Equal(TitleId, e.TitleId);
+    }
+
+    [Fact]
+    public void TheThirdByteAfterTheNationIsTheManesRow()
+    {
+        var p = Record(false, false, false, survivalRow: 3);
+
+        var e = WorldWire.ReadUserInfo(p, CharacterId);
+
+        Assert.Equal(3, e.SurvivalRow);
+        Assert.Equal(TitleId, e.TitleId);
+        Assert.Equal(0, p.RemainingBytes);
     }
 }

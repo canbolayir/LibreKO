@@ -6,6 +6,7 @@ public interface IGenieRequests
     void Claim();
     void Hammer(byte threshold);
     void System(GenieSystemCommand command, byte[]? options = null);
+    void UseSpirit(int spiritItem);
 }
 
 public sealed class GenieRequests : IGenieRequests
@@ -45,6 +46,17 @@ public sealed class GenieRequests : IGenieRequests
         if (command == GenieSystemCommand.SaveOptions)
             for (int i = 0; i < GenieSystemWire.OptionBytes; i++) p.WriteByte(options != null && i < options.Length ? options[i] : (byte)0);
         sink.Send(p);
+    }
+
+    public void UseSpirit(int spiritItem) => sink.Send(SpiritPacket(spiritItem));
+
+    internal static Packet SpiritPacket(int spiritItem)
+    {
+        var p = new Packet(GameOpcodes.GS_GENIE_SYSTEM);
+        p.WriteByte((byte)GenieSystemSubOpcode.InfoRequest);
+        p.WriteByte((byte)GenieSystemCommand.UseSpiritPotion);
+        p.WriteInt(spiritItem);
+        return p;
     }
 
     internal static Packet ActionPacket(GameOpcodes opcode, GenieSystemAction action, bool genieRunning)

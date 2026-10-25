@@ -44,7 +44,7 @@ public class ReaderClockTests
     });
 
     [Fact]
-    public void TheDrakiTimerEndsWhatIsLeftOfItsLimitAfterTheGivenClock()
+    public void TheDrakiTimerCountsFromTheGivenClock()
     {
         var (dispatcher, session) = Readers();
 
@@ -60,7 +60,9 @@ public class ReaderClockTests
 
         Assert.Equal(3, session.Bifrost.DrakiStage);
         Assert.Equal(2, session.Bifrost.DrakiSubStage);
-        Assert.Equal(Now + 500_000, session.Bifrost.DrakiEndsAtMs);
+        Assert.Equal(600, session.Bifrost.DrakiSecondsLeft(Now));
+        Assert.Equal(590, session.Bifrost.DrakiSecondsLeft(Now + 10_000));
+        Assert.Equal(110, session.Bifrost.DrakiElapsedSeconds(Now + 10_000));
     }
 
     [Fact]

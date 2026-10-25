@@ -1,4 +1,4 @@
-using LibreKO.Domain;
+﻿using LibreKO.Domain;
 
 namespace LibreKO.Network;
 
@@ -32,7 +32,7 @@ public enum QuestPageKind : byte
 public sealed record QuestView(int QuestId, int NpcId, int ZoneId, bool Open, bool CanAccept, bool CanClaim,
     bool Daily, QuestViewState State, long NextReset, string Title, string Journal, string Dialogue,
     QuestObjectives Objectives, ushort[] Counts, QuestTransfer[] Transfers, string[] Topics,
-    bool Notification = false, QuestPageKind Page = QuestPageKind.Quest, bool AutoAccepted = false)
+    bool Notification = false, QuestPageKind Page = QuestPageKind.Quest, bool AutoAccepted = false, bool Repeatable = false)
 {
     public QuestTransfer[] Options { get; init; } = [];
 
@@ -61,7 +61,7 @@ public sealed record QuestView(int QuestId, int NpcId, int ZoneId, bool Open, bo
         var state = (QuestViewState)packet.ReadByte();
         var page = (QuestPageKind)packet.ReadByte();
         var reset = packet.ReadLong();
-        if (version != 2 || id <= 0 || npc < 0 || zone < 0 || flags > 63 || state > QuestViewState.Completed
+        if (version != 2 || id <= 0 || npc < 0 || zone < 0 || flags > 127 || state > QuestViewState.Completed
             || page > QuestPageKind.Quest || reset is < 0 or > 253402300799
             || ((flags & 16) != 0 && ((flags & 1) == 0 || (flags & 6) != 0
                 || state is not (QuestViewState.Available or QuestViewState.InProgress or QuestViewState.Claimable or QuestViewState.Completed)
@@ -110,7 +110,8 @@ public sealed record QuestView(int QuestId, int NpcId, int ZoneId, bool Open, bo
             throw new InvalidDataException("Unexpected quest view data.");
         return new QuestView(id, npc, zone, (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0,
             (flags & 8) != 0, state, reset, title, journal, dialogue,
-            new QuestObjectives(id, rule == 1, groups), counts, transfers, topics, (flags & 16) != 0, page, (flags & 32) != 0)
+            new QuestObjectives(id, rule == 1, groups), counts, transfers, topics, (flags & 16) != 0, page, (flags & 32) != 0,
+            (flags & 64) != 0)
             { Options = options };
     }
 

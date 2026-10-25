@@ -52,6 +52,8 @@ internal sealed class MerchantFeature : IFeature, IEscapable
 
     private readonly MerchantStallItem[] myStall = new MerchantStallItem[MerchantUi.StallSlots];
     private readonly int[] myStallSrc = new int[MerchantUi.StallSlots];
+    private sealed record StallMove(int From, int To, int Source, int ItemId, int Count, int Price);
+    private StallMove? pendingMove;
 
     internal HudWindow ShopPanel { get; private set; } = null!;
     private MerchantCell[] shopCells = null!;
@@ -160,7 +162,7 @@ internal sealed class MerchantFeature : IFeature, IEscapable
 
         root.AddChild(UiTheme.SectionTitle("On the stall"));
         SellStallCells = MerchantUi.BuildGrid(context.Tooltips, root, MerchantUi.StallSlots, MerchantUi.StallColumns, null,
-            dragKey: "stallFrom", acceptKey: "bagFrom", onDropFrom: (bag, _) => StageStallItem(bag));
+            dragKey: "stallFrom", acceptKey: "bagFrom", onDropFrom: StageStallItem, onMove: MoveStallItem);
 
         var money = UiTheme.Section();
         root.AddChild(money);
@@ -293,6 +295,7 @@ internal sealed class MerchantFeature : IFeature, IEscapable
         }
 
         for (int i = 0; i < myStall.Length; i++) { myStall[i] = default; myStallSrc[i] = -1; }
+        pendingMove = null;
         SetSellStatus("", false);
         toSlave.ButtonPressed = false;
         slaveRequests.Status();
@@ -307,6 +310,7 @@ internal sealed class MerchantFeature : IFeature, IEscapable
         context.Tooltips.Hide();
         if (!sellStallShown) return;
         sellStallShown = false;
+        pendingMove = null;
         SellStallPanel.Visible = false;
         requests.Close();
     }
@@ -333,7 +337,7 @@ internal sealed class MerchantFeature : IFeature, IEscapable
             ? "Slave Merchant"
             : $"Slave Merchant ({hours} {(hours == 1 ? "hour" : "hours")} left)";
 
-    internal void StageStallItem(int gridIndex)
+    internal void StageStallItem(int gridIndex, int chosenSlot = -1)
     {
         if (gridIndex < 0 || gridIndex >= Inventory.GridCount) return;
         int absSlot = Inventory.GridStart + gridIndex;
@@ -344,8 +348,7 @@ internal sealed class MerchantFeature : IFeature, IEscapable
             return;
         }
 
-        int dst = -1;
-        for (int i = 0; i < myStall.Length; i++) if (myStall[i].IsEmpty) { dst = i; break; }
+        int dst = chosenSlot >= 0 && chosenSlot < myStall.Length && myStall[chosenSlot].IsEmpty ? chosenSlot : FirstFreeStallSlot();
         if (dst < 0) { SetSellStatus($"The stall only holds {MerchantUi.StallSlots} items.", true); return; }
 
         var slot = self.Inventory[absSlot];
@@ -355,6 +358,26 @@ internal sealed class MerchantFeature : IFeature, IEscapable
             return;
         }
         AskStallPrice(slot, absSlot, dst);
+    }
+
+    private int FirstFreeStallSlot()
+    {
+        for (int i = 0; i < myStall.Length; i++) if (myStall[i].IsEmpty && pendingMove?.To != i) return i;
+        return -1;
+    }
+
+    private void MoveStallItem(int from, int to)
+    {
+        if (from == to || from < 0 || from >= myStall.Length || to < 0 || to >= myStall.Length || pendingMove != null) return;
+        if (myStall[from].IsEmpty) return;
+        if (!myStall[to].IsEmpty)
+        {
+            SetSellStatus("Move it onto an empty box.", true);
+            return;
+        }
+        var item = myStall[from];
+        pendingMove = new StallMove(from, to, myStallSrc[from], item.ItemId, item.Count, item.Price);
+        requests.RemoveItem((byte)from);
     }
 
     private void UnstageStallItem(int stallSlot)
@@ -380,10 +403,14 @@ internal sealed class MerchantFeature : IFeature, IEscapable
 
     private void OnItemCancel(bool ok, int slot)
     {
+        var move = pendingMove;
+        if (move?.From == slot) pendingMove = null;
         if (!ok || slot < 0 || slot >= myStall.Length) return;
         myStall[slot] = default;
         myStallSrc[slot] = -1;
         RefreshSellStall();
+        if (move is { } m && m.From == slot && myStall[m.To].IsEmpty && m.Source >= Inventory.GridStart)
+            requests.AddItem(m.ItemId, m.Count, m.Price, (byte)(m.Source - Inventory.GridStart), (byte)m.To);
     }
 
     private void RefreshSellStall()

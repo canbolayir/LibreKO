@@ -10,6 +10,7 @@ internal sealed partial class MerchantCell : PanelContainer
     public System.Action<MerchantCell>? OnHover;
     public System.Action? OnHoverEnd;
     public System.Action<int, int>? OnDropFrom;
+    public System.Action<int, int>? OnMove;
     public string DragKey = "";
     public string AcceptKey = "";
 
@@ -17,6 +18,7 @@ internal sealed partial class MerchantCell : PanelContainer
     private readonly Label count;
     private readonly UpgradeBadge plus;
     private bool hovering;
+    private bool pressed;
 
     public ItemSlot Item { get; private set; }
     public int TipSlot { get; set; } = -1;
@@ -90,6 +92,7 @@ internal sealed partial class MerchantCell : PanelContainer
     public override Variant _GetDragData(Vector2 atPosition)
     {
         if (DragKey.Length == 0 || Item.IsEmpty) return default;
+        pressed = false;
 
         DragLayer.ShowItem(this, Item.ItemId, atPosition);
 
@@ -100,17 +103,39 @@ internal sealed partial class MerchantCell : PanelContainer
         };
     }
 
-    public override bool _CanDropData(Vector2 atPosition, Variant data) =>
-        AcceptKey.Length > 0
-        && OnDropFrom != null
-        && data.VariantType == Variant.Type.Dictionary
-        && data.AsGodotDictionary().ContainsKey(AcceptKey);
+    public override bool _CanDropData(Vector2 atPosition, Variant data)
+    {
+        if (data.VariantType != Variant.Type.Dictionary) return false;
+        var d = data.AsGodotDictionary();
+        return (AcceptKey.Length > 0 && OnDropFrom != null && d.ContainsKey(AcceptKey))
+            || (DragKey.Length > 0 && OnMove != null && d.ContainsKey(DragKey));
+    }
 
-    public override void _DropData(Vector2 atPosition, Variant data) =>
-        OnDropFrom?.Invoke(data.AsGodotDictionary()[AcceptKey].AsInt32(), Index);
+    public override void _DropData(Vector2 atPosition, Variant data)
+    {
+        var d = data.AsGodotDictionary();
+        if (AcceptKey.Length > 0 && d.ContainsKey(AcceptKey)) OnDropFrom?.Invoke(d[AcceptKey].AsInt32(), Index);
+        else if (DragKey.Length > 0 && d.ContainsKey(DragKey)) OnMove?.Invoke(d[DragKey].AsInt32(), Index);
+    }
+
+    public override void _Notification(int what)
+    {
+        if ((long)what == NotificationMouseExit) pressed = false;
+    }
 
     public override void _GuiInput(InputEvent ev)
     {
+        if (ev is InputEventMouseButton { ButtonIndex: MouseButton.Left } left && DragKey.Length > 0 && OnActivate != null)
+        {
+            if (left.Pressed) pressed = true;
+            else if (pressed)
+            {
+                pressed = false;
+                OnActivate(Index);
+            }
+            AcceptEvent();
+            return;
+        }
         if (ev is not InputEventMouseButton { Pressed: true } click) return;
         var handler = click.ButtonIndex switch
         {

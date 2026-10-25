@@ -232,6 +232,30 @@ public class AdminTests : GameTestBase
     }
 
     [Fact]
+    public async Task AdminPacketCoordinator_HandleGmCommandAsync_NpcRebuildReportsTheZonesRows()
+    {
+        using var provider = CreateProvider(_ => { });
+        var gmClient = Substitute.For<IClient>();
+        gmClient.Id.Returns(Guid.NewGuid());
+        Packet? sentPacket = null;
+        gmClient.SendPacket(Arg.Do<Packet>(packet => sentPacket = packet), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        var gmSession = provider.GetRequiredService<SessionManager>().CreateSession(gmClient, characterId: 300, accountId: 310);
+        gmSession.Name = "GM";
+        gmSession.IsGM = true;
+
+        await provider.GetRequiredService<IAdminPacketCoordinator>().HandleGmCommandAsync(gmSession, "+npcrebuild 250");
+
+        sentPacket.Should().NotBeNull();
+        sentPacket!.ResetOffset();
+        sentPacket.ReadByte();
+        sentPacket.ReadByte();
+        sentPacket.ReadInt();
+        sentPacket.ReadSByteString();
+        sentPacket.ReadString().Should().Be("Zone 250: 0 spawn rows rebuilt, 0 NPCs spawned.");
+    }
+
+    [Fact]
     public async Task AdminPacketCoordinator_HandleGmCommandAsync_OnlineReturnsCurrentPlayerCount()
     {
         using var provider = CreateProvider(_ => { });

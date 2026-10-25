@@ -14,6 +14,42 @@ public sealed class AdminSession
 
     internal void RaiseAdminSpawnRow(AdminSpawnRow adminSpawnRow) => AdminSpawnRowEvent?.Invoke(adminSpawnRow);
 
+    public event Action<AdminMonsterSheet>? AdminMonsterSheetEvent;
+
+    internal void RaiseAdminMonsterSheet(AdminMonsterSheet sheet) => AdminMonsterSheetEvent?.Invoke(sheet);
+
+    public event Action<AdminItemGroup>? AdminItemGroupEvent;
+
+    internal void RaiseAdminItemGroup(AdminItemGroup group) => AdminItemGroupEvent?.Invoke(group);
+
+    public event Action<AdminDropSimulation>? AdminDropSimulationEvent;
+
+    internal void RaiseAdminDropSimulation(AdminDropSimulation result) => AdminDropSimulationEvent?.Invoke(result);
+
+    public event Action<AdminEventSchedules>? AdminEventSchedulesEvent;
+
+    internal void RaiseAdminEventSchedules(AdminEventSchedules schedules) => AdminEventSchedulesEvent?.Invoke(schedules);
+
+    public event Action<AdminLottery>? AdminLotteryEvent;
+
+    internal void RaiseAdminLottery(AdminLottery lottery) => AdminLotteryEvent?.Invoke(lottery);
+
+    public event Action<AdminRace>? AdminRaceEvent;
+
+    internal void RaiseAdminRace(AdminRace race) => AdminRaceEvent?.Invoke(race);
+
+    public event Action<AdminItemGroups>? AdminItemGroupsEvent;
+
+    internal void RaiseAdminItemGroups(AdminItemGroups groups) => AdminItemGroupsEvent?.Invoke(groups);
+
+    public event Action<AdminPlayerSheet>? AdminPlayerSheetEvent;
+
+    internal void RaiseAdminPlayerSheet(AdminPlayerSheet sheet) => AdminPlayerSheetEvent?.Invoke(sheet);
+
+    public event Action<AdminTips>? AdminTipsEvent;
+
+    internal void RaiseAdminTips(AdminTips tips) => AdminTipsEvent?.Invoke(tips);
+
     public event Action<AdminState>? AdminStateEvent;
 
     internal void RaiseAdminState(AdminState adminState) => AdminStateEvent?.Invoke(adminState);

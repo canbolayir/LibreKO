@@ -16,6 +16,7 @@ internal sealed class PluginCharacterBridge(InventoryFeature inventory, EntityPl
         items.ItemStatsEvent += OnStats;
         userOption.RankAuraShownEvent += OnRankAura;
         mail.MailUnreadEvent += OnMailUnread;
+        self.RankMarksEvent += RaiseCharacter;
     }
 
     private void OnMailUnread(int unread) => RaiseCharacter();
@@ -35,6 +36,7 @@ internal sealed class PluginCharacterBridge(InventoryFeature inventory, EntityPl
         progress.ExpChangeEvent -= OnExp;
         items.ItemStatsEvent -= OnStats;
         mail.MailUnreadEvent -= OnMailUnread;
+        self.RankMarksEvent -= RaiseCharacter;
     }
 
     private void OnHp(SelfHpChange change) => RaiseCharacter();
@@ -72,6 +74,8 @@ internal sealed class PluginCharacterBridge(InventoryFeature inventory, EntityPl
     public int Hp => self.Vitals.Hp;
 
     public int MaxHp => self.Vitals.MaxHp;
+
+    public int HpTextScale => CombatLogLines.HpTextScale(self.LastEnter.Zone);
 
     public int Mp => self.Vitals.Mp;
 
@@ -130,6 +134,8 @@ internal sealed class PluginCharacterBridge(InventoryFeature inventory, EntityPl
     public int StatBonus(int statRow) => self.Sheet.StatBonusAtRow(statRow);
 
     string IGameCharacter.ClanName => clan.MyClan.InClan ? clan.MyClan.Name ?? "" : "";
+
+    public IReadOnlyList<GameRankRibbon> RankMarks => RankRibbonArt.Summary(self.RankMarks);
 
     public bool HasRankAura => cosmetics.SelfHasRankAura;
 

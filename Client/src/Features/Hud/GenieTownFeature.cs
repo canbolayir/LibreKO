@@ -39,7 +39,6 @@ internal sealed class GenieTownFeature : IFeature
     private const int RogueFamily = 2;
     private const int BasicRangedSkillSuffix = 3;
     private const int ClassSkillScale = 1000;
-    private const int SpiritOfItem = 810378000;
 
     private readonly Dictionary<GenieOther, CheckButton> other = new();
     private SpinBox townHpCount = null!;
@@ -117,15 +116,15 @@ internal sealed class GenieTownFeature : IFeature
 
     private void AutoSpirit(GenieOther enabled)
     {
-        bool hasSpirit = self.Inventory.CountInBackpack(SpiritOfItem) > 0;
-        if (!GenieTownReturn.WantsSpirit(enabled, runner.Points, hasSpirit))
+        int spirit = GenieSpirit.FirstOwned(id => self.Inventory.CountInBackpack(id) > 0);
+        if (!GenieTownReturn.WantsSpirit(enabled, runner.Points, spirit != GenieSpirit.NoSpirit))
         {
             if (runner.Points != GenieTownReturn.AutoSpiritAtPoints) spiritAsked = false;
             return;
         }
         if (spiritAsked) return;
         spiritAsked = true;
-        requests.System(GenieSystemCommand.UseSpiritPotion);
+        requests.UseSpirit(spirit);
     }
 
     private bool HoldsBow()

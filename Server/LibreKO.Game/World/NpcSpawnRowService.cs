@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using LibreKO.Common.Domain.Entities.GameData;
+﻿using LibreKO.Common.Domain.Entities.GameData;
 using LibreKO.Common.Domain.Services;
 using LibreKO.Common.Enums;
 using LibreKO.Game.Protocol;
@@ -11,8 +10,6 @@ public interface INpcSpawnRowService
     NpcPosData? Find(int rowIndex);
     IReadOnlyList<NpcInstance> Spawn(NpcPosData pos);
     void Edit(NpcPosData pos, int x, int z, int direction, byte count, short respawn, short range);
-    NpcPosData LastPersisted(NpcPosData pos);
-    void MarkPersisted(NpcPosData pos);
     Task<int> RespawnRowAsync(NpcPosData pos);
     int AliveCount(NpcPosData pos);
 }
@@ -24,7 +21,6 @@ public sealed class NpcSpawnRowService(
 {
     private const int SpawnPlacementRetries = 32;
 
-    private readonly ConcurrentDictionary<int, NpcPosData> lastPersisted = new();
 
     public NpcPosData? Find(int rowIndex) =>
         rowIndex > 0 ? gameData.NpcPositions.FirstOrDefault(position => position.Index == rowIndex) : null;
@@ -58,7 +54,6 @@ public sealed class NpcSpawnRowService(
 
     public void Edit(NpcPosData pos, int x, int z, int direction, byte count, short respawn, short range)
     {
-        lastPersisted.TryAdd(pos.Index, CloneForZone(pos, pos.ZoneId));
         pos.LeftX = x;
         pos.TopZ = z;
         pos.Direction = direction;
@@ -66,11 +61,6 @@ public sealed class NpcSpawnRowService(
         pos.RegTime = respawn;
         pos.SpawnRange = range;
     }
-
-    public NpcPosData LastPersisted(NpcPosData pos) =>
-        lastPersisted.TryGetValue(pos.Index, out var persisted) ? persisted : CloneForZone(pos, pos.ZoneId);
-
-    public void MarkPersisted(NpcPosData pos) => lastPersisted.TryRemove(pos.Index, out _);
 
     public async Task<int> RespawnRowAsync(NpcPosData pos)
     {

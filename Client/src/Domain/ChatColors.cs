@@ -38,6 +38,8 @@ public sealed class ChatColors
     private static readonly Color Merchant = new("c6c6fb");
     private static readonly Color SeekingParty = new("32f640");
     private static readonly Color ClanOfficer = new("64ffff");
+    private static readonly Color NpcShout = new("009900");
+    private static readonly Color GameplayTip = new("8fdf8f");
 
     private readonly Color[] slots = Defaults.ToArray();
 
@@ -68,6 +70,8 @@ public sealed class ChatColors
         ChatType.Alliance => this[ChatColorSlot.Union],
         ChatType.SeekingParty => SeekingParty,
         ChatType.ClanOfficer => ClanOfficer,
+        ChatType.NpcShout => NpcShout,
+        ChatType.GameplayTip => GameplayTip,
         ChatType.ChatRoom => this[ChatColorSlot.ChatRoom],
         ChatType.NoahKnights => nation switch
         {

@@ -9,14 +9,12 @@ internal sealed class AdminSkillsTab
     private readonly IAdminRequests requests;
     private readonly SelfSession self;
     private readonly Func<AdminState> state;
-    private readonly Action<string, bool> setStatus;
 
-    public AdminSkillsTab(IAdminRequests requests, SelfSession self, Func<AdminState> state, Action<string, bool> setStatus)
+    public AdminSkillsTab(IAdminRequests requests, SelfSession self, Func<AdminState> state)
     {
         this.requests = requests;
         this.self = self;
         this.state = state;
-        this.setStatus = setStatus;
     }
 
     private SpinBox skillPool = null!;
@@ -70,11 +68,7 @@ internal sealed class AdminSkillsTab
         row.AddChild(revert);
 
         var reset = new Button { Text = "Reset skills", FocusMode = Control.FocusModeEnum.None };
-        reset.Pressed += () =>
-        {
-            requests.SetSkill(0, System.Array.Empty<int>(), reset: true);
-            setStatus("Resetting skills…", false);
-        };
+        reset.Pressed += () => requests.SetSkill(0, System.Array.Empty<int>(), reset: true);
         row.AddChild(reset);
 
         return box;
@@ -106,6 +100,5 @@ internal sealed class AdminSkillsTab
         for (int i = 0; i < trees.Length; i++)
             trees[i] = (int)skillTrees[i].Value;
         requests.SetSkill((int)skillPool.Value, trees, reset: false);
-        setStatus("Applying skill points…", false);
     }
 }

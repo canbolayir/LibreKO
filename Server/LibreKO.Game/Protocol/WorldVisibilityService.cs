@@ -538,7 +538,8 @@ public class WorldVisibilityService(
             session.TransformSkillId,
             session.IsBlinking,
             session.SoccerTeam,
-            session.SizeState);
+            session.SizeState,
+            session.ManesSurvival?.Row ?? 0);
     }
 
     private static byte PoseOf(UserSession session) => (byte)(

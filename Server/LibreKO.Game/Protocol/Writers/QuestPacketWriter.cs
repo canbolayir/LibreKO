@@ -60,7 +60,8 @@ public sealed class QuestPacketWriter
         packet.WriteByte((byte)((open ? 1 : 0)
             | (controls && view.State == QuestViewState.Available ? 2 : 0)
             | (controls && view.State == QuestViewState.Claimable ? 4 : 0)
-            | (view.Text.Daily ? 8 : 0) | (notification ? 16 : 0) | (view.AutoAccepted ? 32 : 0)));
+            | (view.Text.Daily ? 8 : 0) | (notification ? 16 : 0) | (view.AutoAccepted ? 32 : 0)
+            | (view.Text.Repeat ? 64 : 0)));
         packet.WriteByte((byte)view.State);
         packet.WriteByte((byte)view.Page);
         packet.WriteLong(nextReset);
@@ -181,9 +182,30 @@ public sealed class QuestPacketWriter
         _ => 0
     };
 
+    public const int ObjectivesPerBatch = 200;
+
     public static Packet Objectives(QuestObjectives objectives)
     {
         var packet = Sub(QuestSubOpcode.Objectives);
+        WriteObjectives(packet, objectives);
+        return packet;
+    }
+
+    public static IEnumerable<Packet> ObjectivesBatches(IReadOnlyList<QuestObjectives> all)
+    {
+        for (var start = 0; start < all.Count; start += ObjectivesPerBatch)
+        {
+            var packet = Sub(QuestSubOpcode.ObjectivesBatch);
+            var count = Math.Min(ObjectivesPerBatch, all.Count - start);
+            packet.WriteUShort((ushort)count);
+            for (var index = start; index < start + count; index++)
+                WriteObjectives(packet, all[index]);
+            yield return packet;
+        }
+    }
+
+    private static void WriteObjectives(Packet packet, QuestObjectives objectives)
+    {
         packet.WriteShort(checked((short)objectives.QuestId));
         packet.WriteByte((byte)objectives.Rule);
         packet.WriteByte(checked((byte)objectives.Groups.Count));
@@ -194,7 +216,6 @@ public sealed class QuestPacketWriter
             foreach (var monster in group.Monsters)
                 packet.WriteInt(monster);
         }
-        return packet;
     }
 
     public static Packet Texts(IReadOnlyCollection<TextEntry> quests)

@@ -32,6 +32,7 @@ public static class DrakiTowerRules
     public static readonly TimeSpan RoomDuration = TimeSpan.FromMinutes(RoomDurationMinutes);
     public const int WaveSeconds = ScriptCharacterService.DrakiRiftSeconds;
     public const int BreakSeconds = 180;
+    public const int LeaveNoticeSeconds = 20;
     public const int DrakiRiftNpcId = 25267;
     public const int FinalExitNpcId = 25266;
     public static readonly (float X, float Z) FinalExitCoordinates = (77f, 214f);

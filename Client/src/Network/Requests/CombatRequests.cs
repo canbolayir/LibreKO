@@ -2,7 +2,8 @@
 
 public interface ICombatRequests
 {
-    void Attack(int targetId, short swingDelay, int attackType = (int)AttackType.Melee, bool chained = false);
+    void Attack(int targetId, short swingDelay, int attackType = (int)AttackType.Melee, bool chained = false,
+        AttackPresentation? shown = null);
     void Magic(int subOpcode, int skillId, int targetId, short[]? data = null);
     void CastFailed(int skillId);
     void TargetHpRequest(int targetId);
@@ -28,7 +29,8 @@ public sealed class CombatRequests : ICombatRequests
         this.combat = combat;
     }
 
-    public void Attack(int targetId, short swingDelay, int attackType = (int)AttackType.Melee, bool chained = false)
+    public void Attack(int targetId, short swingDelay, int attackType = (int)AttackType.Melee, bool chained = false,
+        AttackPresentation? shown = null)
     {
         var p = GenieRequests.ActionPacket(GameOpcodes.GS_ATTACK, GenieSystemAction.MainAttack, genie.GenieRunning);
         p.WriteByte((byte)attackType);
@@ -38,6 +40,7 @@ public sealed class CombatRequests : ICombatRequests
         p.WriteShort(0);
         p.WriteByte(chained ? (byte)1 : (byte)0);
         p.WriteByte(0);
+        shown?.Write(p);
         sink.Send(p);
     }
 

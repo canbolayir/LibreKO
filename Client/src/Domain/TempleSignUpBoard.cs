@@ -12,6 +12,7 @@ public enum TempleEventType : byte
     JuraidMountain = 3,
     UnderTheCastle = 4,
     ForgottenTemple = 5,
+    ManesSurvival = 6,
 }
 
 public sealed class TempleSignUpBoard

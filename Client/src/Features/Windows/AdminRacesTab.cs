@@ -4,32 +4,35 @@ namespace LibreKO.Features.Windows;
 
 internal sealed class AdminRacesTab
 {
-    private const int RaceListHeight = 380;
-    private const int RaceListWidth = 560;
-
     private readonly IAdminRequests requests;
+    private readonly Action<int> edit;
+    private readonly Action create;
 
-    public AdminRacesTab(IAdminRequests requests) => this.requests = requests;
+    public AdminRacesTab(IAdminRequests requests, Action<int> edit, Action create)
+    {
+        this.requests = requests;
+        this.edit = edit;
+        this.create = create;
+    }
 
     private LineEdit raceFilter = null!;
     private VBoxContainer raceList = null!;
-    private Label raceSummary = null!;
     private CheckBox raceActiveOnly = null!;
     private List<AdminCollectionRace> races = [];
 
     internal Control Build()
     {
-        var box = new VBoxContainer { CustomMinimumSize = new Vector2(RaceListWidth, 0) };
-        box.AddThemeConstantOverride("separation", 6);
-        box.AddChild(UiTheme.SectionTitle("Collection Races", UiIcons.Get("system/home")));
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 8);
 
         var findRow = new HBoxContainer();
         findRow.AddThemeConstantOverride("separation", 5);
         box.AddChild(findRow);
         raceFilter = new LineEdit
         {
-            PlaceholderText = "filter by name, zone or level",
+            PlaceholderText = "Filter by name, zone or level",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            ClearButtonEnabled = true,
         };
         raceFilter.TextChanged += _ => RefreshRaceList();
         findRow.AddChild(raceFilter);
@@ -39,19 +42,13 @@ internal sealed class AdminRacesTab
         var refresh = UiTheme.IconButton(UiIcons.Get("system/refresh"), "Refresh");
         refresh.Pressed += () => requests.CollectionRacesRequest();
         findRow.AddChild(refresh);
+        var newRace = AdminPanelUi.Button("New race", 110);
+        newRace.Pressed += create;
+        findRow.AddChild(newRace);
 
-        raceSummary = UiTheme.Text("", 12, UiTheme.TextLo);
-        box.AddChild(raceSummary);
-
-        var scroll = new ScrollContainer
-        {
-            CustomMinimumSize = new Vector2(RaceListWidth, RaceListHeight),
-            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
-        };
-        box.AddChild(scroll);
         raceList = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         raceList.AddThemeConstantOverride("separation", 4);
-        scroll.AddChild(raceList);
+        box.AddChild(raceList);
         return box;
     }
 
@@ -72,19 +69,12 @@ internal sealed class AdminRacesTab
 
         var filter = raceFilter.Text.Trim();
         var activeOnly = raceActiveOnly.ButtonPressed;
-        int shownCount = 0, active = 0;
         foreach (var race in races)
         {
-            if (race.Active) active++;
             if (activeOnly && !race.Active) continue;
             if (filter.Length > 0 && !RaceMatches(race, filter)) continue;
             raceList.AddChild(BuildRaceRow(race));
-            shownCount++;
         }
-
-        raceSummary.Text = races.Count == 0
-            ? "No races loaded."
-            : $"{shownCount} of {races.Count} races shown, {active} running.";
     }
 
     private static bool RaceMatches(AdminCollectionRace race, string filter) =>
@@ -111,8 +101,11 @@ internal sealed class AdminRacesTab
         head.AddChild(title);
         head.AddChild(UiTheme.Pill(race.Active ? $"running  {race.RemainingSeconds / 60:D2}:{race.RemainingSeconds % 60:D2}" : race.AutoStart ? "scheduled" : "manual",
             race.Active ? UiTheme.Good : UiTheme.TextLo));
-        var action = UiTheme.SmallButton(race.Active ? "Close" : "Start", race.Active ? "End this race now; completers are mailed their rewards" : "Start this race now in its zone");
         var raceId = race.Id;
+        var editRace = UiTheme.SmallButton("Edit", "Its objectives, rewards and settings");
+        editRace.Pressed += () => edit(raceId);
+        head.AddChild(editRace);
+        var action = UiTheme.SmallButton(race.Active ? "Close" : "Start", race.Active ? "End this race now; completers are mailed their rewards" : "Start this race now in its zone");
         var wasActive = race.Active;
         action.Pressed += () =>
         {

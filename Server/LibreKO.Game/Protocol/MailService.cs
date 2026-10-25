@@ -25,7 +25,7 @@ public interface IMailService
     Task SendUnreadAsync(UserSession session);
     Task ReadAsync(UserSession session, int mailId);
     Task SendAsync(UserSession session, string recipientName, string subject, string body, int gold, IReadOnlyList<MailItemPick> items);
-    Task DeleteAsync(UserSession session, int mailId);
+    Task DeleteAsync(UserSession session, int mailId, bool discardAttachments = false);
     Task ClaimAsync(UserSession session, int mailId);
     Task ClaimAttachmentAsync(UserSession session, int mailId, int attachmentIndex);
 }
@@ -284,7 +284,7 @@ public class MailService(
         }
     }
 
-    public async Task DeleteAsync(UserSession session, int mailId)
+    public async Task DeleteAsync(UserSession session, int mailId, bool discardAttachments = false)
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -295,9 +295,11 @@ public class MailService(
             return;
         }
 
-        if (mail.HasUnclaimedAttachments)
+        if (mail.HasUnclaimedAttachments && (!discardAttachments || mail.Kind == MailKind.Store))
         {
-            await session.Client.SendPacket(MailPacketWriter.DeleteResult(false, mailId, "Claim the attachments before deleting this mail."));
+            await session.Client.SendPacket(MailPacketWriter.DeleteResult(false, mailId, mail.Kind == MailKind.Store
+                ? "Claim the Power-Up Store items before deleting this mail."
+                : "Claim the attachments before deleting this mail."));
             return;
         }
 

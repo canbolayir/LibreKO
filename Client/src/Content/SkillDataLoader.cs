@@ -81,6 +81,8 @@ internal static class SkillDataLoader
                 NeedBuffSkill = Int(o, "needBuffSkill"),
                 NeedItem = Int(o, "needItem"),
                 CooldownGroup = Int(o, "cooldownGroup"),
+                BuffIcon = Int(o, "buffIcon"),
+                AutoCast = Int(o, "autoCast") != 0,
                 Effect = Effects(o, "effect"),
             });
         }

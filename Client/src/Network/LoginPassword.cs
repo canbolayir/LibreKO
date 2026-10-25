@@ -15,7 +15,7 @@ public static class LoginPassword
 
     public static string Encode(string password)
     {
-        var raw = System.Text.Encoding.ASCII.GetBytes(password);
+        var raw = System.Text.Encoding.UTF8.GetBytes(password);
         int paddedLen = raw.Length;
         if (paddedLen % 4 != 0)
             paddedLen += 4 - (paddedLen % 4);

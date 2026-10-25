@@ -19,7 +19,9 @@ public static class CombatLogLines
 
     private static readonly HashSet<int> TenfoldZones = new() { 45, 57, 58, 59, 60, 85, 89 };
 
-    public static int LoggedHp(int zone, int amount) => TenfoldZones.Contains(zone) ? amount * TenfoldScale : amount;
+    public static int HpTextScale(int zone) => TenfoldZones.Contains(zone) ? TenfoldScale : 1;
+
+    public static int LoggedHp(int zone, int amount) => amount * HpTextScale(zone);
 
     public static bool UsesMp(int classCode) => CharacterClassCatalog.Family(classCode) is MageFamily or PriestFamily;
 

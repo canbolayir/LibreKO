@@ -38,6 +38,21 @@ public class NpcItemData
         ];
     }
 
+    public void SetDrop(int slot, int itemId, short percent)
+    {
+        switch (slot)
+        {
+            case 0: Item1 = itemId; Percent1 = percent; break;
+            case 1: Item2 = itemId; Percent2 = percent; break;
+            case 2: Item3 = itemId; Percent3 = percent; break;
+            case 3: Item4 = itemId; Percent4 = percent; break;
+            case 4: Item5 = itemId; Percent5 = percent; break;
+            case 5: Item6 = itemId; Percent6 = percent; break;
+            case 6: Item7 = itemId; Percent7 = percent; break;
+            default: throw new ArgumentOutOfRangeException(nameof(slot));
+        }
+    }
+
     public bool HasAnyDrop =>
         Item1 > 0 || Item2 > 0 || Item3 > 0 || Item4 > 0 || Item5 > 0 || Item6 > 0 || Item7 > 0;
 

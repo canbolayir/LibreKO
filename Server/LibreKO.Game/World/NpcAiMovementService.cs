@@ -1,4 +1,4 @@
-﻿using LibreKO.Common.Infrastructure.Network;
+using LibreKO.Common.Infrastructure.Network;
 using Microsoft.Extensions.Logging;
 using LibreKO.Game.Protocol.Writers;
 
@@ -34,6 +34,8 @@ public class NpcAiMovementService(
         switch (npc.MoveType)
         {
             case NpcMoveType.Wander:
+                if (npc.SearchRange <= 0)
+                    return;
                 targetX = npc.SpawnX + Random.Shared.Next(-5, 6);
                 targetZ = npc.SpawnZ + Random.Shared.Next(-5, 6);
                 break;
@@ -325,11 +327,6 @@ public class NpcAiMovementService(
         var speed = npc.State is NpcState.Attacking or NpcState.Fighting or NpcState.Returning or NpcState.Healing
             ? npc.Speed2
             : npc.Speed1;
-        if (speed <= 0)
-            speed = npc.State is NpcState.Attacking or NpcState.Fighting or NpcState.Returning or NpcState.Healing
-                ? (byte)7
-                : (byte)2;
-
         return speed * AiTickSeconds * npc.Debuffs.SpeedFactor(DateTime.UtcNow.Ticks);
     }
 }

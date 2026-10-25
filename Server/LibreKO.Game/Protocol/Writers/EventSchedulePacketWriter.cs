@@ -11,6 +11,9 @@ public enum EventScheduleKind : byte
     Bifrost = 5,
     CastleSiege = 6,
     Bowl = 7,
+    NationWar = 8,
+    SnowWar = 9,
+    Wanted = 10,
 }
 
 public enum EventSchedulePhase : byte

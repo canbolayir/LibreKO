@@ -1,5 +1,4 @@
-﻿using System.Text;
-using FluentAssertions;
+﻿using FluentAssertions;
 using LibreKO.Common.Domain.Entities.GameData;
 using LibreKO.Common.Domain.Services;
 using LibreKO.Common.Infrastructure.Network;
@@ -8,7 +7,6 @@ using LibreKO.Game.Protocol;
 using LibreKO.Game.Protocol.Writers;
 using LibreKO.Game.World;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -28,14 +26,12 @@ public class AdminPanelSpawnTests
     private sealed record Row(bool CanPersist, int Index, int NpcId, string Name, byte Zone, bool Monster, int X, int Z, int YTenths,
         int Direction, byte Count, short Respawn, short Range, int Alive);
 
-    private sealed class Fixture : IDisposable
+    private sealed class Fixture
     {
-        public readonly string Root = Path.Combine(Path.GetTempPath(), $"libreko-seed-{Guid.NewGuid():N}");
         public readonly SessionManager Sessions = new();
         public readonly List<Packet> Sent = [];
         public readonly IClient Client = Substitute.For<IClient>();
         public readonly INpcSpawnRowStore Store = Substitute.For<INpcSpawnRowStore>();
-        public readonly IHostEnvironment Environment = Substitute.For<IHostEnvironment>();
         public readonly NpcPosData Julia = new()
         {
             Index = JuliaRow, ZoneId = Moradon, NpcId = 31741, ActType = 100, LeftX = 769, TopZ = 369, NumNPC = 1, RegTime = 3600, Direction = 90,
@@ -44,17 +40,8 @@ public class AdminPanelSpawnTests
         public readonly AdminPanelPacketCoordinator Coordinator;
         public readonly UserSession Gm;
 
-        public string Shard => NpcPositionSeedFile.ShardPath(Root, Moradon);
-
-        public Fixture(string environment = "Development")
+        public Fixture()
         {
-            Directory.CreateDirectory(Path.Combine(Root, "Seed", "Data"));
-            File.WriteAllText(Shard,
-                "[\r\n  {\r\n    \"Index\": 1,\r\n    \"ZoneId\": 21,\r\n    \"NpcId\": 256,\r\n    \"ActType\": 1,\r\n    \"DotCnt\": 0,\r\n    \"Path\": null,\r\n    \"LeftX\": 700,\r\n    \"TopZ\": 500,\r\n    \"NumNPC\": 5,\r\n    \"RegTime\": 25,\r\n    \"Direction\": 0,\r\n    \"SpawnRange\": 7,\r\n    \"RegenType\": 0,\r\n    \"DungeonFamily\": 0,\r\n    \"SpecialType\": 0,\r\n    \"TrapNumber\": 0,\r\n    \"Room\": 0\r\n  },\r\n  {\r\n    \"Index\": 5,\r\n    \"ZoneId\": 21,\r\n    \"NpcId\": 31741,\r\n    \"ActType\": 100,\r\n    \"DotCnt\": 0,\r\n    \"Path\": null,\r\n    \"LeftX\": 769,\r\n    \"TopZ\": 369,\r\n    \"NumNPC\": 1,\r\n    \"RegTime\": 3600,\r\n    \"Direction\": 90,\r\n    \"SpawnRange\": 0,\r\n    \"RegenType\": 0,\r\n    \"DungeonFamily\": 0,\r\n    \"SpecialType\": 0,\r\n    \"TrapNumber\": 0,\r\n    \"Room\": 0\r\n  }\r\n]\r\n",
-                new UTF8Encoding(false));
-
-            Environment.EnvironmentName.Returns(environment);
-            Environment.ContentRootPath.Returns(Root);
             Client.Id.Returns(Guid.NewGuid());
             Client.SendPacket(Arg.Do<Packet>(packet => Sent.Add(packet)), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
             Gm = Sessions.CreateSession(Client, 1, 1);
@@ -76,7 +63,11 @@ public class AdminPanelSpawnTests
                 Substitute.For<IWorldMovementService>(),
                 SpawnRows,
                 Store,
-                Environment,
+                Substitute.For<IAdminMonsterEditor>(),
+                Substitute.For<IAdminEventScheduleEditor>(),
+                Substitute.For<IAdminEventContentEditor>(),
+                Substitute.For<IAdminTipEditor>(),
+            Substitute.For<IAdminPlayerEditor>(),
                 Substitute.For<ICollectionRaceService>(),
                 Substitute.For<IPlayerProgressionService>(),
                 Substitute.For<ILoyaltyService>(),
@@ -88,11 +79,6 @@ public class AdminPanelSpawnTests
         }
 
         public IEnumerable<NpcInstance> Live => Sessions.Regions.GetAllNpcs().Where(npc => npc.SpawnRow == JuliaRow);
-
-        public void Dispose()
-        {
-            Directory.Delete(Root, recursive: true);
-        }
     }
 
     private static Packet RowRequest(int index)
@@ -146,7 +132,7 @@ public class AdminPanelSpawnTests
     [Fact]
     public async Task TheRowIsSentWithItsLiveState()
     {
-        using var f = new Fixture();
+        var f = new Fixture();
 
         await f.Coordinator.HandleAsync(f.Client, RowRequest(JuliaRow));
 
@@ -156,8 +142,7 @@ public class AdminPanelSpawnTests
     [Fact]
     public async Task SetMovesTheRowAndRespawnsItInMemoryOnly()
     {
-        using var f = new Fixture();
-        var shardBefore = File.ReadAllText(f.Shard);
+        var f = new Fixture();
 
         await f.Coordinator.HandleAsync(f.Client, EditRequest(ReqSpawnSet, JuliaRow, 800, 400, 180, 3, 60, 0));
 
@@ -165,57 +150,31 @@ public class AdminPanelSpawnTests
         f.Live.Should().HaveCount(3).And.OnlyContain(npc => npc.SpawnX == 800 && npc.SpawnZ == 400 && npc.ZoneId == Moradon && !npc.IsDead);
         ReadResult(f.Sent).Should().Be((true, "Spawn row 5 set (3 spawned); not persisted."));
         ReadRow(f.Sent).Should().Be(new Row(true, JuliaRow, 31741, "[Trader] Julia", Moradon, false, 800, 400, 0, 180, 3, 60, 0, 3));
-        File.ReadAllText(f.Shard).Should().Be(shardBefore);
         await f.Store.DidNotReceive().UpdateAsync(Arg.Any<NpcPosData>());
     }
 
     [Fact]
-    public async Task PersistWritesTheShardAndTheDatabaseRow()
+    public async Task PersistSavesTheRowInTheDatabase()
     {
-        using var f = new Fixture();
+        var f = new Fixture();
 
         await f.Coordinator.HandleAsync(f.Client, EditRequest(ReqSpawnPersist, JuliaRow, 800, 400, 180, 2, 60, 3));
 
-        ReadResult(f.Sent).Should().Be((true, "Spawn row 5 persisted to NpcPositions.zone021.json and the database (2 spawned)."));
-        var shard = File.ReadAllText(f.Shard);
-        shard.Should().Contain("\"LeftX\": 800,\r\n    \"TopZ\": 400,\r\n    \"NumNPC\": 2,\r\n    \"RegTime\": 60,\r\n    \"Direction\": 180,\r\n    \"SpawnRange\": 3,");
-        shard.Should().Contain("\"NpcId\": 256,").And.Contain("\"LeftX\": 700,");
+        ReadResult(f.Sent).Should().Be((true, "Spawn row 5 saved to the database (2 spawned)."));
         await f.Store.Received(1).UpdateAsync(f.Julia);
+        f.Julia.Should().BeEquivalentTo(new { LeftX = 800, TopZ = 400, Direction = 180, NumNPC = (byte)2, RegTime = (short)60, SpawnRange = (short)3 });
         f.Live.Should().HaveCount(2);
     }
 
     [Fact]
-    public async Task PersistAfterSetsFindsTheSeedRowByItsLastPersistedValues()
+    public async Task APersistTheDatabaseCannotTakeSaysSo()
     {
-        using var f = new Fixture();
-
-        await f.Coordinator.HandleAsync(f.Client, EditRequest(ReqSpawnSet, JuliaRow, 757, 773, 90, 1, 3600, 0));
-        await f.Coordinator.HandleAsync(f.Client, EditRequest(ReqSpawnSet, JuliaRow, 760, 770, 90, 1, 3600, 0));
-        await f.Coordinator.HandleAsync(f.Client, EditRequest(ReqSpawnPersist, JuliaRow, 761, 771, 90, 1, 3600, 0));
-
-        ReadResult(f.Sent).Ok.Should().BeTrue();
-        File.ReadAllText(f.Shard).Should().Contain("\"LeftX\": 761,\r\n    \"TopZ\": 771,");
-
-        await f.Coordinator.HandleAsync(f.Client, EditRequest(ReqSpawnSet, JuliaRow, 762, 772, 90, 1, 3600, 0));
-        await f.Coordinator.HandleAsync(f.Client, EditRequest(ReqSpawnPersist, JuliaRow, 763, 773, 90, 1, 3600, 0));
-
-        ReadResult(f.Sent).Ok.Should().BeTrue();
-        File.ReadAllText(f.Shard).Should().Contain("\"LeftX\": 763,\r\n    \"TopZ\": 773,").And.NotContain("\"LeftX\": 761,");
-        await f.Store.Received(2).UpdateAsync(f.Julia);
-    }
-
-    [Fact]
-    public async Task PersistIsRefusedOutsideALocalDevelopmentServer()
-    {
-        using var f = new Fixture("Production");
-        var shardBefore = File.ReadAllText(f.Shard);
+        var f = new Fixture();
+        f.Store.UpdateAsync(Arg.Any<NpcPosData>()).Returns(false);
 
         await f.Coordinator.HandleAsync(f.Client, EditRequest(ReqSpawnPersist, JuliaRow, 800, 400, 180, 2, 60, 3));
 
         ReadResult(f.Sent).Ok.Should().BeFalse();
-        File.ReadAllText(f.Shard).Should().Be(shardBefore);
-        f.Julia.LeftX.Should().Be(769);
-        await f.Store.DidNotReceive().UpdateAsync(Arg.Any<NpcPosData>());
     }
 
     [Theory]
@@ -225,7 +184,7 @@ public class AdminPanelSpawnTests
     [InlineData(JuliaRow, 800, 400, 90, 51)]
     public async Task AnUnknownRowOrValuesOutOfRangeAreRefused(int index, int x, int z, int direction, byte count)
     {
-        using var f = new Fixture();
+        var f = new Fixture();
 
         await f.Coordinator.HandleAsync(f.Client, EditRequest(ReqSpawnSet, index, x, z, direction, count, 60, 0));
 

@@ -162,6 +162,8 @@ public partial class Audio : Node
         I.StartBgm(file);
     }
 
+    public static string CurrentBgm => I?.bgmFile ?? "";
+
     public static void StopBgm()
     {
         if (I == null) return;

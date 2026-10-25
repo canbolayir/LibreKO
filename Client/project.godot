@@ -114,3 +114,19 @@ item_shine_classic={
 "type": "float",
 "value": 0.0
 }
+weather_wetness={
+"type": "float",
+"value": 0.0
+}
+weather_rain={
+"type": "float",
+"value": 0.0
+}
+weather_snow={
+"type": "float",
+"value": 0.0
+}
+weather_sky={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}

@@ -3,7 +3,7 @@ using LibreKO.Features.CombatLog;
 
 namespace LibreKO.Features.PluginBridge;
 
-internal sealed class PluginGenieBridge(GenieFeature genie, GeniePotionsFeature geniePotions, GenieSubFeature genieSub, PluginBridgeFeature pluginBridge, CombatLogFeature log, GenieSession genieSession, SelfSession self, IGenieRequests genieRequests) : IGameGenie
+internal sealed class PluginGenieBridge(GenieFeature genie, GeniePotionsFeature geniePotions, GenieSubFeature genieSub, PluginBridgeFeature pluginBridge, CombatLogFeature log, GenieSession genieSession, SelfSession self) : IGameGenie
 {
     public bool IsOpen => genie.IsOpen;
 
@@ -84,7 +84,7 @@ internal sealed class PluginGenieBridge(GenieFeature genie, GeniePotionsFeature 
 
     public void ToggleRun() => genieSub.ToggleFromSub();
 
-    public void UseSpirit() => genieRequests.System(GenieSystemCommand.UseSpiritPotion);
+    public void UseSpirit() => genie.UseSpirit();
 
     public void OpenMore() => genie.OpenMore();
 

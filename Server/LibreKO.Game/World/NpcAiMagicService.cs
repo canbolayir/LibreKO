@@ -322,7 +322,7 @@ public class NpcAiMagicService(
     {
         if (delta < 0)
         {
-            var damage = GmMode.Taken(target, Math.Min(-delta, CombatUtils.MaxDamage));
+            var damage = GmMode.Taken(target, Math.Min(ManesSurvivalCombat.FromMonster(target, -delta), CombatUtils.MaxDamage));
             if (damage <= 0)
                 return;
 
@@ -400,7 +400,7 @@ public class NpcAiMagicService(
             npc.Attack1,
             npc.Attack2);
 
-        damage = GmMode.Taken(target, Math.Clamp(damage, 0, CombatUtils.MaxDamage));
+        damage = GmMode.Taken(target, Math.Clamp(ManesSurvivalCombat.FromMonster(target, damage), 0, CombatUtils.MaxDamage));
         if (damage > 0)
         {
             target.Hp = (short)Math.Max(0, target.Hp - damage);

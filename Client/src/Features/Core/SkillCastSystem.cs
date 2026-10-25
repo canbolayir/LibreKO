@@ -396,7 +396,7 @@ internal sealed class SkillCastSystem : IFeature
         double now = FrameClock.Now();
         foreach (var (skillId, end) in self.BuffEnds)
         {
-            if (skillId == s.Id || end <= now) continue;
+            if (end <= now) continue;
             var other = SkillData.Get(skillId);
             if (other != null && other.BuffType == s.BuffType) return other;
         }
@@ -406,6 +406,7 @@ internal sealed class SkillCastSystem : IFeature
     private IAreaCasts? areaCasts;
     private IMovementSkills? movementSkills;
     private IPartyPick? partyPick;
+    private IFriendPick? friendPick;
     private IMoveGates? moveGates;
 
     internal void AttachAreaCasts(IAreaCasts areaCasts) => this.areaCasts = areaCasts;
@@ -419,6 +420,10 @@ internal sealed class SkillCastSystem : IFeature
     internal void AttachPartyPick(IPartyPick partyPick) => this.partyPick = partyPick;
 
     internal void DetachPartyPick() => partyPick = null;
+
+    internal void AttachFriendPick(IFriendPick friendPick) => this.friendPick = friendPick;
+
+    internal void DetachFriendPick() => friendPick = null;
 
     internal void AttachMoveGates(IMoveGates moveGates) => this.moveGates = moveGates;
 
@@ -659,6 +664,12 @@ internal sealed class SkillCastSystem : IFeature
 
     private int FriendlyCastTarget(SkillData.Skill s)
     {
+        if (TeleportFriend.PicksFromFriendList(s.Id))
+        {
+            int friend = friendPick?.Pick ?? TeleportFriend.NoFriend;
+            if (friend < 0) context.Log.Notice(ItemData.Text(TeleportFriend.NoFriendText, "You did not select a buddy from your Buddy List."));
+            return friend;
+        }
         if (!s.IsFriendly) return context.Self.CharId;
         if (s.Moral == SkillTarget.FriendWithMe && self.HealStrikesEnemies
             && context.Entities.Views.TryGetValue(context.Selection.SelectedId, out var foe) && foe.Attackable && !foe.Dead)
@@ -990,11 +1001,16 @@ internal sealed class SkillCastSystem : IFeature
     {
         if (avatar.Anim == null) return;
         float delta = IsRootedByCast() ? castAnimScale
-            : audio.SelfSwinging() ? buff.AttackSpeedMultiplier()
+            : audio.SelfSwinging() ? SelfSwingRate()
             : context.Self.Moving ? buff.MoveSpeedMultiplier() : 1f;
         if (delta < AnimSpeedDeltaMin || delta >= AnimSpeedDeltaMax) return;
         if (!Mathf.IsEqualApprox(avatar.Anim.SpeedScale, delta)) avatar.Anim.SpeedScale = delta;
     }
+
+    private float SelfSwingRate() =>
+        SwingTiming.AnimationRate(buff.AttackSpeedMultiplier(),
+            ItemData.Get(self.Inventory.ItemIdAt(InventoryConstants.RightHand))?.Kind ?? 0,
+            ItemData.Get(self.Inventory.ItemIdAt(InventoryConstants.LeftHand))?.Kind ?? 0);
 
     internal bool IsRootedByCast() => castingSkillId != 0 && FrameClock.Now() < castingUntil;
 

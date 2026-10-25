@@ -29,6 +29,7 @@ public sealed class GameRequests
     public IExchangeRequests Exchange { get; }
     public IExpSealRequests ExpSeal { get; }
     public ISlaveMerchantRequests SlaveMerchant { get; }
+    public IItemRentalRequests ItemRental { get; }
     public IFishingHallRequests FishingHall { get; }
     public IForcesRequests Forces { get; }
     public IFriendsRequests Friends { get; }
@@ -44,6 +45,7 @@ public sealed class GameRequests
     public IKnightRoyaleRequests KnightRoyale { get; }
     public ILotteryRequests Lottery { get; }
     public IMailRequests Mail { get; }
+    public IManesSurvivalRequests ManesSurvival { get; }
     public IMarketPriceRequests MarketPrice { get; }
     public IMerchantRequests Merchant { get; }
     public IMerchantSearchRequests MerchantSearch { get; }
@@ -118,6 +120,7 @@ public sealed class GameRequests
         Exchange = new ExchangeRequests(sink);
         ExpSeal = new ExpSealRequests(sink);
         SlaveMerchant = new SlaveMerchantRequests(sink);
+        ItemRental = new ItemRentalRequests(sink);
         FishingHall = new FishingHallRequests(sink);
         Forces = new ForcesRequests(sink);
         Friends = new FriendsRequests(sink);
@@ -133,6 +136,7 @@ public sealed class GameRequests
         KnightRoyale = new KnightRoyaleRequests(sink);
         Lottery = new LotteryRequests(sink);
         Mail = new MailRequests(sink);
+        ManesSurvival = new ManesSurvivalRequests(sink, session.Items);
         MarketPrice = new MarketPriceRequests(sink);
         Merchant = new MerchantRequests(sink);
         MerchantSearch = new MerchantSearchRequests(sink);

@@ -64,6 +64,8 @@ public interface IGameDataService
     ILookup<int, LotteryRewardData> LotteryRewardsByEvent { get; }
     ILookup<int, LotteryScheduleData> LotterySchedulesByEvent { get; }
     IReadOnlyList<TempleEventScheduleData> TempleEventSchedules { get; }
+    IReadOnlyList<EventStartData> EventStarts { get; }
+    IReadOnlyList<EventDurationData> EventDurations { get; }
     IReadOnlyList<TempleEventRewardData> TempleEventRewards { get; }
     IReadOnlyList<ForgottenTempleWaveData> ForgottenTempleWaves { get; }
     SiegeWarfareData? SiegeWarfare { get; }
@@ -88,6 +90,9 @@ public interface IGameDataService
     ItemExchangeExpData? GetItemExchangeExp(int index);
     int GetEventTrigger(short npcType, short trapNumber);
     NpcItemData? GetNpcItem(short index, bool isMonster);
+    void PutNpcItem(NpcItemData row);
+    void PutItemGroup(int group, int[] items);
+    Task ReloadEventsAsync(CancellationToken cancellationToken = default);
     IEnumerable<ItemOpData> GetItemOps(int itemId);
     string? GetServerResource(int resourceId);
 

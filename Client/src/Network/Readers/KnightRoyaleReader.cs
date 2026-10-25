@@ -3,11 +3,13 @@
 internal sealed class KnightRoyaleReader : IPacketReader
 {
     private readonly KnightRoyaleSession knightRoyale;
+    private readonly ItemCombineSession itemCombine;
     private readonly Func<ulong> nowMsec;
 
-    public KnightRoyaleReader(KnightRoyaleSession knightRoyale, Func<ulong> nowMsec)
+    public KnightRoyaleReader(KnightRoyaleSession knightRoyale, ItemCombineSession itemCombine, Func<ulong> nowMsec)
     {
         this.knightRoyale = knightRoyale;
+        this.itemCombine = itemCombine;
         this.nowMsec = nowMsec;
     }
 
@@ -47,6 +49,9 @@ internal sealed class KnightRoyaleReader : IPacketReader
                 break;
             case KnightRoyaleSubOpcode.Destroy:
                 knightRoyale.RaiseRoyaleDestroy(p.RemainingBytes >= 1 && p.ReadByte() == 1);
+                break;
+            case KnightRoyaleSubOpcode.Combine:
+                if (p.RemainingBytes >= 1) itemCombine.RaiseItemCombineReply(ItemCombineWire.ReadReply(p));
                 break;
         }
     }

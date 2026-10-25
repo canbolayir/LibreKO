@@ -10,17 +10,15 @@ internal sealed partial class MapFeature : IFeature, IHudTickFeature, IEscapable
     private readonly IBattleEventRequests battleEventRequests;
     private readonly ScenerySystem scenery;
     private readonly BuffSystem buff;
-    private readonly CameraSystem camera;
     private readonly PluginBridgeFeature pluginBridge;
 
-    public MapFeature(IWorldContext context, QuestBook questBook, IBattleEventRequests battleEventRequests, ScenerySystem scenery, BuffSystem buff, CameraSystem camera, PluginBridgeFeature pluginBridge)
+    public MapFeature(IWorldContext context, QuestBook questBook, IBattleEventRequests battleEventRequests, ScenerySystem scenery, BuffSystem buff, PluginBridgeFeature pluginBridge)
     {
         this.context = context;
         this.questBook = questBook;
         this.battleEventRequests = battleEventRequests;
         this.scenery = scenery;
         this.buff = buff;
-        this.camera = camera;
         this.pluginBridge = pluginBridge;
     }
     private const double RefreshInterval = 1.0 / 12.0;
@@ -47,10 +45,19 @@ internal sealed partial class MapFeature : IFeature, IHudTickFeature, IEscapable
     }
 
     internal MiniMap MiniMap { get; set; } = null!;
+
+    internal Rect2? MiniMapRect => Shown(context.Hud.PluginPart(HudPart.MiniMap) ?? MiniMap);
+
+    private static Rect2? Shown(Control? map) =>
+        map != null && GodotObject.IsInstanceValid(map) && map.IsVisibleInTree() ? map.GetGlobalRect() : null;
     internal List<MiniMap.Blip> BlipScratch { get; } = new();
     private readonly List<Action<List<MiniMap.Blip>>> miniSources = new();
 
     internal void AddMiniSource(Action<List<MiniMap.Blip>> source) => miniSources.Add(source);
+
+    private readonly List<Func<bool>> playerDotsHidden = new();
+
+    internal void HidePlayerDotsWhen(Func<bool> hidden) => playerDotsHidden.Add(hidden);
 
     private const float QuestTargetBlipRadius = 4.5f;
 
@@ -93,9 +100,15 @@ internal sealed partial class MapFeature : IFeature, IHudTickFeature, IEscapable
         BlipScratch.Clear();
         if (!buff.BlindHidesOthers(context.Now)) AddEntityBlips();
         foreach (var source in miniSources) source(BlipScratch);
-        float heading = Coord.MapHeading(Mathf.Sin(camera.CamYaw), -Mathf.Cos(camera.CamYaw));
+        float heading = FacingHeading();
         MiniMap.UpdateView(context.Self.MapXZ.X, context.Self.MapXZ.Z, heading, BlipScratch);
         pluginBridge.NotifyMap(heading);
+    }
+
+    private float FacingHeading()
+    {
+        var facing = context.Self.Facing;
+        return Coord.MapHeading(-facing.X, facing.Z);
     }
 
     private void AddEntityBlips()
@@ -103,7 +116,7 @@ internal sealed partial class MapFeature : IFeature, IHudTickFeature, IEscapable
         foreach (var kv in context.Entities.Views)
         {
             var e = kv.Value;
-            if (e.Body == null) continue;
+            if (e.Body == null || (!e.IsNpc && playerDotsHidden.Exists(hidden => hidden()))) continue;
             var gp = e.Body.GlobalPosition;
             var (kx, kz) = Coord.ToMap(gp.X, gp.Z);
             Color col;
@@ -178,7 +191,7 @@ internal sealed partial class MapFeature : IFeature, IHudTickFeature, IEscapable
     private void UpdateFull()
     {
         if (!fullShown) return;
-        float heading = Coord.MapHeading(Mathf.Sin(camera.CamYaw), -Mathf.Cos(camera.CamYaw));
+        float heading = FacingHeading();
         fullView.SetView(context.Self.MapXZ.X, context.Self.MapXZ.Z, heading, BlipScratch);
     }
 

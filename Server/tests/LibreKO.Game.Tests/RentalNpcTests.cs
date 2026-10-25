@@ -3,6 +3,7 @@ using LibreKO.Common.Domain.Entities.GameData;
 using LibreKO.Common.Enums;
 using LibreKO.Common.Infrastructure.Network;
 using LibreKO.Game.Protocol;
+using LibreKO.Game.Protocol.Writers;
 using LibreKO.Game.World;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -13,12 +14,10 @@ public class RentalNpcTests : GameTestBase
 {
     private const short Soren = 14403;
     private const int RentalGroup = 231000;
-    private const byte RentalNpcSub = 3;
-    private const short Unavailable = -1;
     private const byte Moradon = 21;
 
     [Fact]
-    public async Task ARentalNpcSaysTheServiceIsUnavailable()
+    public async Task ARentalNpcOpensTheItemRentalMarket()
     {
         using var provider = CreateProvider(_ => { }, gameData =>
             gameData.GetNpc(Soren, Arg.Any<bool>()).Returns(new NpcData
@@ -52,10 +51,9 @@ public class RentalNpcTests : GameTestBase
         click.ResetOffset();
         await provider.GetRequiredService<IQuestNpcInteractionService>().HandleNpcEventAsync(client, click);
 
-        var reply = sent.Should().ContainSingle(p => p.GetOpcode() == (byte)GameOpcodes.GS_RENTAL).Subject;
+        var reply = sent.Should().ContainSingle(p => p.GetOpcode() == (byte)GameOpcodes.GS_ITEM_RENTAL).Subject;
         reply.ResetOffset();
-        reply.ReadByte().Should().Be(RentalNpcSub);
-        reply.ReadShort().Should().Be(Unavailable);
-        reply.ReadInt().Should().Be(RentalGroup);
+        reply.ReadByte().Should().Be((byte)ItemRentalSub.Open);
+        reply.ReadInt().Should().Be(npc.UniqueId);
     }
 }

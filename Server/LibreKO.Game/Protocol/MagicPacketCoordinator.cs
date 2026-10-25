@@ -124,8 +124,17 @@ public class MagicPacketCoordinator(
             return;
         }
 
+        if (RequiresLearnedSkill((MagicProcessOpcode)magicOpcode) && ManesSurvivalRules.IsZone(session.ZoneId)
+            && !session.IsGM && session.ManesSurvival?.Knows(magic.Id) != true)
+        {
+            logger.LogWarning("Refusing Manes skill {SkillId} from {Name}: not picked in this event", skillId, session.Name);
+            await SendMagicFailAsync(session, skillId, MagicFailCode.ForStage((MagicProcessOpcode)magicOpcode));
+            return;
+        }
+
         if (RequiresLearnedSkill((MagicProcessOpcode)magicOpcode)
             && magic.Skill != ChaosRules.ChaosSkillTree
+            && !(magic.Skill == ManesSurvivalRules.SkillTree && ManesSurvivalRules.IsZone(session.ZoneId))
             && !MagicSkillRequirement.IsMet(magic, session.Level, session.SkillPoints))
         {
             logger.LogWarning(

@@ -30,11 +30,13 @@ internal sealed class ChatNoticesFeature : IFeature, ITickFeature
     internal const int TextChaosStoneBroken = 7470;
     private const int TextChaosStoneBrokenByEnemy = 7471;
     private const int TextBoxItem = 17000;
+    private const int TextMonsterNotAttackable = 44438;
     private const int AlertInvaded = 1;
     private const int AlertSuspicious = 2;
     internal static readonly Color OrderMessageRed = new(1f, 0f, 0f);
 
     private static readonly Color BoxItemNoticeColour = new("e70df2");
+    private static readonly Color MonsterNoticeColour = new(1f, 1f, 0f);
 
     internal CanvasLayer? OrderMessageLayer { get; private set; }
     private Label? orderMessage;
@@ -48,6 +50,7 @@ internal sealed class ChatNoticesFeature : IFeature, ITickFeature
         chat.MonumentNoticeEvent += OnMonumentNotice;
         chat.ChaosStoneNoticeEvent += OnChaosStoneNotice;
         chat.BoxItemNoticeEvent += OnBoxItemNotice;
+        chat.MonsterNotAttackableEvent += OnMonsterNotAttackable;
     }
 
     public void Dispose()
@@ -55,7 +58,11 @@ internal sealed class ChatNoticesFeature : IFeature, ITickFeature
         chat.MonumentNoticeEvent -= OnMonumentNotice;
         chat.ChaosStoneNoticeEvent -= OnChaosStoneNotice;
         chat.BoxItemNoticeEvent -= OnBoxItemNotice;
+        chat.MonsterNotAttackableEvent -= OnMonsterNotAttackable;
     }
+
+    private void OnMonsterNotAttackable() =>
+        context.Log.Notice(GameText.System(TextMonsterNotAttackable, "This monster cannot be attacked on this server."), MonsterNoticeColour);
 
     private void OnMonumentNotice(MonumentNotice notice)
     {

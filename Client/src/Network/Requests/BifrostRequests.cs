@@ -5,7 +5,7 @@ public interface IBifrostRequests
     void FullMoonEnter();
     void TimeRequest();
     void Join(TempleEventType type);
-    void Disband();
+    void Disband(TempleEventType type);
     void DrakiRankList();
     void DrakiEnter(int certificateItem, int chapter);
     void DrakiTown();
@@ -53,14 +53,15 @@ public sealed class BifrostRequests : IBifrostRequests
     {
         var p = new Packet(GameOpcodes.GS_EVENT);
         p.WriteByte((byte)TempleSubOpcode.TempleEventJoin);
-        p.WriteByte((byte)type);
+        p.WriteUShort((ushort)TempleJoin.IndunType(type));
         sink.Send(p);
     }
 
-    public void Disband()
+    public void Disband(TempleEventType type)
     {
         var p = new Packet(GameOpcodes.GS_EVENT);
         p.WriteByte((byte)TempleSubOpcode.TempleEventDisband);
+        p.WriteUShort((ushort)TempleJoin.IndunType(type));
         sink.Send(p);
     }
 }

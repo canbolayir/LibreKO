@@ -56,6 +56,7 @@ public class EventSchedulerTests
             Substitute.For<IKrowazService>(),
             Substitute.For<INereidMonumentService>(),
             Substitute.For<IBowlEventService>(),
+            Substitute.For<IManesSurvivalService>(),
             gameData,
             new ScheduleClock(),
             logger);

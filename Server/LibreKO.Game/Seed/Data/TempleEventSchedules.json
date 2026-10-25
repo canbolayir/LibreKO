@@ -2,6 +2,7 @@
   {
     "Id": 1,
     "Event": "BorderDefenseWar",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 1,
     "Minute": 0,
@@ -12,6 +13,7 @@
   {
     "Id": 2,
     "Event": "BorderDefenseWar",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 10,
     "Minute": 0,
@@ -22,6 +24,7 @@
   {
     "Id": 3,
     "Event": "BorderDefenseWar",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 12,
     "Minute": 0,
@@ -32,6 +35,7 @@
   {
     "Id": 4,
     "Event": "BorderDefenseWar",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 15,
     "Minute": 0,
@@ -42,6 +46,7 @@
   {
     "Id": 5,
     "Event": "BorderDefenseWar",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 20,
     "Minute": 0,
@@ -52,6 +57,7 @@
   {
     "Id": 6,
     "Event": "Chaos",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 11,
     "Minute": 0,
@@ -62,6 +68,7 @@
   {
     "Id": 7,
     "Event": "Chaos",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 18,
     "Minute": 0,
@@ -72,6 +79,7 @@
   {
     "Id": 8,
     "Event": "Chaos",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 23,
     "Minute": 0,
@@ -82,6 +90,7 @@
   {
     "Id": 9,
     "Event": "JuraidMountain",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 6,
     "Minute": 40,
@@ -92,6 +101,7 @@
   {
     "Id": 10,
     "Event": "JuraidMountain",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 21,
     "Minute": 40,
@@ -102,6 +112,7 @@
   {
     "Id": 11,
     "Event": "UnderTheCastle",
+    "Repeat": "Weekly",
     "Day": 5,
     "Hour": 20,
     "Minute": 0,
@@ -112,6 +123,7 @@
   {
     "Id": 12,
     "Event": "ForgottenTemple",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 8,
     "Minute": 0,
@@ -122,6 +134,7 @@
   {
     "Id": 13,
     "Event": "ForgottenTemple",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 18,
     "Minute": 0,
@@ -132,6 +145,7 @@
   {
     "Id": 14,
     "Event": "ForgottenTemple",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 2,
     "Minute": 0,
@@ -142,6 +156,7 @@
   {
     "Id": 15,
     "Event": "ForgottenTemple",
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 21,
     "Minute": 0,

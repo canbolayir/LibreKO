@@ -41,6 +41,7 @@ internal sealed partial class EquipViewFeature : IFeature, IClosableWindow
     private const int CellGap = 8;
     private const float IdentityWidth = 170f;
     private const float IconInset = 3f;
+    private const float EmptyIconInset = 9f;
     private const string NoValue = "-";
 
     private CanvasLayer layer = null!;
@@ -51,6 +52,8 @@ internal sealed partial class EquipViewFeature : IFeature, IClosableWindow
     private Label status = null!;
 
     private readonly Dictionary<int, TextureRect> icons = new();
+    private readonly Dictionary<int, TextureRect> emptyIcons = new();
+    private static readonly Color EmptyIconTint = new(UiTheme.TextLo, 0.34f);
 
     private readonly Dictionary<int, ItemSlot> items = new();
 
@@ -144,6 +147,20 @@ internal sealed partial class EquipViewFeature : IFeature, IClosableWindow
     {
         var cell = new Panel { CustomMinimumSize = new Vector2(Cell, Cell) };
         cell.AddThemeStyleboxOverride("panel", UiTheme.Slot());
+        if (UiIcons.Equipment(slot) is { } slotIcon)
+        {
+            var empty = new TextureRect
+            {
+                Texture = slotIcon,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                SelfModulate = EmptyIconTint,
+            };
+            empty.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect, Control.LayoutPresetMode.KeepSize, (int)EmptyIconInset);
+            cell.AddChild(empty);
+            emptyIcons[slot] = empty;
+        }
         var icon = new TextureRect
         {
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
@@ -216,6 +233,7 @@ internal sealed partial class EquipViewFeature : IFeature, IClosableWindow
     private void Clear()
     {
         items.Clear();
+        foreach (var empty in emptyIcons.Values) empty.Visible = true;
         foreach (var icon in icons.Values)
         {
             icon.Texture = null;
@@ -307,6 +325,7 @@ internal sealed partial class EquipViewFeature : IFeature, IClosableWindow
             items[w.Slot] = new ItemSlot { ItemId = w.ItemId, Count = 1, Durability = w.Durability };
             icon.Texture = ItemIcons.Get(w.ItemId);
             UpgradeBadge.Show(icon, w.ItemId);
+            if (emptyIcons.TryGetValue(w.Slot, out var empty)) empty.Visible = false;
         }
 
         SetValue("Level", EquipViewLayout.LevelLine(view.Level, view.RebirthLevel));

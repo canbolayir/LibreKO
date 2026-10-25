@@ -30,7 +30,7 @@ public class BowlEventService : IBowlEventService
     private const float BowlCenterZ = 1007f;
     private const float BowlRadius = 131f;
     private const int SecondsPerMinute = 60;
-    private const int StartMinuteOfHour = 0;
+    private readonly IEventStartRules? startRules;
     private const long Inactive = 0;
     private const string Tag = "[Bowl Event]";
     private const string EndedMessage = Tag + " The Bowl event has ended. Thank you for taking part.";
@@ -70,8 +70,10 @@ public class BowlEventService : IBowlEventService
         IUserNotificationService userNotificationService,
         ScheduleClock scheduleClock,
         ILogger<BowlEventService> logger,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        IEventStartRules? startRules = null)
     {
+        this.startRules = startRules;
         this.sessionManager = sessionManager;
         this.loyaltyService = loyaltyService;
         this.playerProgressionService = playerProgressionService;
@@ -121,7 +123,9 @@ public class BowlEventService : IBowlEventService
         if (!Settings.Enabled)
             return false;
 
-        var minutes = durationMinutes is > 0 ? durationMinutes.Value : Settings.DefaultDurationMinutes;
+        var minutes = durationMinutes is > 0
+            ? durationMinutes.Value
+            : EventStartRules.MinutesOf(startRules, EventScheduleKind.Bowl, Settings.DefaultDurationMinutes);
         await gate.WaitAsync();
         try
         {
@@ -177,8 +181,8 @@ public class BowlEventService : IBowlEventService
     internal async Task<bool> TickScheduleAsync(DateTime scheduleNow)
     {
         var minute = scheduleNow.Date.AddHours(scheduleNow.Hour).AddMinutes(scheduleNow.Minute);
-        if (IsActive || scheduleNow.Minute != StartMinuteOfHour || minute == lastScheduledStart
-            || !Settings.StartHours.Contains(scheduleNow.Hour))
+        if (IsActive || minute == lastScheduledStart
+            || !EventStartRules.StartsAt(startRules, EventScheduleKind.Bowl, Settings.StartHours, scheduleNow))
             return false;
 
         lastScheduledStart = minute;

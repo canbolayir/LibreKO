@@ -232,9 +232,12 @@ public class QuestProgressionService(
         await session.Client.SendPacket(QuestPacketWriter.QuestList(quests));
         await SendQuestTextsAsync(session, quests.Select(quest => (int)quest.QuestId));
 
-        foreach (var quest in quests)
-            if (objectives.ObjectivesFor(quest.QuestId) is { } declared)
-                await session.Client.SendPacket(QuestPacketWriter.Objectives(declared));
+        var declaredObjectives = quests
+            .Select(quest => objectives.ObjectivesFor(quest.QuestId))
+            .OfType<QuestObjectives>()
+            .ToList();
+        foreach (var batch in QuestPacketWriter.ObjectivesBatches(declaredObjectives))
+            await session.Client.SendPacket(batch);
 
         var activeQuestIds = quests
             .Where(quest => quest.Status is QuestStatus.Active or QuestStatus.ReadyToTurnIn)

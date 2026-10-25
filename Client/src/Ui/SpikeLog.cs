@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Text;
 using Godot;
+using LibreKO.Domain;
 
 namespace LibreKO;
 
@@ -15,7 +16,16 @@ internal static class SpikeLog
     private const string FileName = "spikes.txt";
 
     private static double averageMs;
-    private static long compiles = -1;
+    private static readonly long[] compiles = new long[PipelineCompiles.Kinds.Length];
+    private static bool compilesSampled;
+    private static readonly RenderingServer.RenderingInfo[] CompileInfos =
+    {
+        RenderingServer.RenderingInfo.PipelineCompilationsCanvas,
+        RenderingServer.RenderingInfo.PipelineCompilationsMesh,
+        RenderingServer.RenderingInfo.PipelineCompilationsSurface,
+        RenderingServer.RenderingInfo.PipelineCompilationsDraw,
+        RenderingServer.RenderingInfo.PipelineCompilationsSpecialization,
+    };
     private static int compileAge;
     private static readonly int[] collectionCounts = new int[3];
     private static int fxSpawned;
@@ -40,25 +50,24 @@ internal static class SpikeLog
 
     internal static string Line() => Count == 0 ? "spikes 0" : $"spikes {Count}   last {Last}";
 
-    private static long PipelineCompiles() =>
-        (long)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.PipelineCompilationsCanvas)
-        + (long)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.PipelineCompilationsMesh)
-        + (long)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.PipelineCompilationsSurface)
-        + (long)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.PipelineCompilationsDraw)
-        + (long)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.PipelineCompilationsSpecialization);
-
-    private static long SampleCompiles()
+    private static long[] SampleCompiles()
     {
-        long before = compiles;
-        compiles = PipelineCompiles();
+        var added = new long[CompileInfos.Length];
+        for (int kind = 0; kind < CompileInfos.Length; kind++)
+        {
+            long now = (long)RenderingServer.GetRenderingInfo(CompileInfos[kind]);
+            if (compilesSampled) added[kind] = Math.Max(0, now - compiles[kind]);
+            compiles[kind] = now;
+        }
+        compilesSampled = true;
         compileAge = 0;
-        return before < 0 ? 0 : Math.Max(0, compiles - before);
+        return added;
     }
 
     private static void Record(double ms, int fxSpawned)
     {
         Count++;
-        long compiles = SampleCompiles();
+        var compiles = SampleCompiles();
         var top = Enum.GetValues<Perf.Section>()
             .Where(s => s != Perf.Section.Count)
             .Select(s => (Section: s, Ms: Perf.FrameMs(s), Calls: Perf.FrameCalls(s)))
@@ -73,7 +82,7 @@ internal static class SpikeLog
         var sb = new StringBuilder();
         sb.Append($"{Time.GetTimeStringFromSystem()}  frame {Engine.GetProcessFrames()}  {ms,6:0.0} ms (avg {averageMs:0.0})  ");
         sb.Append($"[{sections}]  split {split.Process:0.0}/{split.Flush:0.0}/{split.Draw:0.0}/{split.Other:0.0}  ");
-        sb.Append($"pipelines +{compiles}  gc {gc}  fx spawned {fxSpawned - SpikeLog.fxSpawned}  close {Perf.CloseEntities}  effects {Perf.FxVisible}");
+        sb.Append($"{PipelineCompiles.Describe(compiles)}  gc {gc}  fx spawned {fxSpawned - SpikeLog.fxSpawned}  close {Perf.CloseEntities}  effects {Perf.FxVisible}");
         Write(sb.ToString());
     }
 

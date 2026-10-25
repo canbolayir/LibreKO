@@ -131,16 +131,11 @@ internal sealed partial class ZoneConcurrentFeature : IFeature
         return row;
     }
 
-    private static string ZoncName(int zoneId)
+    private static string ZoncName(int zoneId) => ZoneCatalog.Find(zoneId) ?? zoneId switch
     {
-        foreach (var z in ZoneCatalog.All)
-            if (z.Id == zoneId) return z.Name;
-        return zoneId switch
-        {
-            65 => "Battle 5",
-            _  => $"Zone {zoneId}",
-        };
-    }
+        65 => "Battle 5",
+        _  => $"Zone {zoneId}",
+    };
 
     private sealed partial class ZoncHeaderBar : HBoxContainer
     {

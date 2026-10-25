@@ -25,7 +25,7 @@ public class PetSkillsTests
             (FatalAttack, PetSkills.SharedPageFirst),
         };
 
-        Assert.Equal(new[] { Slap, FatalAttack, PassionOfTheSoul }, PetSkills.BarSkills(skills, KaulClass));
+        Assert.Equal(new[] { Slap, FatalAttack, PassionOfTheSoul }, PetSkills.Owned(skills, KaulClass));
     }
 
     [Theory]
@@ -43,4 +43,13 @@ public class PetSkillsTests
         Assert.True(PetSkills.Unlocked(10, 10));
         Assert.False(PetSkills.Unlocked(10, 9));
     }
+
+    [Theory]
+    [InlineData(17, 490010, true)]
+    [InlineData(16, 492023, true)]
+    [InlineData(117, 490010, true)]
+    [InlineData(15, 500047, false)]
+    [InlineData(17, 0, false)]
+    public void OnlyUsableItemsWithASkillGoOnTheFamiliarBar(int slotCode, int itemSkill, bool fits) =>
+        Assert.Equal(fits, PetSkills.FitsBarAsItem(slotCode, itemSkill));
 }

@@ -240,7 +240,7 @@ public class MagicOverTimeService(
     private async Task StrikeNpcAsync(UserSession caster, NpcInstance npc, int skillId, MagicType3Data type3Data)
     {
         combatLifecycleService.SetNpcAggro(npc, caster);
-        var damage = GmMode.Dealt(caster, npc.Hp, HealStrike.Damage(type3Data.FirstDamage));
+        var damage = npc.DamageTaken(GmMode.Dealt(caster, npc.Hp, HealStrike.Damage(type3Data.FirstDamage)), basicHit: false);
         if (damage > 0)
         {
             npc.Hp = Math.Max(0, npc.Hp - damage);
@@ -442,10 +442,12 @@ public class MagicOverTimeService(
             }
             else
             {
-                var damage = ScalesWithMagicAttack(directType, skillId)
-                    ? MagicCombatHelper.GetMagicDamage(caster, npc, -delta, type3Data.Attribute, gameDataService)
-                    : -delta;
-                damage = GmMode.Dealt(caster, npc.Hp, damage);
+                var damage = caster.ManesSurvival != null
+                    ? ManesSurvivalCombat.Dealt(caster, -delta)
+                    : ScalesWithMagicAttack(directType, skillId)
+                        ? MagicCombatHelper.GetMagicDamage(caster, npc, -delta, type3Data.Attribute, gameDataService)
+                        : -delta;
+                damage = npc.DamageTaken(GmMode.Dealt(caster, npc.Hp, damage), basicHit: false);
                 npc.Hp = Math.Max(0, npc.Hp - damage);
                 npc.RecordDamage(caster.CharacterId, damage, caster, id => sessionManager.GetByCharacterId(id));
                 await combatLifecycleService.SendNpcTargetHpAsync(caster, npc, damage);
@@ -570,6 +572,9 @@ public class MagicOverTimeService(
         if (type3Data.FirstDamage >= 0)
             return 0;
 
+        if (caster.ManesSurvival != null)
+            return ManesSurvivalCombat.Hit(caster, target, Math.Abs(type3Data.FirstDamage));
+
         return ScalesWithMagicAttack(directType, skillId)
             ? MagicCombatHelper.GetMagicDamage(caster, target, Math.Abs(type3Data.FirstDamage), type3Data.Attribute, gameDataService)
             : Math.Abs(type3Data.FirstDamage);
@@ -587,6 +592,9 @@ public class MagicOverTimeService(
         {
             if (target.BlockMagic)
                 return 0;
+
+            if (caster.ManesSurvival != null)
+                return -ManesSurvivalCombat.Hit(caster, target, Math.Abs(type3Data.TimeDamage));
 
             return (MagicAttribute)type3Data.Attribute != MagicAttribute.Magic
                 ? -MagicCombatHelper.GetMagicDamage(caster, target, Math.Abs(type3Data.TimeDamage), type3Data.Attribute, gameDataService)
@@ -606,7 +614,9 @@ public class MagicOverTimeService(
 
         if (type3Data.TimeDamage < 0)
         {
-            return -MagicCombatHelper.GetMagicDamage(caster, npc, Math.Abs(type3Data.TimeDamage), type3Data.Attribute, gameDataService);
+            return caster.ManesSurvival != null
+                ? -ManesSurvivalCombat.Dealt(caster, Math.Abs(type3Data.TimeDamage))
+                : -MagicCombatHelper.GetMagicDamage(caster, npc, Math.Abs(type3Data.TimeDamage), type3Data.Attribute, gameDataService);
         }
 
         return type3Data.TimeDamage;

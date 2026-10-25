@@ -8,9 +8,10 @@ internal static class WeaponMounts
 
     internal static float SizeScale(int size) => size > 0 ? size / SizePercent : 1f;
 
-    internal static HandWearer WeaponWearer(bool npc, bool statue, int race, int npcId, int size, int modelId) =>
+    internal static HandWearer WeaponWearer(bool npc, bool statue, int race, int npcId, int size, int modelId, BossPhase? phase = null) =>
         npc && !statue
-            ? new HandWearer(race, Npc: true, NpcId: npcId, NpcScale: SizeScale(size), PlugSlots: NpcPlugSlots.For(modelId))
+            ? new HandWearer(race, Npc: true, NpcId: npcId, NpcScale: SizeScale(size), PlugSlots: phase?.PlugSlots ?? NpcPlugSlots.For(modelId),
+                ItemJoint: phase != null)
             : new HandWearer(race, NpcId: npcId);
 
     internal static int TrailElement(int itemId)

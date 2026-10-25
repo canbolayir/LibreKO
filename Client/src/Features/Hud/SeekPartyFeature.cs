@@ -280,7 +280,7 @@ internal sealed class SeekPartyFeature : IFeature, ITickFeature
         info.AddChild(head);
 
         var sub = HudStyle.Label(11);
-        string zone = SeekZoneName(e.ZoneId);
+        string zone = ZoneCatalog.Name(e.ZoneId);
         sub.Text = e.Message.Length > 0 ? $"[{zone}]  {e.Message}" : $"[{zone}]";
         sub.AddThemeColorOverride("font_color", new Color("b9c0c8"));
         info.AddChild(sub);
@@ -293,12 +293,6 @@ internal sealed class SeekPartyFeature : IFeature, ITickFeature
             context.Log.Notice($"{name} {ItemData.Text(PartyInvitesFeature.InvitedText, "was invited into the party. Waiting for a response.")}");
         };
         return panel;
-    }
-
-    private static string SeekZoneName(int zoneId)
-    {
-        foreach (var z in ZoneCatalog.All) if (z.Id == zoneId) return z.Name;
-        return $"Zone {zoneId}";
     }
 
     private const string FullMoonCaptionPath = "res://assets/ui/fullmoon/caption.png";

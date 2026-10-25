@@ -41,6 +41,8 @@ internal sealed class ItemRoutingFeature : IFeature, IItemActions
             world.MerchantBuy.WishFromBag(absSlot, -1);
             return;
         }
+        if (world.Genie.IsOpen && ItemMove.RegionOf(absSlot) is ItemMove.Region.Grid or ItemMove.Region.MagicBag
+            && world.GeniePotions.ChooseFromBag(self.Inventory[absSlot].ItemId)) return;
         var def = ItemData.Get(self.Inventory[absSlot].ItemId);
         if (def == null) return;
         if (world.CharacterSealWindow.ShowSealedSheet(self.Inventory[absSlot])) return;

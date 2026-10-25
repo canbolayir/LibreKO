@@ -5,6 +5,7 @@ public interface IKnightRoyaleRequests
     void RoyaleSignUp(bool apply);
     void RoyaleTake(int boxId, int itemId, int index);
     void RoyaleDestroy(int bagSlot, int itemId);
+    void RoyaleCraft(int shadowItem, int shadowBagSlot, IReadOnlyList<CombineEntry> ordered);
 }
 
 public sealed class KnightRoyaleRequests : IKnightRoyaleRequests
@@ -37,6 +38,19 @@ public sealed class KnightRoyaleRequests : IKnightRoyaleRequests
         p.WriteByte((byte)KnightRoyaleSubOpcode.Destroy);
         p.WriteByte((byte)bagSlot);
         p.WriteInt(itemId);
+        sink.Send(p);
+    }
+
+    public void RoyaleCraft(int shadowItem, int shadowBagSlot, IReadOnlyList<CombineEntry> ordered)
+    {
+        var p = new Packet(GameOpcodes.GS_KNIGHT_ROYALE);
+        p.WriteByte((byte)KnightRoyaleSubOpcode.Combine);
+        p.WriteInt(shadowItem);
+        p.WriteByte((byte)shadowBagSlot);
+        p.WriteByte((byte)ordered.Count);
+        foreach (var entry in ordered)
+            p.WriteByte((byte)entry.BagSlot);
+        p.WriteSByteString(ItemCombine.MaterialText(ordered));
         sink.Send(p);
     }
 }

@@ -23,7 +23,7 @@ public class SessionCountdownTests
     public void TheDrakiTimerRoundsUpToTheNextSecond()
     {
         var bifrost = new BifrostSession();
-        bifrost.ApplyDrakiTimer(1, 1, 10, 0);
+        bifrost.ApplyDrakiTimer(1, 1, 10, 0, 0);
         Assert.Equal(8, bifrost.DrakiSecondsLeft(2_500));
         Assert.Equal(1, bifrost.DrakiSecondsLeft(9_999));
         Assert.Equal(0, bifrost.DrakiSecondsLeft(10_000));

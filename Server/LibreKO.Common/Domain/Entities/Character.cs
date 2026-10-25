@@ -76,6 +76,8 @@ public class Character : Entity
 
     public byte[] RepurchaseItems { get; set; } = [];
 
+    public byte[] RankMarks { get; set; } = [];
+
     public const int ClanMemoMaxLength = 20;
 
     public string ClanMemo { get; set; } = "";

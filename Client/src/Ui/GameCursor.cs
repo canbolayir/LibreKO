@@ -19,6 +19,7 @@ public static class GameCursor
     {
         Input.CursorShape.Arrow,
         Input.CursorShape.PointingHand,
+        Input.CursorShape.Move,
     };
 
     private static readonly System.Collections.Generic.Dictionary<string, Texture2D?> Cache = new();

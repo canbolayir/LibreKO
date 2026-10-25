@@ -80,6 +80,10 @@ public static class Config
     public static int Screen { get; private set; } = CurrentScreen;
     public static bool ShowTitles { get; private set; } = true;
     public static bool QuestNotices { get; private set; } = true;
+    public static bool MonsterBalloons { get; private set; } = true;
+    public static bool IconCaptions { get; private set; } = true;
+    public static bool RainEffects { get; private set; } = true;
+    public static event System.Action? IconCaptionsChanged;
     public static bool TradeRequestsBlocked { get; private set; }
     public static CospreKinds HiddenCospre { get; private set; } = CospreKinds.None;
     public static event System.Action? PlatesChanged;
@@ -357,6 +361,9 @@ public static class Config
         Screen = cfg.GetValue("video", "screen", Screen).AsInt32();
         ShowTitles = cfg.GetValue("hud", "show_titles", ShowTitles).AsBool();
         QuestNotices = cfg.GetValue("hud", "quest_notices", QuestNotices).AsBool();
+        MonsterBalloons = cfg.GetValue("hud", "monster_balloons", MonsterBalloons).AsBool();
+        IconCaptions = cfg.GetValue("hud", "icon_captions", IconCaptions).AsBool();
+        RainEffects = cfg.GetValue("graphics", "rain_effects", RainEffects).AsBool();
         TradeRequestsBlocked = cfg.GetValue("user_option", "trade_state", TradeRequestsBlocked).AsBool();
         UiAlpha = LibreKO.Domain.UiOpacityRules.Clamp(cfg.GetValue("hud", "ui_alpha", UiAlpha).AsInt32());
         HiddenCospre = (CospreKinds)cfg.GetValue("graphics", "hidden_cospre", (int)HiddenCospre).AsInt32();
@@ -494,6 +501,9 @@ public static class Config
         cfg.SetValue("video", "screen", Screen);
         cfg.SetValue("hud", "show_titles", ShowTitles);
         cfg.SetValue("hud", "quest_notices", QuestNotices);
+        cfg.SetValue("hud", "monster_balloons", MonsterBalloons);
+        cfg.SetValue("hud", "icon_captions", IconCaptions);
+        cfg.SetValue("graphics", "rain_effects", RainEffects);
         cfg.SetValue("user_option", "trade_state", TradeRequestsBlocked);
         cfg.SetValue("hud", "ui_alpha", UiAlpha);
         cfg.SetValue("graphics", "hidden_cospre", (int)HiddenCospre);
@@ -614,6 +624,28 @@ public static class Config
     {
         if (QuestNotices == on) return;
         QuestNotices = on;
+        Save();
+    }
+
+    public static void SetIconCaptions(bool on)
+    {
+        if (IconCaptions == on) return;
+        IconCaptions = on;
+        Save();
+        IconCaptionsChanged?.Invoke();
+    }
+
+    public static void SetRainEffects(bool on)
+    {
+        if (RainEffects == on) return;
+        RainEffects = on;
+        Save();
+    }
+
+    public static void SetMonsterBalloons(bool on)
+    {
+        if (MonsterBalloons == on) return;
+        MonsterBalloons = on;
         Save();
     }
 
@@ -923,8 +955,21 @@ public static class Config
     }
 
     private static void ApplyFrameCap() =>
-        Engine.MaxFps = FrameLimit.EngineCap(FpsValue(FpsLimit), VSync,
-            DisplayServer.ScreenGetRefreshRate(DisplayServer.WindowGetCurrentScreen()));
+        Engine.MaxFps = FrameLimit.WindowCap(FrameLimit.EngineCap(FpsValue(FpsLimit), VSync,
+            DisplayServer.ScreenGetRefreshRate(DisplayServer.WindowGetCurrentScreen())), windowFocused, windowMinimized);
+
+    private static bool windowFocused = true;
+    private static bool windowMinimized;
+
+    public static void NoteWindowState(bool focused, bool minimized)
+    {
+        if (focused == windowFocused && minimized == windowMinimized) return;
+        windowFocused = focused;
+        windowMinimized = minimized;
+        if (DisplayServer.GetName() == "headless") return;
+        RenderingServer.RenderLoopEnabled = !minimized;
+        ApplyFrameCap();
+    }
 
     public static void ApplyGraphicsToViewport()
     {

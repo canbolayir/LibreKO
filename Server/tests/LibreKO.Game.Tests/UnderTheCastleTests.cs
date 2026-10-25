@@ -243,4 +243,51 @@ public class UnderTheCastleTests
         await itemGrant.Received(1).GrantAsync(player, Arg.Is<ItemData>(i => i.Num == UnderTheCastleService.HornOfPluwitonItemId), 1);
         await itemGrant.Received(1).GrantAsync(player, Arg.Is<ItemData>(i => i.Num == UnderTheCastleService.TwinklingStarGlitterItemId), 1);
     }
+
+    private const int MammothFirstPhase = 9501;
+    private const int MammothSecondPhase = 9502;
+
+    private static int? SentMovie(UserSession session)
+    {
+        foreach (var call in session.Client.ReceivedCalls())
+        {
+            if (call.GetArguments() is not [Packet packet, ..] || packet.GetOpcode() != (byte)GameOpcodes.GS_UTC_MOVIE)
+                continue;
+            packet.ResetOffset();
+            packet.ReadByte();
+            packet.ReadByte();
+            packet.ReadInt();
+            return packet.ReadInt();
+        }
+        return null;
+    }
+
+    [Fact]
+    public async Task AnEarlyBossPhasePlaysItsMovieAndSpawnsTheNextPhaseWithoutOpeningTheGate()
+    {
+        var player = CreateTestSession(201, zoneId: UnderTheCastleService.UtcZoneId, x: 122f, z: 296f);
+        service.Start(60);
+        var mammoth = new NpcInstance { UniqueId = 5101, NpcId = MammothFirstPhase, ZoneId = UnderTheCastleService.UtcZoneId, X = 120f, Z = 295f, IsMonster = true, Room = 86 };
+
+        await service.OnNpcKilledAsync(mammoth, player);
+
+        SentMovie(player).Should().Be(7);
+        spawnRows.Received(1).Spawn(Arg.Is<NpcPosData>(p => p.NpcId == MammothSecondPhase && p.LeftX == 120 && p.TopZ == 295 && p.Room == 86));
+        service.CurrentStage.Should().Be(1);
+        await lifecycle.DidNotReceiveWithAnyArgs().DespawnAsync(default!);
+    }
+
+    [Fact]
+    public async Task TheLastMammothPhasePlaysItsMovieAndClearsTheStage()
+    {
+        var player = CreateTestSession(202, zoneId: UnderTheCastleService.UtcZoneId, x: 122f, z: 296f);
+        service.Start(60);
+        var mammoth = new NpcInstance { UniqueId = 5102, NpcId = UnderTheCastleService.EmperorMammothNpcId, ZoneId = UnderTheCastleService.UtcZoneId, X = 120f, Z = 295f, IsMonster = true };
+
+        await service.OnNpcKilledAsync(mammoth, player);
+
+        SentMovie(player).Should().Be(2);
+        service.CurrentStage.Should().Be(2);
+        spawnRows.DidNotReceive().Spawn(Arg.Is<NpcPosData>(p => p.LeftX == 120 && p.TopZ == 295));
+    }
 }

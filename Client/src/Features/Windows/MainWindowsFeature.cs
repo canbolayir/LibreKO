@@ -178,6 +178,7 @@ internal sealed class MainWindowsFeature : IFeature, IMainWindows, IEscapable
     {
         if (key == "Inventory") bagCompanions.Pairing.PlayerTouched();
         if (!Windows.TryGetValue(key, out HudWindow? window)) return;
+        if (!window.Visible && Refused(key)) return;
         if (window.Visible)
         {
             window.Visible = false;
@@ -204,12 +205,14 @@ internal sealed class MainWindowsFeature : IFeature, IMainWindows, IEscapable
 
     public void Show(string key)
     {
-        if (!Windows.TryGetValue(key, out HudWindow? window)) return;
+        if (!Windows.TryGetValue(key, out HudWindow? window) || Refused(key)) return;
         window.Visible = true;
         window.GetParent()?.MoveChild(window, window.GetParent().GetChildCount() - 1);
         Refresh(key);
         SyncState();
     }
+
+    private bool Refused(string key) => key == "Skills" && ZoneSkillTrees.SkillWindowRefused(context.Zone);
 
     internal void Refresh(string key)
     {
@@ -250,10 +253,11 @@ internal sealed class MainWindowsFeature : IFeature, IMainWindows, IEscapable
     }
 
     private const string EdgeDockMigration = "edge_dock";
+    private const string QuestDockMigration = "edge_dock_quests";
 
     private const double HudSettleSeconds = 0.5;
 
-    private static readonly string[] LeftDocked = { "Character" };
+    private static readonly string[] LeftDocked = { "Character", "Quests" };
 
     private static readonly string[] RightDocked = { "Inventory", "Skills" };
 
@@ -266,6 +270,7 @@ internal sealed class MainWindowsFeature : IFeature, IMainWindows, IEscapable
             .Where(key => Windows.ContainsKey(key))
             .ToArray();
         Config.ForgetWindowPositionsOnce(EdgeDockMigration, docked.Select(key => Windows[key].Id));
+        if (Windows.TryGetValue("Quests", out var quests)) Config.ForgetWindowPositionsOnce(QuestDockMigration, new[] { quests.Id });
 
         foreach (string key in docked)
         {

@@ -7,14 +7,20 @@ public class WeatherRulesTests
 {
     private const int Moradon = 21;
     private const int BiFrost = 31;
-    private const int Zone66 = 66;
+    private const int Oreads = 66;
+    private const int PetalsWire = 4;
+    private const int PetalRainWire = 5;
+    private const int EmbersWire = 7;
     private const int UnderTheCastle = 86;
 
     [Theory]
     [InlineData(Moradon, WeatherRules.Rain, WeatherRules.Rain)]
     [InlineData(Moradon, WeatherRules.Snow, WeatherRules.Snow)]
     [InlineData(BiFrost, WeatherRules.Rain, WeatherRules.Fine)]
-    [InlineData(Zone66, WeatherRules.Rain, WeatherRules.DrawnSunny)]
+    [InlineData(Oreads, WeatherRules.Rain, WeatherRules.Rain)]
+    [InlineData(Moradon, PetalsWire, WeatherRules.Fine)]
+    [InlineData(Moradon, PetalRainWire, WeatherRules.Rain)]
+    [InlineData(Moradon, EmbersWire, WeatherRules.Fine)]
     public void ZonesDecideWhatIsShown(int zone, int type, int shown) =>
         Assert.Equal(shown, WeatherRules.Type(zone, type));
 

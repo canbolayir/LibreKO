@@ -97,7 +97,9 @@ public static class ChaosRules
             ? skillTree == ChaosSkillTree
             : zoneId == (byte)ZoneId.DungeonDefence
                 ? skillTree == DungeonDefenseSkillTree
-                : !IsEventSkillTree(skillTree);
+                : ManesSurvivalRules.IsZone(zoneId)
+                    ? skillTree == SealedZoneSkillTree
+                    : !IsEventSkillTree(skillTree);
 
     public static bool IsEventSkillTree(short skillTree) =>
         skillTree is ChaosSkillTree or KnightRoyaleSkillTree or SealedZoneSkillTree or DungeonDefenseSkillTree

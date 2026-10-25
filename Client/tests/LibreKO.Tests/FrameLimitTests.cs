@@ -18,4 +18,16 @@ public class FrameLimitTests
     {
         Assert.Equal(expected, FrameLimit.EngineCap(cap, vsync, refresh));
     }
+
+    [Theory]
+    [InlineData(144, true, false, 144)]
+    [InlineData(0, true, false, 0)]
+    [InlineData(144, false, false, FrameLimit.UnfocusedFps)]
+    [InlineData(0, false, true, FrameLimit.MinimizedFps)]
+    [InlineData(30, false, true, 30)]
+    [InlineData(144, false, true, FrameLimit.MinimizedFps)]
+    public void AnUnfocusedWindowRunsSlowAndAMinimisedOneAtMostSixty(int cap, bool focused, bool minimized, int expected)
+    {
+        Assert.Equal(expected, FrameLimit.WindowCap(cap, focused, minimized));
+    }
 }

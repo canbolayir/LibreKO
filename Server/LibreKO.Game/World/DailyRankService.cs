@@ -21,6 +21,7 @@ public interface IDailyRankService
 public sealed class DailyRankService(
     SessionManager sessionManager,
     IServiceScopeFactory scopeFactory,
+    IRankMarkService rankMarks,
     ILogger<DailyRankService> logger) : BackgroundService, IDailyRankService
 {
     private const int CheckSeconds = 60;
@@ -131,7 +132,10 @@ public sealed class DailyRankService(
 
         var lastRankedOn = stored.Count > 0 ? stored.Max(place => place.RankedOn) : today;
         if (lastRankedOn.Year != today.Year || lastRankedOn.Month != today.Month)
+        {
+            await rankMarks.AwardMonthAsync(stored.Where(place => place.RankedOn == lastRankedOn).ToList());
             await repository.ResetCountersAsync();
+        }
 
         boards = await BuildAsync(places, repository);
         rankedOn = today;

@@ -1,18 +1,19 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using LibreKO.Common.Enums;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace LibreKO.Common.Domain.Entities.GameData;
 
-public class LotteryScheduleData
+public class LotteryScheduleData : IScheduleRule
 {
     public int Id { get; set; }
     public int LotteryId { get; set; }
+    public ScheduleRepeat Repeat { get; set; }
+    public DateOnly? Date { get; set; }
     public DayOfWeek? Day { get; set; }
+    public byte DayOfMonth { get; set; }
     public byte Hour { get; set; }
     public byte Minute { get; set; }
-
-    public bool Matches(DateTime now) =>
-        (Day == null || Day == now.DayOfWeek) && Hour == now.Hour && Minute == now.Minute;
 
     internal class EntityConfiguration : IEntityTypeConfiguration<LotteryScheduleData>
     {

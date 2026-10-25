@@ -210,19 +210,11 @@ internal sealed class AdminCharacterTab
         box.AddChild(actions);
 
         var set = Button("Set", 56);
-        set.Pressed += () =>
-        {
-            requests.SetLevel((int)levelSpin.Value, reset: false);
-            setStatus("Setting level…", false);
-        };
+        set.Pressed += () => requests.SetLevel((int)levelSpin.Value, reset: false);
         actions.AddChild(set);
 
         var reset = Button("Reset to level");
-        reset.Pressed += () =>
-        {
-            requests.SetLevel((int)levelSpin.Value, reset: true);
-            setStatus("Resetting to level…", false);
-        };
+        reset.Pressed += () => requests.SetLevel((int)levelSpin.Value, reset: true);
         actions.AddChild(reset);
 
         if (isGm())
@@ -298,12 +290,11 @@ internal sealed class AdminCharacterTab
             (int)statSpins[0].Value, (int)statSpins[1].Value, (int)statSpins[2].Value,
             (int)statSpins[3].Value, (int)statSpins[4].Value, (int)pointsSpin.Value,
             (int)npSpin.Value);
-        setStatus("Applying stats…", false);
     }
 
     private void SendCoinDelta(int sign)
     {
-        if (!long.TryParse(coinsInput.Text.Trim().Replace(",", ""), out long amount) || amount == 0)
+        if (!GmPanelText.TryParseAmount(coinsInput.Text, out long amount) || amount == 0)
         {
             setStatus("Enter a gold amount.", true);
             return;
@@ -314,7 +305,7 @@ internal sealed class AdminCharacterTab
 
     private void SendCashDelta(int sign)
     {
-        if (!long.TryParse(cashInput.Text.Trim().Replace(",", ""), out long amount) || amount == 0)
+        if (!GmPanelText.TryParseAmount(cashInput.Text, out long amount) || amount == 0)
         {
             setStatus("Enter a cash amount.", true);
             return;

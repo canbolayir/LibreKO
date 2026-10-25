@@ -1,4 +1,4 @@
-﻿using LibreKO.Common.Enums;
+using LibreKO.Common.Enums;
 
 namespace LibreKO.Game.World;
 
@@ -19,7 +19,6 @@ public class BattleZoneManager
     public const byte ZONE_ELMORAD_ESLANT = (byte)ZoneId.ElMoradEslant1;
     public const byte ZONE_MORADON = (byte)ZoneId.Moradon;
     public const byte ZONE_ARENA = (byte)ZoneId.Arena;
-    public const byte ZONE_BATTLE_BASE = (byte)ZoneId.BattleBase;
     public const byte ZONE_BATTLE1 = (byte)ZoneId.NapiesGorge;
     public const byte ZONE_BATTLE2 = (byte)ZoneId.AlseidsPrairie;
     public const byte ZONE_BATTLE3 = (byte)ZoneId.NiedsTriangle;

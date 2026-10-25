@@ -2,21 +2,23 @@
 
 namespace LibreKO.Features.Windows;
 
-internal sealed class FriendsFeature : IFeature
+internal sealed class FriendsFeature : IFeature, IFriendPick
 {
     private readonly IWorldContext context;
     private readonly FriendsSession friends;
     private readonly SelfSession self;
     private readonly IFriendsRequests requests;
     private readonly PlayerMenuFeature playerMenu;
+    private readonly SkillCastSystem skillCast;
 
-    public FriendsFeature(IWorldContext context, FriendsSession friends, SelfSession self, IFriendsRequests requests, PlayerMenuFeature playerMenu)
+    public FriendsFeature(IWorldContext context, FriendsSession friends, SelfSession self, IFriendsRequests requests, PlayerMenuFeature playerMenu, SkillCastSystem skillCast)
     {
         this.context = context;
         this.friends = friends;
         this.self = self;
         this.requests = requests;
         this.playerMenu = playerMenu;
+        this.skillCast = skillCast;
     }
 
     internal VBoxContainer Content { get; private set; } = null!;
@@ -25,6 +27,9 @@ internal sealed class FriendsFeature : IFeature
     private Label friendHeader = null!;
     private Label friendStatus = null!;
     private bool loaded;
+    private string? selectedName;
+
+    int IFriendPick.Pick => TeleportFriend.Target(selectedName, friends.Friends);
 
     private static readonly Color FriendNoticeColour = new("ffff00");
     private static readonly Color FriendRefusalColour = new("ff0000");
@@ -43,10 +48,12 @@ internal sealed class FriendsFeature : IFeature
         friends.FriendLoggedInEvent += OnFriendLoggedIn;
         friends.FriendRequestEvent += OnFriendRequest;
         friends.FriendRequestResultEvent += OnFriendRequestResult;
+        skillCast.AttachFriendPick(this);
     }
 
     public void Dispose()
     {
+        skillCast.DetachFriendPick();
         friends.FriendListEvent -= OnFriendList;
         friends.FriendAddResultEvent -= OnFriendAdd;
         friends.FriendRemoveResultEvent -= OnFriendRemove;
@@ -190,8 +197,15 @@ internal sealed class FriendsFeature : IFeature
 
     private Control BuildFriendRow(FriendEntry friend)
     {
-        var row = new PanelContainer();
-        row.AddThemeStyleboxOverride("panel", UiTheme.Row());
+        bool selected = friend.Name == selectedName;
+        var row = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Stop, TooltipText = "Select for the Scroll of Teleport Friend" };
+        row.AddThemeStyleboxOverride("panel", UiTheme.Row(selected));
+        row.GuiInput += input =>
+        {
+            if (input is not InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true }) return;
+            selectedName = selected ? null : friend.Name;
+            Refresh();
+        };
         var hb = new HBoxContainer();
         hb.AddThemeConstantOverride("separation", 6);
         row.AddChild(hb);
@@ -251,13 +265,7 @@ internal sealed class FriendsFeature : IFeature
         return string.Join("   ·   ", parts);
     }
 
-    internal static string FriendZoneName(int zoneId)
-    {
-        if (zoneId <= 0) return "online";
-        foreach (var zone in ZoneCatalog.All)
-            if (zone.Id == zoneId) return zone.Name;
-        return $"zone {zoneId}";
-    }
+    internal static string FriendZoneName(int zoneId) => zoneId <= 0 ? "online" : ZoneCatalog.Name(zoneId);
 
     internal void SetFriendStatus(string text, bool warn)
     {

@@ -25,4 +25,11 @@ public class LootBoxPlacementTests
         Assert.True(LootBoxPlacement.Ready(ownerKnown: true, ownerDead: true, now: 12, deathClipEnd: 11.5));
         Assert.True(LootBoxPlacement.Ready(ownerKnown: false, ownerDead: false, now: 0, deathClipEnd: 0));
     }
+
+    [Theory]
+    [InlineData(0.0, 5.0, 0.0)]
+    [InlineData(0.0, 12.0, 2.0)]
+    [InlineData(0.0, 19.0, 9.0)]
+    public void OpeningALateBoxLeavesItTenMoreSeconds(double spawn, double now, double expected) =>
+        Assert.Equal(expected, LootBoxPlacement.SpawnAfterOpen(spawn, now), 3);
 }

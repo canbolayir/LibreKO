@@ -11,8 +11,9 @@ internal sealed class BuffSystem : IFeature, ILateTickFeature
     private readonly ICombatRequests requests;
     private readonly ProgressSession progress;
     private readonly EntityStatesSystem entityStates;
+    private readonly PetSession pet;
 
-    public BuffSystem(IWorldContext context, CombatSession combat, SelfSession self, ZoneSession zone, ICombatRequests requests, ProgressSession progress, EntityStatesSystem entityStates)
+    public BuffSystem(IWorldContext context, CombatSession combat, SelfSession self, ZoneSession zone, ICombatRequests requests, ProgressSession progress, EntityStatesSystem entityStates, PetSession pet)
     {
         this.context = context;
         this.combat = combat;
@@ -21,6 +22,7 @@ internal sealed class BuffSystem : IFeature, ILateTickFeature
         this.requests = requests;
         this.progress = progress;
         this.entityStates = entityStates;
+        this.pet = pet;
     }
 
     private readonly List<(int SkillId, double End)> buffRestore = new();
@@ -28,11 +30,27 @@ internal sealed class BuffSystem : IFeature, ILateTickFeature
     public void Build()
     {
         entityStates.SelfTransformEnded += DropBuffChip;
+        pet.PetSummonedEvent += OnFamiliarSummoned;
+        pet.PetGoneEvent += OnFamiliarGone;
     }
 
     public void Dispose()
     {
         entityStates.SelfTransformEnded -= DropBuffChip;
+        pet.PetSummonedEvent -= OnFamiliarSummoned;
+        pet.PetGoneEvent -= OnFamiliarGone;
+    }
+
+    internal const int FamiliarSummonSkillId = 500117;
+
+    private void OnFamiliarSummoned(PetSheet sheet) => ShowFamiliarChip();
+
+    private void OnFamiliarGone() => DropBuffChip(FamiliarSummonSkillId);
+
+    private void ShowFamiliarChip()
+    {
+        if (BuffPanel == null || SkillData.Get(FamiliarSummonSkillId) is not { } s) return;
+        AddBuffChip(s, double.PositiveInfinity);
     }
 
     public void LateTick(double delta, double nowSec)
@@ -125,13 +143,14 @@ internal sealed class BuffSystem : IFeature, ILateTickFeature
     internal float AttackSpeedMultiplier()
     {
         double now = FrameClock.Now();
+        double newest = double.MinValue;
         float factor = 1f;
         foreach (var (skillId, end) in self.BuffEnds)
         {
-            if (end <= now) continue;
-            var s = SkillData.Get(skillId);
-            if (s == null || s.AttackSpeedPercent == 100 || s.AttackSpeedPercent <= 0) continue;
-            factor *= s.AttackSpeedPercent / 100f;
+            if (end <= now || end <= newest) continue;
+            if (SkillData.Get(skillId) is not { } s || !SwingTiming.SetsAttackSpeed(s.BuffType, s.AttackSpeedPercent)) continue;
+            newest = end;
+            factor = SwingTiming.BuffFactor(s.AttackSpeedPercent);
         }
         return factor;
     }
@@ -169,7 +188,12 @@ internal sealed class BuffSystem : IFeature, ILateTickFeature
 
     internal void RestoreBuffs()
     {
-        if (BuffPanel == null || self.BuffEnds.Count == 0) return;
+        if (BuffPanel == null) return;
+        if (self.BuffEnds.Count == 0)
+        {
+            if (pet.Pet != null) ShowFamiliarChip();
+            return;
+        }
 
         double now = FrameClock.Now();
         buffRestore.Clear();
@@ -177,10 +201,11 @@ internal sealed class BuffSystem : IFeature, ILateTickFeature
         foreach (var (skillId, end) in buffRestore)
         {
             var s = SkillData.Get(skillId);
-            if (s == null || end <= now) { self.ForgetBuff(skillId); continue; }
+            if (s == null || end <= now || skillId == FamiliarSummonSkillId) { self.ForgetBuff(skillId); continue; }
             AddBuffChip(s, end);
             ApplyMoveSpeedBuff(s, (int)(end - now));
         }
+        if (pet.Pet != null) ShowFamiliarChip();
     }
 
     private void AddBuffChip(SkillData.Skill s, double end)
@@ -217,7 +242,7 @@ internal sealed class BuffSystem : IFeature, ILateTickFeature
         chip.AddThemeStyleboxOverride("panel", style);
         entry.AddChild(chip);
 
-        if (SkillIcons.Get(s.Id) is { } tex)
+        if (SkillIcons.Buff(s) is { } tex)
             chip.AddChild(new TextureRect
             {
                 Texture = tex,
@@ -280,7 +305,7 @@ internal sealed class BuffSystem : IFeature, ILateTickFeature
     {
         if (ev is not InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } click) return;
         if (ContinuanceClick(skillId)) return;
-        if (harmful || skillId == FragmentOfManesSkillId) return;
+        if (harmful || skillId is FragmentOfManesSkillId or FamiliarSummonSkillId) return;
         if (click.DoubleClick) requests.Magic(MagicSub.Cancel, skillId, context.Self.CharId);
     }
 
@@ -332,6 +357,11 @@ internal sealed class BuffSystem : IFeature, ILateTickFeature
         for (int i = buffs.Count - 1; i >= 0; i--)
         {
             var b = buffs[i];
+            if (double.IsPositiveInfinity(b.End))
+            {
+                b.Timer.Text = "";
+                continue;
+            }
             double left = b.End - now;
             if (left <= 0)
             {

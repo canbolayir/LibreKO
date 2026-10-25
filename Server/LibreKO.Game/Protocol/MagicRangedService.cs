@@ -80,7 +80,8 @@ public class MagicRangedService(
                 Math.Max(1f, npcTarget.EvadeRate),
                 isPlayerTarget: false);
             finalDamage = skillDamage + items.Element;
-            finalDamage = GmMode.Dealt(caster, npcTarget.Hp, Math.Min(finalDamage, CombatUtils.MaxDamage));
+            finalDamage = npcTarget.DamageTaken(GmMode.Dealt(caster, npcTarget.Hp, Math.Min(finalDamage, CombatUtils.MaxDamage)),
+                basicHit: BasicRangedShot.Is(skillId));
             if (finalDamage > 0)
             {
                 npcTarget.Hp = Math.Max(0, npcTarget.Hp - finalDamage);

@@ -84,6 +84,13 @@ internal sealed class HotkeysFeature : IFeature, ILateTickFeature
         held = down;
     }
 
+    private void WhisperTarget()
+    {
+        int target = context.Selection.SelectedId;
+        if (target < 0 || target == context.Self.CharId || !context.Entities.Views.TryGetValue(target, out var view) || view.IsNpc) return;
+        world.Whispers.OpenWhisperWith(view.Name);
+    }
+
     private void WorldBound(KeyAction action, Action handler) => Bound(action, () => { if (!world.Exchange.TradeHoldsInput) handler(); });
 
     private void DevHotkey(Key key, Action handler) => hotkeys[new KeyChord(key, false, false, false)] = handler;
@@ -100,6 +107,8 @@ internal sealed class HotkeysFeature : IFeature, ILateTickFeature
         WorldBound(KeyAction.ToggleRunAlt, () => { if (!world.PartyCommander.AmCommander) world.PlayerSystem.ToggleRunMode(); });
         WorldBound(KeyAction.Sit, () => world.PlayerSystem.ToggleSitting());
         WorldBound(KeyAction.TargetHostile, world.PlayerInput.TargetNearestHostile);
+        WorldBound(KeyAction.TargetHostileAlt, world.PlayerInput.TargetNearestHostile);
+        WorldBound(KeyAction.WhisperTarget, WhisperTarget);
         WorldBound(KeyAction.TargetFriendly, () => world.Selection.SelectNearest(hostile: false));
         WorldBound(KeyAction.TargetParty, world.Selection.SelectNearestPartyMember);
         WorldBound(KeyAction.AutoAttack, () => world.BasicAttackSystem.ToggleAutoAttack());
@@ -116,6 +125,8 @@ internal sealed class HotkeysFeature : IFeature, ILateTickFeature
             Bound(KeyAction.HotPage1 + i, () => world.Hotbar.SetHotPage(page));
         }
         Bound(KeyAction.HotPageNext, () => world.Hotbar.ChangeHotPage(1));
+        Bound(KeyAction.HotPageBack, () => world.Hotbar.StepHotPage(-1));
+        Bound(KeyAction.HotPageForward, () => world.Hotbar.StepHotPage(1));
         for (int i = 0; i < CommanderOrders.Bar.Length; i++)
         {
             int slot = i;
@@ -155,6 +166,7 @@ internal sealed class HotkeysFeature : IFeature, ILateTickFeature
         Bound(KeyAction.VipWarehouse, () => world.VipWarehouse.Toggle());
         Bound(KeyAction.Achievements, () => world.Achievement.ToggleAchievements());
         Bound(KeyAction.CommandList, world.CommandList.Toggle);
+        Bound(KeyAction.PartyDrops, world.PartyDrops.Toggle);
         Bound(KeyAction.Mail, () => world.Mail.Toggle());
         Bound(KeyAction.Lottery, () => world.Lottery.Toggle());
         Bound(KeyAction.Attendance, () => world.Attendance.Toggle());
@@ -175,7 +187,7 @@ internal sealed class HotkeysFeature : IFeature, ILateTickFeature
 
         if (Config.Development)
         {
-            DevHotkey(Key.H, world.DebugInfo.TogglePanel);
+            DevHotkey(Key.F9, world.DebugInfo.TogglePanel);
             DevHotkey(Key.V, () => world.ScenerySystem.PreviewNextFx());
             hotkeys[new KeyChord(Key.J, true, false, false)] = PreviewFloaters;
         }

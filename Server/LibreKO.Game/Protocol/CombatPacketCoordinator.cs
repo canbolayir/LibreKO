@@ -54,6 +54,12 @@ public class CombatPacketCoordinator(
         var delayTime = packet.ReadShort();
         var distance = packet.ReadShort();
         var criticalHit = packet.RemainingBytes > 0 ? packet.ReadByte() : AttackPacketWriter.NoCritical;
+        AttackPresentation? shown = null;
+        if (packet.RemainingBytes > AttackPresentation.Size)
+        {
+            _ = packet.ReadByte();
+            shown = AttackPresentation.Read(packet);
+        }
 
         if (delayTime > MaxSwingInterval)
             return;
@@ -121,7 +127,7 @@ public class CombatPacketCoordinator(
                 ? PhysicalDamageCalculator.CalculateHit(session, PhysicalDefender.Of(target), gameDataService)
                 : default;
             var damage = mayAttack
-                ? GmMode.Taken(target, GmMode.Dealt(session, target.Hp, hit.Damage))
+                ? GmMode.Taken(target, GmMode.Dealt(session, target.Hp, ManesSurvivalCombat.Hit(session, target, hit.Damage)))
                 : 0;
             if (damage <= 0)
             {
@@ -159,7 +165,7 @@ public class CombatPacketCoordinator(
                 combatLifecycleService.SetNpcAggro(npcTarget, session);
 
                 var hit = PhysicalDamageCalculator.CalculateHit(session, PhysicalDefender.Of(npcTarget), gameDataService);
-                var damage = GmMode.Dealt(session, npcTarget.Hp, hit.Damage);
+                var damage = npcTarget.DamageTaken(GmMode.Dealt(session, npcTarget.Hp, ManesSurvivalCombat.Dealt(session, hit.Damage)), basicHit: true);
                 if (damage > 0)
                 {
                     npcTarget.Hp = Math.Max(0, npcTarget.Hp - damage);
@@ -185,7 +191,7 @@ public class CombatPacketCoordinator(
             _ = await magicItemUsageService.TryConsumeArrowAsync(session);
 
         var result = AttackPacketWriter.Create(
-            attackType, attackResult, session.CharacterId, targetId, criticalHit);
+            attackType, attackResult, session.CharacterId, targetId, criticalHit, shown);
         await sessionManager.Regions.SendToRegion(session, result, excludeSender: false);
     }
 

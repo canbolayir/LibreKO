@@ -58,6 +58,8 @@ internal sealed class BasicAttackSystem : IFeature
     private int swingTarget = -1;
     private double swingCommitAt;
     private double nextSwingIfCancelled;
+    private double swingStartedAt;
+    private int shownAnim = ActionAnimation.NoActionAnim;
 
     private const double ComboLen = 1.0;
     private const int ComboSteps = 3;
@@ -131,7 +133,14 @@ internal sealed class BasicAttackSystem : IFeature
         swingTarget = -1;
         if (context.Self.Dead || self.Stunned(FrameClock.Now())) return;
         if (!context.Entities.Views.TryGetValue(target, out var t) || t.Dead || !t.Attackable) return;
-        requests.Attack(target, SwingDelay(self.Inventory), chained: avatar.AttackChain.Chained);
+        requests.Attack(target, SwingDelay(self.Inventory), chained: avatar.AttackChain.Chained, shown: ShownSwing(now));
+    }
+
+    private AttackPresentation? ShownSwing(double now)
+    {
+        if (shownAnim == ActionAnimation.NoActionAnim || avatar.Anim == null) return null;
+        float rate = avatar.Anim.SpeedScale;
+        return new AttackPresentation(shownAnim, rate, (float)(now - swingStartedAt) * rate);
     }
 
     internal static short SwingDelay(Inventory inventory)
@@ -260,12 +269,18 @@ internal sealed class BasicAttackSystem : IFeature
                 ? context.Selection.SelectedId
                 : -1;
         avatar.StrikeTarget = target;
+        swingStartedAt = now;
         float lastStrike;
         if (movingSwing && SelfMoveAttack(target, now, out float moveStrike))
+        {
             lastStrike = moveStrike;
+            shownAnim = avatar.StrikeAnim;
+        }
         else
         {
+            double shownUntil = avatar.ActionUntil;
             entityAction.SelfAction(ActionAnimation.BasicAttackClips, ModelAnimation.ActionRankBasic);
+            shownAnim = avatar.ActionUntil != shownUntil ? avatar.StrikeAnim : ActionAnimation.NoActionAnim;
             ArmSwing(target, now);
             lastStrike = ActionAnimation.LastStrikeTime(avatar.Anim);
         }
@@ -303,7 +318,9 @@ internal sealed class BasicAttackSystem : IFeature
         if (reply.AttackerId != context.Self.CharId && context.Entities.Views.TryGetValue(reply.AttackerId, out var a))
         {
             a.StrikeTarget = reply.Result is AttackResultHit or AttackResultKill ? reply.TargetId : -1;
-            if (!TryMoveAttack(a)) entityAction.PlayEntityAction(a, ActionAnimation.BasicAttackClips, ModelAnimation.ActionRankBasic);
+            if (reply.Shown is { } shown && !a.IsNpc && shown.Anim is not (MoveAttackWeaponAnim or MoveAttackBareAnim))
+                entityAction.PlayEntitySwing(a, shown);
+            else if (!TryMoveAttack(a)) entityAction.PlayEntityAction(a, ActionAnimation.BasicAttackClips, ModelAnimation.ActionRankBasic);
         }
         entityAction.FaceToward(reply.AttackerId, reply.TargetId);
     }

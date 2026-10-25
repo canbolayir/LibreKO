@@ -64,6 +64,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ItemUpgradeData> ItemUpgrades { get; set; }
     public DbSet<ItemUpgradeRecipeData> ItemUpgradeRecipes { get; set; }
     public DbSet<ItemUpgradeSettingsData> ItemUpgradeSettings { get; set; }
+    public DbSet<GameplayTipData> GameplayTips { get; set; }
+    public DbSet<GameplayTipSettingsData> GameplayTipSettings { get; set; }
     public DbSet<MagicData> Magic { get; set; }
     public DbSet<MagicType1Data> MagicType1 { get; set; }
     public DbSet<MagicType2Data> MagicType2 { get; set; }
@@ -100,11 +102,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LotteryRewardData> LotteryRewards { get; set; }
     public DbSet<LotteryScheduleData> LotterySchedules { get; set; }
     public DbSet<TempleEventScheduleData> TempleEventSchedules { get; set; }
+    public DbSet<EventStartData> EventStarts { get; set; }
+    public DbSet<EventDurationData> EventDurations { get; set; }
     public DbSet<TempleEventRewardData> TempleEventRewards { get; set; }
     public DbSet<ForgottenTempleWaveData> ForgottenTempleWaves { get; set; }
     public DbSet<BotMerchantData> BotMerchants { get; set; }
     public DbSet<UserBotData> UserBots { get; set; }
     public DbSet<SlaveMerchantData> SlaveMerchants { get; set; }
+    public DbSet<RentalListingData> RentalListings { get; set; }
     public DbSet<SlaveMerchantTimeData> SlaveMerchantTimes { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

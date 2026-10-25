@@ -2,6 +2,7 @@
   {
     "Id": 1,
     "LotteryId": 1,
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 12,
     "Minute": 0
@@ -9,6 +10,7 @@
   {
     "Id": 2,
     "LotteryId": 1,
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 16,
     "Minute": 0
@@ -16,6 +18,7 @@
   {
     "Id": 3,
     "LotteryId": 1,
+    "Repeat": "Daily",
     "Day": null,
     "Hour": 20,
     "Minute": 0
@@ -23,6 +26,7 @@
   {
     "Id": 4,
     "LotteryId": 2,
+    "Repeat": "Weekly",
     "Day": 6,
     "Hour": 21,
     "Minute": 0
@@ -30,6 +34,7 @@
   {
     "Id": 5,
     "LotteryId": 2,
+    "Repeat": "Weekly",
     "Day": 0,
     "Hour": 21,
     "Minute": 0

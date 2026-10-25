@@ -72,6 +72,26 @@ public class NoticeTests
     }
 
     [Fact]
+    public async Task ATimedRateEventEndsByItselfAndOthersStay()
+    {
+        var rates = new TimeWeatherBroadcastService(new SessionManager(), Substitute.For<ILogger<TimeWeatherBroadcastService>>())
+        {
+            ExpEventAmount = 50,
+            DropEventAmount = 20,
+        };
+        var start = new DateTime(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
+        rates.EndRateAt(RateEvent.Exp, start.AddMinutes(30));
+
+        await rates.EndDueRatesAsync(start.AddMinutes(29));
+        rates.ExpEventAmount.Should().Be(50);
+        await rates.EndDueRatesAsync(start.AddMinutes(30));
+
+        rates.ExpEventAmount.Should().Be(0);
+        rates.RateEnd(RateEvent.Exp).Should().BeNull();
+        rates.DropEventAmount.Should().Be(20);
+    }
+
+    [Fact]
     public void ALineTooLongForItsLengthByteIsCut()
     {
         var packet = NoticePacketWriter.Screen(new string('x', 400));

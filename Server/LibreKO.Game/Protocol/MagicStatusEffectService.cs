@@ -31,6 +31,7 @@ public class MagicStatusEffectService(
     IPetService petService,
     IResurrectionOfferService resurrectionOfferService,
     IControlStateService controlStateService,
+    IFlashBonusService flashBonus,
     ILogger<MagicStatusEffectService> logger) : IMagicStatusEffectService
 {
     private const int SkillSucceeded = 1;
@@ -194,6 +195,9 @@ public class MagicStatusEffectService(
             }
         }
 
+        if ((BuffType)type4Data.BuffType == BuffType.Fishing && FlashBonusRules.KindOf(type4Data.SpecialAmount) is var flash and not FlashKind.None)
+            return isPrimary && await UseFlashAsync(caster, magic, skillId, flash, type4Data, data);
+
         var isDebuff = !MagicBuffClassifier.IsBuff(type4Data);
 
         if (targetId == AreaTarget && (SkillMoral)magic.Moral != SkillMoral.Self)
@@ -227,6 +231,19 @@ public class MagicStatusEffectService(
         }
 
         await AnnounceBuffAsync(caster, affected.CharacterId, skillId, type4Data, data);
+        return true;
+    }
+
+    private async Task<bool> UseFlashAsync(
+        UserSession caster, MagicData magic, int skillId, FlashKind flash, MagicType4Data type4Data, int[] data)
+    {
+        if (!flashBonus.CanAdd(caster, flash) || !await magicItemUsageService.TryConsumeSkillItemAsync(caster, magic))
+        {
+            await SendMagicFailAsync(caster, skillId);
+            return false;
+        }
+        await flashBonus.AddAsync(caster, flash);
+        await AnnounceBuffAsync(caster, caster.CharacterId, skillId, type4Data, data);
         return true;
     }
 

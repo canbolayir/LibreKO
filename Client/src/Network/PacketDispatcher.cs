@@ -45,12 +45,14 @@ internal sealed class PacketDispatcher
         byte opcode = p.GetOpcode();
         if (whole[opcode] is { } handler)
         {
+            Diag.Received(opcode, p.RemainingBytes);
             handler(p);
             return true;
         }
         if (subs[opcode] is not { } table) return false;
         if (p.RemainingBytes < 1) return true;
         byte sub = p.ReadByte();
+        Diag.Received(opcode, sub, p.RemainingBytes + 1);
         if (table.Handlers[sub] is { } subHandler) subHandler(p);
         else table.Others?.Invoke(p, sub);
         return true;

@@ -109,7 +109,7 @@ internal sealed class MerchantBuyFeature : IFeature, IEscapable
 
         root.AddChild(UiTheme.SectionTitle("What you want to buy"));
         wishCells = MerchantUi.BuildGrid(context.Tooltips, root, MerchantUi.StallSlots, MerchantUi.StallColumns, OnWishSlotClicked,
-            acceptKey: "invFrom", onDropFrom: WishFromBag);
+            dragKey: "wishFrom", acceptKey: "invFrom", onDropFrom: WishFromBag, onMove: MoveWish);
 
         var summary = UiTheme.Section();
         root.AddChild(summary);
@@ -264,6 +264,13 @@ internal sealed class MerchantBuyFeature : IFeature, IEscapable
         if (slot < 0) { SetWishStatus($"The list only holds {MerchantUi.StallSlots} items.", true); return; }
         wishFindTarget = slot;
         OnWishItemPicked(new ItemSearchHit(def, ItemData.ExtFor(self.Inventory[abs].ItemId)), 1);
+    }
+
+    private void MoveWish(int from, int to)
+    {
+        if (!WishShown || from == to || from < 0 || from >= Wishes.Length || to < 0 || to >= Wishes.Length) return;
+        (Wishes[from], Wishes[to]) = (Wishes[to], Wishes[from]);
+        RefreshWishList();
     }
 
     private int FirstEmptyWish()

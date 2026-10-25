@@ -152,9 +152,47 @@ internal sealed class EntityActionSystem : IFeature
         if (len <= 0) return;
         ActionAnimation.BeginEntityAction(e, len, rank, now);
         e.StrikeAnim = strikeAnim;
+        if (playerSwing) SlowToolSwing(e, now);
         if (candidates == ActionAnimation.BasicAttackClips && !e.IsNpc)
             e.CombatStanceUntil = e.ActionUntil + CombatStanceLingerSeconds;
     }
+
+    private const float ShownSwingSlack = 0.05f;
+
+    internal void PlayEntitySwing(EntityView e, AttackPresentation shown)
+    {
+        if (e.Anim == null || e.Dead) return;
+        double now = FrameClock.Now();
+        if (SwingShowing(e, shown, now)) return;
+        if (!ActionAnimation.CanPlayEntityAction(e, ModelAnimation.ActionRankBasic, now)) return;
+        double len = ActionAnimation.PlayActionOn(e.Anim, shown.Anim, ActionAnimation.AttackVariant(ActionAnimation.AttackClips(e.Gear)));
+        if (len <= 0) return;
+        ActionAnimation.BeginEntityAction(e, len, ModelAnimation.ActionRankBasic, now);
+        e.StrikeAnim = shown.Anim;
+        double phase = Math.Min(shown.Phase, e.ActionUntil - now);
+        if (phase > 0) e.Anim.Seek(phase, true);
+        e.ActionTimeScale = shown.Rate;
+        e.ActionUntil = now + (e.ActionUntil - now - phase) / shown.Rate;
+        if (!e.AnimThrottled) e.Anim.SpeedScale = shown.Rate;
+        e.CombatStanceUntil = e.ActionUntil + CombatStanceLingerSeconds;
+    }
+
+    private static bool SwingShowing(EntityView e, AttackPresentation shown, double now) =>
+        e.ActionRank == ModelAnimation.ActionRankBasic
+        && now < e.ActionUntil
+        && e.StrikeAnim == shown.Anim
+        && e.Anim!.CurrentAnimationPosition <= shown.Phase + ShownSwingSlack;
+
+    private static void SlowToolSwing(EntityView e, double now)
+    {
+        float rate = SwingTiming.AnimationRate(1f, HandKind(e.Gear, InventoryConstants.VisRightHand), HandKind(e.Gear, InventoryConstants.VisLeftHand));
+        if (rate == 1f) return;
+        e.ActionTimeScale = rate;
+        e.ActionUntil = now + (e.ActionUntil - now) / rate;
+        if (!e.AnimThrottled) e.Anim!.SpeedScale = rate;
+    }
+
+    private static int HandKind(int[] gear, int slot) => gear.Length > slot ? ItemData.Get(gear[slot])?.Kind ?? 0 : 0;
 
     internal void FaceToward(int attackerId, int targetId, bool instant = false)
     {

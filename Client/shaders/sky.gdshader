@@ -33,6 +33,19 @@ uniform float moon_halo = 0.30;
 
 // ---- night ----
 uniform float star_amount = 0.0;
+
+uniform float bolt = 0.0;
+uniform float bolt_azimuth = 0.0;
+uniform float bolt_seed = 0.0;
+const float BOLT_TOP = 0.30;
+const float BOLT_WANDER = 0.05;
+const float BOLT_CORE = 0.0022;
+const float BOLT_GLOW = 0.018;
+const float BRANCH_FROM = 0.35;
+const float BRANCH_TO = 0.75;
+const float CLOUD_FLASH_SPREAD = 2.2;
+const float CLOUD_FLASH = 0.3;
+const vec3 BOLT_COLOR = vec3(0.86, 0.90, 1.0);
 #include "res://shaders/cloud_field.gdshaderinc"
 
 float hash13(vec3 p) {
@@ -101,6 +114,42 @@ vec4 clouds(vec3 dir, vec3 campos) {
     return vec4(rgb, a);
 }
 
+float bolt_hash(float x, float seed) {
+    return fract(sin(x * 12.9898 + seed * 78.233) * 43758.5453);
+}
+
+float bolt_path(float down, float seed) {
+    float offset = 0.0;
+    float amp = BOLT_WANDER;
+    float freq = 5.0;
+    for (int i = 0; i < 4; i++) {
+        float segment = floor(down * freq);
+        float a = bolt_hash(segment, seed + float(i) * 3.1) - 0.5;
+        float b = bolt_hash(segment + 1.0, seed + float(i) * 3.1) - 0.5;
+        offset += mix(a, b, fract(down * freq)) * amp;
+        amp *= 0.5;
+        freq *= 2.3;
+    }
+    return offset;
+}
+
+float bolt_line(float away, float width) {
+    return smoothstep(width, 0.0, abs(away)) * 3.0 + exp(-abs(away) / BOLT_GLOW) * 0.35;
+}
+
+vec3 lightning(vec3 dir, float azimuth_gap) {
+    if (dir.y < -0.01 || dir.y > BOLT_TOP) return vec3(0.0);
+    float down = 1.0 - dir.y / BOLT_TOP;
+    float trunk = azimuth_gap - bolt_path(down, bolt_seed);
+    float light = bolt_line(trunk, BOLT_CORE);
+    if (down > BRANCH_FROM && down < BRANCH_TO) {
+        float along = (down - BRANCH_FROM) / (BRANCH_TO - BRANCH_FROM);
+        float fork = trunk - along * (bolt_hash(1.0, bolt_seed) - 0.5) * 0.12 - bolt_path(down * 1.7, bolt_seed + 9.0) * 0.6;
+        light += bolt_line(fork, BOLT_CORE * 0.6) * (1.0 - along) * 0.6;
+    }
+    return BOLT_COLOR * light * bolt;
+}
+
 void sky() {
     vec3 dir = EYEDIR;
     float up = dir.y;
@@ -156,8 +205,14 @@ void sky() {
     }
 
     vec4 cl = clouds(dir, POSITION);
+    float azimuth_gap = 0.0;
+    if (bolt > 0.001) {
+        azimuth_gap = mod(atan(dir.x, dir.z) - bolt_azimuth + PI, TAU) - PI;
+        cl.rgb += BOLT_COLOR * bolt * exp(-abs(azimuth_gap) * CLOUD_FLASH_SPREAD) * CLOUD_FLASH;
+    }
     col = mix(col, cl.rgb, cl.a);
     col += stars * (1.0 - cl.a);                          // stars only shine through the gaps
+    if (bolt > 0.001 && !AT_CUBEMAP_PASS) col += lightning(dir, azimuth_gap);
 
     // Ordered-ish dither. A two-colour sky gradient across 1080p lands squarely in 8-bit banding
     // territory; one hashed LSB of noise removes it for free. Meaningless in the cubemap pass.

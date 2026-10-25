@@ -46,8 +46,7 @@ public class NationSystemsPacketCoordinator(
         {
             if (!run.JoinOpen || !run.Fits(session.Level))
                 continue;
-            await session.Client.SendPacket(BifrostPacketWriter.Remaining(
-                TempleSubOpcode.BifrostRemaining, run.SecondsLeft, (byte)run.Contest));
+            await session.Client.SendPacket(EventPacketWriter.SignUpTime(run.Contest, run.SecondsLeft));
             signUpSent = true;
         }
 

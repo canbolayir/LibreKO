@@ -68,7 +68,7 @@ internal sealed class PreGameReader : IPacketReader
                 login.AutoLoginPending = false;
                 if (reconnect.State != ReconnectPhase.Idle)
                 {
-                    reconnect.GiveUp(ClientOutOfDateText);
+                    reconnect.GiveUp(ClientOutOfDateText, outdated: true);
                     return;
                 }
                 host.Disconnect(expected: true);

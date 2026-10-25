@@ -32,6 +32,8 @@ public partial class HudWindow : PanelContainer
     internal static HudWindow? Find(string id) =>
         byId.TryGetValue(id, out var w) && GodotObject.IsInstanceValid(w) ? w : null;
 
+    internal static System.Func<string, bool>? Refused { get; set; }
+
     private readonly bool pluginHidden;
     private readonly WindowHost? host;
     private readonly LibreKO.Plugins.WindowFrame? frame;
@@ -50,6 +52,7 @@ public partial class HudWindow : PanelContainer
                 break;
             case NotificationVisibilityChanged:
                 if (pluginHidden && Visible) { Visible = false; break; }
+                if (Visible && Refused?.Invoke(Id) == true) { Visible = false; break; }
                 if (opensCentred && Visible) centreSettlesAt = Time.GetTicksMsec() + CentreSettleMsec;
                 if (frame != null)
                 {

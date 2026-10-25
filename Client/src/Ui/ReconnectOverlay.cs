@@ -22,6 +22,7 @@ public partial class ReconnectOverlay : CanvasLayer
 
         dialog = new ReconnectDialog();
         dialog.CloseGamePressed += CloseGame;
+        dialog.BackToLoginPressed += BackToLogin;
         AddChild(dialog);
 
         reconnect = Game.Connection.Reconnect;
@@ -49,7 +50,7 @@ public partial class ReconnectOverlay : CanvasLayer
                 Visible = true;
                 break;
             case ReconnectPhase.Failed:
-                dialog.SetFailed(reconnect.Failure);
+                dialog.SetFailed(reconnect.Failure, canLogin: !reconnect.Outdated);
                 Visible = true;
                 break;
             default:
@@ -60,6 +61,12 @@ public partial class ReconnectOverlay : CanvasLayer
     }
 
     private void CloseGame() => _ = Diag.Guard("reconnect-exit", () => Shutdown.Begin(this, 260));
+
+    private void BackToLogin()
+    {
+        string reason = reconnect.Failure;
+        Game.Connection.LeaveToLogin(reason.Length > 0 ? reason : Net.ConnectionLostText);
+    }
 }
 
 public partial class ReconnectDialog : PanelContainer
@@ -68,12 +75,14 @@ public partial class ReconnectDialog : PanelContainer
     private const double DotsInterval = 0.4;
 
     public event Action? CloseGamePressed;
+    public event Action? BackToLoginPressed;
 
     private Label headline = null!;
     private Label status = null!;
     private Label hint = null!;
     private ProgressBar attempts = null!;
     private Button close = null!;
+    private Button backToLogin = null!;
     private bool animating;
     private int waitSeconds;
     private double dotsAccum;
@@ -136,6 +145,11 @@ public partial class ReconnectDialog : PanelContainer
         attempts.AddThemeStyleboxOverride("fill", fill);
         body.AddChild(attempts);
 
+        backToLogin = Ui.MenuButton("Back to Login", 38, 16);
+        backToLogin.Visible = false;
+        backToLogin.Pressed += () => BackToLoginPressed?.Invoke();
+        body.AddChild(backToLogin);
+
         close = Ui.MenuButton("Close Game", 38, 16);
         close.Visible = false;
         close.Pressed += () => CloseGamePressed?.Invoke();
@@ -150,6 +164,7 @@ public partial class ReconnectDialog : PanelContainer
         attempts.Visible = true;
         hint.Visible = true;
         close.Visible = false;
+        backToLogin.Visible = false;
         animating = true;
         dots = 0;
         dotsAccum = 0;
@@ -163,13 +178,14 @@ public partial class ReconnectDialog : PanelContainer
         ApplyHint();
     }
 
-    public void SetFailed(string reason)
+    public void SetFailed(string reason, bool canLogin)
     {
         headline.Text = "Could not reconnect to the server.";
         status.Text = reason.Length > 0 ? reason : "The game has to be closed.";
         hint.Visible = false;
         attempts.Visible = false;
         close.Visible = true;
+        backToLogin.Visible = canLogin;
         animating = false;
     }
 
@@ -177,6 +193,7 @@ public partial class ReconnectDialog : PanelContainer
     {
         animating = false;
         close.Visible = false;
+        backToLogin.Visible = false;
     }
 
     public override void _Process(double delta)

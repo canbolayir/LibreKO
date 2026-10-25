@@ -54,12 +54,14 @@ internal sealed class DrakiBoardFeature : IFeature, IClosableWindow
         context.Root.AddChild(Layer);
         bifrost.DrakiRankListEvent += OnRankList;
         bifrost.DrakiEnterResultEvent += OnEnterResult;
+        bifrost.DrakiTimerEvent += Close;
     }
 
     public void Dispose()
     {
         bifrost.DrakiRankListEvent -= OnRankList;
         bifrost.DrakiEnterResultEvent -= OnEnterResult;
+        bifrost.DrakiTimerEvent -= Close;
     }
 
     internal void Request() => bifrostRequests.DrakiRankList();
@@ -77,8 +79,11 @@ internal sealed class DrakiBoardFeature : IFeature, IClosableWindow
         window ??= BuildBoard();
         Render(rankList);
         window.Visible = true;
+        PluginHost.Game.RaiseDraki();
         return window;
     }
+
+    internal DrakiRankList? Ranks => list;
 
     private void OnEnterResult(DrakiEnterResult result)
     {
@@ -93,7 +98,7 @@ internal sealed class DrakiBoardFeature : IFeature, IClosableWindow
         Notice.Show(context.Root, message, Title);
     }
 
-    private void Enter(int chapter)
+    internal void Enter(int chapter)
     {
         if (list is { EntrancesLeft: > 0 })
         {

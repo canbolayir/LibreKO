@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using System.Reflection;
 
@@ -145,6 +146,9 @@ public abstract class GameTestBase
         services.AddSingleton<IJuraidMountainService, JuraidMountainService>();
         services.AddSingleton<IBorderDefenseWarService, BorderDefenseWarService>();
         services.AddSingleton<IChaosDungeonService, ChaosDungeonService>();
+        services.AddSingleton<IManesSurvivalTable, ManesSurvivalTable>();
+        services.AddSingleton<IManesSurvivalService, ManesSurvivalService>();
+        services.AddSingleton<IManesSurvivalPacketCoordinator, ManesSurvivalPacketCoordinator>();
         services.AddSingleton<IUnderTheCastleService, UnderTheCastleService>();
         services.AddSingleton<IKrowazService, KrowazService>();
         services.AddSingleton<IKrowazTrapService, KrowazTrapService>();
@@ -153,6 +157,20 @@ public abstract class GameTestBase
         services.AddSingleton<INpcLifecycleService, NpcLifecycleService>();
         services.AddSingleton<INpcSpawnRowService, NpcSpawnRowService>();
         services.AddSingleton<INpcSpawnRowStore, NpcSpawnRowStore>();
+        services.AddSingleton<IGameDataEditStore, GameDataEditStore>();
+        services.AddSingleton<IAdminMonsterEditor, AdminMonsterEditor>();
+        services.AddSingleton<IEventStartRules, EventStartRules>();
+        services.AddSingleton<IEventScheduleStore, EventScheduleStore>();
+        services.AddSingleton<IAdminEventScheduleEditor, AdminEventScheduleEditor>();
+        services.AddSingleton<IEventContentStore, EventContentStore>();
+        services.AddSingleton<IAdminEventContentEditor, AdminEventContentEditor>();
+        services.AddSingleton<IAdminTipEditor, AdminTipEditor>();
+        services.AddSingleton<ICharacterDirectory, CharacterDirectory>();
+        services.AddSingleton<IAdminPlayerEditor, AdminPlayerEditor>();
+        services.AddSingleton<IItemRentalService, ItemRentalService>();
+        services.AddSingleton<IItemRentalPacketCoordinator, ItemRentalPacketCoordinator>();
+        services.AddSingleton<IGameplayTipStore, GameplayTipStore>();
+        services.AddSingleton<IGameplayTipService, GameplayTipService>();
         services.AddSingleton<INpcSummonService, NpcSummonService>();
         services.AddSingleton<ISessionTerminationService, SessionTerminationService>();
         services.AddSingleton(CreateServerRepositoryStub());
@@ -175,6 +193,7 @@ public abstract class GameTestBase
         services.AddSingleton<IItemCombineService, ItemCombineService>();
         services.AddSingleton<IItemSmashService, ItemSmashService>();
         services.AddSingleton<IItemUpgradeService, ItemUpgradeService>();
+        services.AddSingleton<IRankMarkService, RankMarkService>();
         services.AddSingleton<IDailyRankService, DailyRankService>();
         services.AddSingleton<ISoccerService, SoccerService>();
         services.AddSingleton<IBuffExtensionService, BuffExtensionService>();
@@ -200,6 +219,8 @@ public abstract class GameTestBase
         services.AddSingleton<IMagicExecutionService, MagicExecutionService>();
         services.AddSingleton<IMagicItemUsageService, MagicItemUsageService>();
         services.AddSingleton<IMagicMovementEffectService, MagicMovementEffectService>();
+        services.AddSingleton<IFlashBonusService>(sp => new FlashBonusService(
+            sp.GetRequiredService<SessionManager>(), NullLogger<FlashBonusService>.Instance, startTimer: false));
         services.AddSingleton<IMagicStatusEffectService, MagicStatusEffectService>();
         services.AddSingleton<IResurrectionOfferService, ResurrectionOfferService>();
         services.AddSingleton<IControlStateService, ControlStateService>();

@@ -203,6 +203,62 @@ public class GenieSystemTests
         session.GenieTime.IsRunning.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(811062000)]
+    [InlineData(900772000)]
+    public async Task TheSpiritPotionUsesTheItemTheClientNames(int spirit)
+    {
+        var itemUsage = Substitute.For<IMagicItemUsageService>();
+        itemUsage.TryConsumeItemAsync(Arg.Any<UserSession>(), spirit).Returns(true);
+        var (coordinator, session, client) = Create(itemUsage: itemUsage);
+
+        await coordinator.HandleAsync(client, SpiritRequest(spirit));
+
+        await itemUsage.Received(1).TryConsumeItemAsync(session, spirit);
+        await itemUsage.DidNotReceive().TryConsumeItemAsync(session, GenieSystemPacketCoordinator.SpiritOfGenieItem);
+        session.GenieMinutes.Should().Be(GenieSystemPacketCoordinator.SpiritOfGenieMinutes);
+        var reply = Sent(client, 0);
+        reply.ReadByte().Should().Be(GenieSystemPacketWriter.InfoRequest);
+        reply.ReadByte().Should().Be(GenieSystemPacketWriter.UseSpiritPotion);
+        reply.ReadUShort().Should().Be(GenieSystemPacketCoordinator.SpiritOfGenieMinutes);
+    }
+
+    [Fact]
+    public async Task WithoutAnItemIdTheFirstOwnedSpiritIsUsed()
+    {
+        var itemUsage = Substitute.For<IMagicItemUsageService>();
+        itemUsage.CanUseItem(Arg.Any<UserSession>(), 810306000).Returns(true);
+        itemUsage.TryConsumeItemAsync(Arg.Any<UserSession>(), 810306000).Returns(true);
+        var (coordinator, session, client) = Create(itemUsage: itemUsage);
+
+        await coordinator.HandleAsync(client, SpiritRequest(null));
+
+        await itemUsage.Received(1).TryConsumeItemAsync(session, 810306000);
+        session.GenieMinutes.Should().Be(GenieSystemPacketCoordinator.SpiritOfGenieMinutes);
+    }
+
+    [Fact]
+    public async Task AnItemThatIsNoSpiritIsNotConsumed()
+    {
+        var itemUsage = Substitute.For<IMagicItemUsageService>();
+        var (coordinator, session, client) = Create(itemUsage: itemUsage);
+
+        await coordinator.HandleAsync(client, SpiritRequest(389010000));
+
+        await itemUsage.DidNotReceive().TryConsumeItemAsync(session, 389010000);
+        session.GenieMinutes.Should().Be(0);
+    }
+
+    private static Packet SpiritRequest(int? spirit)
+    {
+        var packet = new Packet(GameOpcodes.GS_GENIE_SYSTEM);
+        packet.WriteByte(GenieSystemPacketWriter.InfoRequest);
+        packet.WriteByte(GenieSystemPacketWriter.UseSpiritPotion);
+        if (spirit is { } id) packet.WriteInt(id);
+        packet.ResetOffset();
+        return packet;
+    }
+
     private static Packet Action(byte action)
     {
         var packet = new Packet(GameOpcodes.GS_GENIE_SYSTEM);
@@ -226,7 +282,8 @@ public class GenieSystemTests
     private static (GenieSystemPacketCoordinator Coordinator, UserSession Session, IClient Client) Create(
         ICombatPacketCoordinator? combat = null,
         IMagicPacketCoordinator? magic = null,
-        IWorldPacketCoordinator? world = null)
+        IWorldPacketCoordinator? world = null,
+        IMagicItemUsageService? itemUsage = null)
     {
         var client = Substitute.For<IClient>();
         client.Id.Returns(Guid.NewGuid());
@@ -235,7 +292,7 @@ public class GenieSystemTests
         session.Hp = 100;
         var coordinator = new GenieSystemPacketCoordinator(
             sessionManager,
-            Substitute.For<IMagicItemUsageService>(),
+            itemUsage ?? Substitute.For<IMagicItemUsageService>(),
             combat ?? Substitute.For<ICombatPacketCoordinator>(),
             magic ?? Substitute.For<IMagicPacketCoordinator>(),
             world ?? Substitute.For<IWorldPacketCoordinator>(),

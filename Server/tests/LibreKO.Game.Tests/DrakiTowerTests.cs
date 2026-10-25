@@ -447,7 +447,7 @@ public class DrakiTowerTests : GameTestBase
     }
 
     [Fact]
-    public async Task HandleTownAsync_LeavesRoom_SendsPackets_AndWarpsToReturnPoint()
+    public async Task HandleTownAsync_LeavesRoom_AndWarpsToReturnPoint_WithoutTheLeaveNotice()
     {
         var session = CreatePlayer(zone: (byte)ZoneId.ElMoradCamp1);
         session.X = 1600f;
@@ -467,13 +467,9 @@ public class DrakiTowerTests : GameTestBase
 
         session.Room.Should().Be(0);
 
-        sent[session].Should().Contain(p =>
+        sent[session].Should().NotContain(p =>
             p.GetOpcode() == (byte)GameOpcodes.GS_EVENT
-            && p.GetData()[0] == (byte)TempleSubOpcode.DrakiLeaveFirst);
-
-        sent[session].Should().Contain(p =>
-            p.GetOpcode() == (byte)GameOpcodes.GS_EVENT
-            && p.GetData()[0] == (byte)TempleSubOpcode.DrakiLeaveSecond);
+            && (p.GetData()[0] == (byte)TempleSubOpcode.DrakiLeaveFirst || p.GetData()[0] == (byte)TempleSubOpcode.DrakiLeaveSecond));
 
         await zoneTransition.Received(1).ChangeZoneAsync(
             session, (byte)ZoneId.ElMoradCamp1, 1600f, 446f);
@@ -610,7 +606,7 @@ public class DrakiTowerTests : GameTestBase
     }
 
     [Fact]
-    public async Task CheckTimeoutsAsync_WhenWaveTimesOut_ExpelsPlayer()
+    public async Task CheckTimeoutsAsync_WhenWaveTimesOut_AnnouncesTheLeaveAndExpelsTwentySecondsLater()
     {
         var session = CreatePlayer(zone: (byte)ZoneId.ElMoradCamp1);
         session.X = 1600f;
@@ -624,17 +620,76 @@ public class DrakiTowerTests : GameTestBase
         await service.HandleEnterAsync(session, enterPacket);
 
         var state = service.GetRoomState((ushort)session.Room)!;
+        var room = rooms.Get(state.RoomId)!;
+        var stageIndex = state.StageIndex;
         state.Deadline = DateTime.UtcNow.AddSeconds(-1);
         session.ZoneId = (byte)ZoneId.DrakiTower;
+        sent[session].Clear();
 
+        await service.CheckTimeoutsAsync();
+
+        AnnouncedTheLeave(session);
+        session.Room.Should().Be(state.RoomId);
+        state.Leaving.Should().BeTrue();
+        state.Deadline.Should().BeCloseTo(DateTime.UtcNow.AddSeconds(DrakiTowerRules.LeaveNoticeSeconds), TimeSpan.FromSeconds(2));
+
+        foreach (var monster in room.Npcs.Where(n => n.IsMonster).ToList())
+            await service.OnNpcKilledAsync(monster);
+        state.StageIndex.Should().Be(stageIndex, "a run that is leaving no longer advances");
+
+        state.Deadline = DateTime.UtcNow.AddSeconds(-1);
         await service.CheckTimeoutsAsync();
 
         session.Room.Should().Be(0);
         service.GetRoomState(state.RoomId).Should().BeNull();
     }
 
+    private void AnnouncedTheLeave(UserSession session)
+    {
+        sent[session].Should().Contain(p =>
+            p.GetOpcode() == (byte)GameOpcodes.GS_EVENT
+            && p.GetData()[0] == (byte)TempleSubOpcode.DrakiLeaveFirst);
+        sent[session].Should().Contain(p =>
+            p.GetOpcode() == (byte)GameOpcodes.GS_EVENT
+            && p.GetData()[0] == (byte)TempleSubOpcode.DrakiLeaveSecond);
+    }
+
     [Fact]
-    public async Task CheckTimeoutsAsync_WhenCompletedRunTimesOut_ExpelsPlayer()
+    public async Task ARunnerWhoDiesIsToldAndSentToTownTwentySecondsLater()
+    {
+        var lifecycle = Substitute.For<ICombatLifecycleService>();
+        var services = Substitute.For<IServiceProvider>();
+        services.GetService(typeof(ICombatLifecycleService)).Returns(lifecycle);
+        var withServices = new DrakiTowerService(
+            sessionManager, gameData, itemUsage, itemGrant, mailService, aggression, zoneTransition,
+            new NpcLifecycleService(sessionManager, NullLogger<NpcLifecycleService>.Instance),
+            rooms, stageProvider, NullLogger<DrakiTowerService>.Instance, services, startTimer: false);
+        var session = CreatePlayer(zone: (byte)ZoneId.ElMoradCamp1);
+        session.DrakiEntranceLimit = 3;
+        var enterPacket = new Packet((byte)GameOpcodes.GS_EVENT);
+        enterPacket.WriteInt(0);
+        enterPacket.WriteByte(1);
+        AtTheRift(session);
+        await withServices.HandleEnterAsync(session, enterPacket);
+        var state = withServices.GetRoomState((ushort)session.Room)!;
+        session.ZoneId = (byte)ZoneId.DrakiTower;
+        session.Hp = 0;
+        sent[session].Clear();
+
+        await withServices.CheckTimeoutsAsync();
+
+        AnnouncedTheLeave(session);
+        state.Leaving.Should().BeTrue();
+        await lifecycle.DidNotReceive().HandleRegeneAsync(Arg.Any<IClient>(), Arg.Any<UserSession>(), Arg.Any<byte>());
+
+        state.Deadline = DateTime.UtcNow.AddSeconds(-1);
+        await withServices.CheckTimeoutsAsync();
+
+        await lifecycle.Received(1).HandleRegeneAsync(session.Client, session, 0);
+    }
+
+    [Fact]
+    public async Task CheckTimeoutsAsync_WhenCompletedRunTimesOut_AnnouncesTheLeaveAndExpelsTwentySecondsLater()
     {
         var session = CreatePlayer(zone: (byte)ZoneId.ElMoradCamp1);
         session.X = 1600f;
@@ -652,7 +707,14 @@ public class DrakiTowerTests : GameTestBase
         state.IsBreak = true;
         state.Deadline = DateTime.UtcNow.AddSeconds(-1);
         session.ZoneId = (byte)ZoneId.DrakiTower;
+        sent[session].Clear();
 
+        await service.CheckTimeoutsAsync();
+
+        AnnouncedTheLeave(session);
+        session.Room.Should().Be(state.RoomId);
+
+        state.Deadline = DateTime.UtcNow.AddSeconds(-1);
         await service.CheckTimeoutsAsync();
 
         session.Room.Should().Be(0);

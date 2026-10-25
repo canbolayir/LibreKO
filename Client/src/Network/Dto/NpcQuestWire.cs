@@ -47,6 +47,7 @@ public enum QuestSubOpcode : byte
     Text = 15,
     View = 16,
     NotificationReply = 17,
+    ObjectivesBatch = 18,
 }
 
 public enum QuestKillCountForm : byte

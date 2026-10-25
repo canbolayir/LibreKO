@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace LibreKO.Domain;
 
-public enum EventKind : byte { Temple = 1, CollectionRace = 2, Lottery = 3, Krowaz = 4, Bifrost = 5, CastleSiege = 6, Bowl = 7 }
+public enum EventKind : byte { Temple = 1, CollectionRace = 2, Lottery = 3, Krowaz = 4, Bifrost = 5, CastleSiege = 6, Bowl = 7, NationWar = 8, SnowWar = 9, Wanted = 10 }
 
 public enum EventPhase : byte { SignUp = 1, Running = 2 }
 
@@ -27,6 +27,8 @@ public sealed record ScheduledEvent(EventKind Kind, string Name, string Descript
     public bool Matches(EventNow entry) =>
         entry.Kind == Kind && entry.Name == Name && entry.MinLevel == MinLevel && entry.MaxLevel == MaxLevel;
 }
+
+public readonly record struct EventToday(string Name, EventPhase? Open, DateTime? LocalStart);
 
 public readonly record struct EventCard(ScheduledEvent? Event, EventNow? Live)
 {
@@ -118,6 +120,24 @@ public sealed class EventSchedule
             .ThenBy(c => c.Live is { } entry ? SecondsLeft(entry, utcNow) : 0)
             .ThenBy(c => c.Event is { } scheduled ? UntilStart(scheduled, utcNow) : TimeSpan.MaxValue)
             .ToList();
+    }
+
+    public List<EventToday> Today(DateTime utcNow, TimeSpan localOffset)
+    {
+        var lines = new List<EventToday>();
+        var localToday = (utcNow + localOffset).Date;
+        foreach (var card in Cards(utcNow))
+        {
+            if (card.Live is { } live)
+            {
+                lines.Add(new EventToday(card.Name, live.Phase, null));
+                continue;
+            }
+            if (card.Event is not { } scheduled) continue;
+            var localStart = utcNow + UntilStart(scheduled, utcNow) + localOffset;
+            if (localStart.Date == localToday) lines.Add(new EventToday(card.Name, null, localStart));
+        }
+        return lines;
     }
 
     public bool AlertDue(int level, DateTime utcNow, TimeSpan lead)
